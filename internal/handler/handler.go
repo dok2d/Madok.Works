@@ -296,6 +296,9 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/auth/oidc/login", h.handleOIDCLogin)
 	h.mux.HandleFunc("/api/auth/oidc/callback", h.handleOIDCCallback)
 
+	// Ecosystem services
+	h.mux.HandleFunc("/api/services", h.handleServices)
+
 	// Admin settings
 	h.mux.HandleFunc("/api/settings/telegram", h.handleTelegramSettings)
 	h.mux.HandleFunc("/api/settings/telegram/status", h.handleTelegramStatus)
@@ -315,7 +318,11 @@ func (h *Handler) routes() {
 }
 
 func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/" || r.URL.Path == "/backlog" || strings.HasPrefix(r.URL.Path, "/task/") || strings.HasPrefix(r.URL.Path, "/epic/") || strings.HasPrefix(r.URL.Path, "/sprint/") || strings.HasPrefix(r.URL.Path, "/user/") {
+	if r.URL.Path == "/" || r.URL.Path == "/backlog" || strings.HasPrefix(r.URL.Path, "/task/") || strings.HasPrefix(r.URL.Path, "/epic/") || strings.HasPrefix(r.URL.Path, "/sprint/") || strings.HasPrefix(r.URL.Path, "/user/") ||
+		r.URL.Path == "/wiki" || strings.HasPrefix(r.URL.Path, "/wiki/") ||
+		r.URL.Path == "/chat" || strings.HasPrefix(r.URL.Path, "/chat/") ||
+		r.URL.Path == "/calendar" || strings.HasPrefix(r.URL.Path, "/calendar/") ||
+		r.URL.Path == "/mail" || strings.HasPrefix(r.URL.Path, "/mail/") {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		http.ServeFile(w, r, "web/templates/index.html")
 		return
