@@ -189,7 +189,49 @@ func (s *Store) migrate() error {
 			end_date TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL DEFAULT 'planning'
 		)`,
+		// === Wiki (ecosystem service) ===
+		`CREATE TABLE IF NOT EXISTS wiki_spaces (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			key TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT 'open',
+			created_by INTEGER REFERENCES users(id),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS wiki_space_members (
+			space_id INTEGER NOT NULL REFERENCES wiki_spaces(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			role TEXT NOT NULL DEFAULT 'editor',
+			PRIMARY KEY (space_id, user_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS wiki_pages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			space_id INTEGER NOT NULL REFERENCES wiki_spaces(id) ON DELETE CASCADE,
+			parent_id INTEGER REFERENCES wiki_pages(id) ON DELETE SET NULL,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
+			rev_no INTEGER NOT NULL DEFAULT 1,
+			created_by INTEGER REFERENCES users(id),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_by INTEGER REFERENCES users(id),
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS wiki_revisions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+			rev_no INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL,
+			author_id INTEGER REFERENCES users(id),
+			comment TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 		// indexes for FK lookups
+		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_space_id ON wiki_pages(space_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_parent_id ON wiki_pages(parent_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wiki_revisions_page_id ON wiki_revisions(page_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_column_id ON tasks(column_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comments_task_id ON comments(task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_tags_task_id ON task_tags(task_id)`,

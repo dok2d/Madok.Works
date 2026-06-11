@@ -125,6 +125,68 @@ type ActivityEntry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// === Wiki (ecosystem service) ===
+
+// WikiSpace is a documentation space — a tree of pages with its own access list.
+type WikiSpace struct {
+	ID          int64  `json:"id"`
+	Key         string `json:"key"`  // short uppercase identifier, e.g. "DOCS"
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility"` // "open" (all users) or "restricted" (members only)
+	CreatedBy   *int64 `json:"created_by"`
+	CreatedAt   string `json:"created_at"`
+	PageCount   int    `json:"page_count"`
+	MyRole      string `json:"my_role"` // effective role of the requesting user: "admin", "editor", "viewer", ""
+}
+
+// WikiSpaceMember is an entry in a restricted space's access list.
+type WikiSpaceMember struct {
+	SpaceID  int64  `json:"space_id"`
+	UserID   int64  `json:"user_id"`
+	Role     string `json:"role"` // "admin", "editor", "viewer"
+	Username string `json:"username"`
+}
+
+// WikiPage holds the current revision of a page.
+type WikiPage struct {
+	ID            int64  `json:"id"`
+	SpaceID       int64  `json:"space_id"`
+	ParentID      *int64 `json:"parent_id"`
+	Title         string `json:"title"`
+	Content       string `json:"content,omitempty"` // sanitized HTML
+	Position      int    `json:"position"`
+	RevNo         int    `json:"rev_no"`
+	CreatedBy     *int64 `json:"created_by"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedBy     *int64 `json:"updated_by"`
+	UpdatedAt     string `json:"updated_at"`
+	CreatedByName string `json:"created_by_name,omitempty"`
+	UpdatedByName string `json:"updated_by_name,omitempty"`
+}
+
+// WikiRevision is a historical version of a page (content loaded on demand).
+type WikiRevision struct {
+	ID         int64  `json:"id"`
+	PageID     int64  `json:"page_id"`
+	RevNo      int    `json:"rev_no"`
+	Title      string `json:"title"`
+	Content    string `json:"content,omitempty"`
+	AuthorID   *int64 `json:"author_id"`
+	AuthorName string `json:"author_name,omitempty"`
+	Comment    string `json:"comment"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// WikiSearchHit is one result of a wiki full-text search.
+type WikiSearchHit struct {
+	PageID   int64  `json:"page_id"`
+	SpaceID  int64  `json:"space_id"`
+	SpaceKey string `json:"space_key"`
+	Title    string `json:"title"`
+	Snippet  string `json:"snippet"`
+}
+
 // ExportUser contains user data for export (password hash omitted by default for security)
 type ExportUser struct {
 	ID           int64  `json:"id"`

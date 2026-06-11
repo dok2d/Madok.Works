@@ -299,6 +299,14 @@ func (h *Handler) routes() {
 	// Ecosystem services
 	h.mux.HandleFunc("/api/services", h.handleServices)
 
+	// Wiki
+	h.mux.HandleFunc("/api/wiki/spaces", h.handleWikiSpaces)
+	h.mux.HandleFunc("/api/wiki/spaces/", h.handleWikiSpaceRoute)
+	h.mux.HandleFunc("/api/wiki/pages", h.handleWikiPages)
+	h.mux.HandleFunc("/api/wiki/pages/", h.handleWikiPageRoute)
+	h.mux.HandleFunc("/api/wiki/revisions/", h.handleWikiRevision)
+	h.mux.HandleFunc("/api/wiki/search", h.handleWikiSearch)
+
 	// Admin settings
 	h.mux.HandleFunc("/api/settings/telegram", h.handleTelegramSettings)
 	h.mux.HandleFunc("/api/settings/telegram/status", h.handleTelegramStatus)

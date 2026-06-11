@@ -17,7 +17,7 @@ var serviceOrder = []string{"wiki", "chat", "calendar", "mail"}
 
 // serviceAvailable marks services whose implementation is compiled in.
 var serviceAvailable = map[string]bool{
-	"wiki":     false,
+	"wiki":     true,
 	"chat":     false,
 	"calendar": false,
 	"mail":     false,
