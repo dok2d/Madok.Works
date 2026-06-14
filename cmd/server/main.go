@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"kanban/internal/db"
 	"kanban/internal/handler"
@@ -10,13 +11,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"context"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "/data/kanban.db", "sqlite database path")
 	verbose := flag.Bool("verbose", false, "enable verbose logging")
+	smtpAddr := flag.String("smtp-addr", "", "optional inbound SMTP listen address (e.g. :25); empty disables mail receiving")
 	flag.Parse()
 
 	store, err := db.New(*dbPath)
@@ -29,6 +30,9 @@ func main() {
 	if *verbose {
 		h.SetVerbose(true)
 		log.Println("verbose logging enabled")
+	}
+	if *smtpAddr != "" {
+		h.StartSMTPServer(*smtpAddr)
 	}
 
 	srv := &http.Server{
