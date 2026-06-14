@@ -410,6 +410,58 @@ func (s *Store) kanbanEvents(from, to time.Time) ([]model.CalendarEvent, error) 
 	return out, nil
 }
 
+// DueReminder is one event whose start time is approaching and that has not yet
+// been reminded about.
+type DueReminder struct {
+	EventID   int64
+	Title     string
+	StartUTC  string
+	OwnerID   *int64
+	CreatedBy *int64
+}
+
+// DueReminders returns non-recurring, not-yet-reminded events starting within
+// [now,until] (UTC strings in calTimeLayout).
+func (s *Store) DueReminders(nowStr, untilStr string) ([]DueReminder, error) {
+	rows, err := s.db.Query(`SELECT e.id, e.title, e.start_utc, c.owner_id, e.created_by
+		FROM calendar_events e JOIN calendars c ON c.id = e.calendar_id
+		WHERE e.rrule = '' AND e.reminded = 0 AND e.start_utc >= ? AND e.start_utc <= ?`, nowStr, untilStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DueReminder
+	for rows.Next() {
+		var d DueReminder
+		if err := rows.Scan(&d.EventID, &d.Title, &d.StartUTC, &d.OwnerID, &d.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) MarkReminded(id int64) error {
+	_, err := s.db.Exec(`UPDATE calendar_events SET reminded = 1 WHERE id = ?`, id)
+	return err
+}
+
+// UpcomingEventCount counts real (non-kanban) events visible to the user that
+// start within [from,to], for the rail badge.
+func (s *Store) UpcomingEventCount(userID int64, isAdmin bool, fromStr, toStr string) int {
+	events, err := s.ListCalendarEvents(userID, isAdmin, fromStr, toStr)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range events {
+		if e.Source == "" {
+			n++
+		}
+	}
+	return n
+}
+
 // CanEditCalendar reports whether the user may modify the calendar.
 func (s *Store) CanEditCalendar(c *model.Calendar, userID int64, isAdmin bool) bool {
 	return isAdmin || (c.OwnerID != nil && *c.OwnerID == userID)

@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"kanban/internal/model"
 )
@@ -29,6 +31,54 @@ func (h *Handler) calUser(w http.ResponseWriter, r *http.Request) *model.User {
 		return nil
 	}
 	return user
+}
+
+const calReminderLeadMin = 15 // notify this many minutes before an event starts
+
+// runCalendarReminders periodically notifies users about events that are about to
+// start (in-app + Telegram), once per event. Recurring events are not reminded
+// (their occurrences have no per-instance state) — a future enhancement.
+func (h *Handler) runCalendarReminders() {
+	const layout = "2006-01-02 15:04:05"
+	for {
+		time.Sleep(time.Minute)
+		if !h.serviceEnabled("calendar") {
+			continue
+		}
+		now := time.Now().UTC()
+		due, err := h.store.DueReminders(now.Format(layout), now.Add(calReminderLeadMin*time.Minute).Format(layout))
+		if err != nil {
+			continue
+		}
+		for _, d := range due {
+			targets := map[int64]bool{}
+			if d.OwnerID != nil {
+				targets[*d.OwnerID] = true
+			}
+			if d.CreatedBy != nil {
+				targets[*d.CreatedBy] = true
+			}
+			text := fmt.Sprintf("Напоминание: «%s» скоро начнётся", d.Title)
+			for uid := range targets {
+				h.store.CreateNotification(uid, "calendar_reminder", text, nil)
+				h.sendTelegramNotification(uid, text)
+			}
+			h.store.MarkReminded(d.EventID)
+		}
+	}
+}
+
+// handleCalendarUpcoming returns the count of upcoming events (next 24h) for the
+// rail badge.
+func (h *Handler) handleCalendarUpcoming(w http.ResponseWriter, r *http.Request) {
+	user := h.calUser(w, r)
+	if user == nil {
+		return
+	}
+	const layout = "2006-01-02 15:04:05"
+	now := time.Now().UTC()
+	n := h.store.UpcomingEventCount(user.ID, user.IsAdmin, now.Format(layout), now.Add(24*time.Hour).Format(layout))
+	jsonResp(w, map[string]int{"upcoming": n})
 }
 
 // calAudience resolves which users should receive live updates for a calendar:

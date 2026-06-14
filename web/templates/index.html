@@ -1307,6 +1307,7 @@ async function init() {
     initTimezoneSelect();
     pollNotifications();
     if (typeof chatInitGlobal === 'function') chatInitGlobal();
+    if (typeof calInitGlobal === 'function') calInitGlobal();
     // Search
     const searchEl = document.getElementById('search');
     if (searchEl) {

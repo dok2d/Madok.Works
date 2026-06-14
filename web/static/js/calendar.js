@@ -105,9 +105,22 @@ function calConnectSSE() {
     const es = new EventSource('/api/calendar/stream');
     calState.es = es;
     let tmo = null;
-    es.onmessage = () => { clearTimeout(tmo); tmo = setTimeout(() => calLoadAndRender(), 250); };
+    es.onmessage = () => { clearTimeout(tmo); tmo = setTimeout(() => { calLoadAndRender(); calUpdateBadge(); }, 250); };
     es.onerror = () => { /* browser auto-reconnects */ };
   } catch (e) { /* SSE unavailable */ }
+}
+
+// calInitGlobal runs once at startup so the rail badge shows upcoming events
+// even before the calendar view is opened.
+async function calInitGlobal() {
+  if (typeof isServiceEnabled === 'function' && !isServiceEnabled('calendar')) return;
+  calUpdateBadge();
+}
+async function calUpdateBadge() {
+  try {
+    const r = await api('/api/calendar/upcoming');
+    if (typeof setRailBadge === 'function') setRailBadge('calendar', r.upcoming || 0);
+  } catch (e) { /* ignore */ }
 }
 
 function calRenderLayout() {

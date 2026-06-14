@@ -319,6 +319,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE tasks ADD COLUMN sprint_id INTEGER REFERENCES sprints(id)",
 		"ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local'",
 		"ALTER TABLE users ADD COLUMN external_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE calendar_events ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0",
 	}
 	for _, q := range alters {
 		s.db.Exec(q) // ignore "duplicate column" errors

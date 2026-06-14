@@ -119,6 +119,35 @@ func TestListCalendarEventsRange(t *testing.T) {
 	}
 }
 
+func TestDueReminders(t *testing.T) {
+	s := newTestStore(t)
+	u := mustUser(t, s, "alice")
+	cal, _ := s.CreateCalendar("Work", "#abc", u, "private")
+	soon, _ := s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Soon", Start: "2026-05-01 12:10:00", End: "2026-05-01 12:30:00"}, u)
+	// far future and recurring events must not be reminded
+	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Later", Start: "2026-05-01 18:00:00", End: "2026-05-01 19:00:00"}, u)
+	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Recurring", Start: "2026-05-01 12:11:00", End: "2026-05-01 12:30:00", RRule: "FREQ=DAILY;COUNT=5"}, u)
+
+	due, err := s.DueReminders("2026-05-01 12:00:00", "2026-05-01 12:15:00")
+	if err != nil {
+		t.Fatalf("DueReminders: %v", err)
+	}
+	if len(due) != 1 || due[0].EventID != soon.ID {
+		t.Fatalf("expected only the soon event due, got %+v", due)
+	}
+	if due[0].OwnerID == nil || *due[0].OwnerID != u {
+		t.Errorf("owner not resolved for reminder")
+	}
+
+	if err := s.MarkReminded(soon.ID); err != nil {
+		t.Fatalf("MarkReminded: %v", err)
+	}
+	due2, _ := s.DueReminders("2026-05-01 12:00:00", "2026-05-01 12:15:00")
+	if len(due2) != 0 {
+		t.Errorf("reminded event should not recur, got %d", len(due2))
+	}
+}
+
 func TestCalendarVisibility(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")
