@@ -872,6 +872,7 @@ function applyI18n() {
   if(ls) { ls.innerHTML = Object.entries(LANGS).map(([k,v]) => `<option value="${k}" ${k===currentLang?'selected':''}>${v.name}</option>`).join(''); }
   const pt = document.getElementById('personal-toggle');
   if(pt) pt.textContent = showPersonalOnly ? t('showAll') : t('showPersonal');
+  const gb = document.getElementById('gsearch-btn'); if(gb) gb.title = t('search') + ' (Ctrl+K)';
 }
 
 // === State ===
