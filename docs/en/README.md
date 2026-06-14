@@ -14,3 +14,4 @@ A minimalist self-hosted kanban board with sprints, epics, tags, comments, notif
 8. [Security](security.md) — container hardening, encryption, data protection
 9. [REST API](api.md) — complete endpoint reference
 10. [Themes & Localization](themes-and-i18n.md) — themes, languages, font size
+11. [Ecosystem Services](ecosystem.md) — wiki, chat, calendar, mail
