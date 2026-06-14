@@ -10,20 +10,15 @@
 
 ---
 
-## Stage 1 — Сквозное укрепление и инфраструктура
-- [ ] **S1.1** Глобальный chat-SSE: открывать `EventSource` при логине и закрывать при
-  logout; бейдж непрочитанного обновляется до первого входа в чат (остаток A3).
-- [ ] **S1.2** Обобщить SSE-хаб: вынести `sseHub`/`sseEvent` из `chat.go` в общий
-  `internal/handler/events.go`, сделать payload пригодным для любых сервисов; чат — на него же.
-- [ ] **S1.3** JSON экспорт/импорт сервисов (§1.8): расширить `model.ExportData` и
-  `ExportAll`/`ImportAll` на wiki (spaces/pages/revisions/members), chat (channels/members/messages),
-  calendar (calendars/events). Тесты round-trip.
+## Stage 1 — Сквозное укрепление и инфраструктура  ✅
+- [x] **S1.1** Глобальный chat-SSE при логине + бейдж до первого входа. `f…` (commit feat(chat) S1.1)
+- [x] **S1.2** Общий SSE-хаб в `events.go`, чат на нём. (refactor(sse) S1.2)
+- [x] **S1.3** JSON экспорт/импорт wiki/chat/calendar + round-trip тест. (feat(export) S1.3)
 
-## Stage 2 — Доводка Календаря (Phase B enhancements)
-- [ ] **S2.1** Live-обновления календаря через общий SSE (создание/правка/удаление событий).
-- [ ] **S2.2** Напоминания: шедулер (как `runBackupScheduler`) сканирует ближайшие события,
-  шлёт in-app + Telegram уведомления; бейдж ближайших на rail (`setRailBadge('calendar', n)`).
-- [ ] **S2.3** Вид «день» + перетаскивание событий мышью (frontend).
+## Stage 2 — Доводка Календаря (Phase B enhancements)  ✅
+- [x] **S2.1** Live-обновления календаря через общий SSE. (feat(calendar) S2.1)
+- [x] **S2.2** Напоминания (шедулер + in-app/Telegram) + бейдж ближайших на rail. (feat(calendar) S2.2)
+- [x] **S2.3** Вид «день» + перетаскивание событий. (feat(calendar) S2.3)
 
 ## Stage 3 — Почта (Phase C), от внутренней к внешней
 - [ ] **S3.1** C1 хранилище/модель: ящики, папки (Inbox/Sent/Drafts/Trash/кастом),
