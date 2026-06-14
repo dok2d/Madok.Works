@@ -1,0 +1,150 @@
+package handler
+
+import (
+	"bytes"
+	"crypto"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"log"
+	"net"
+	"net/smtp"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/emersion/go-msgauth/dkim"
+)
+
+// Outbound mail (S3.4/S3.5). Self-contained and unit-tested for the parts that
+// don't need the network (RFC 5322 building + DKIM signing). Actual delivery to
+// remote MX hosts is gated behind configuration and only runs when an outbound
+// domain is set — it cannot be exercised in a sandbox without public networking.
+//
+// Config (env):
+//   KANBAN_MAIL_DOMAIN   — sending domain (enables outbound when set)
+//   KANBAN_DKIM_SELECTOR — DKIM selector (default "default")
+//   KANBAN_DKIM_KEY      — path to a PEM RSA private key for DKIM signing
+
+func (h *Handler) loadMailOutboundConfig() {
+	domain := strings.TrimSpace(os.Getenv("KANBAN_MAIL_DOMAIN"))
+	if domain == "" {
+		return
+	}
+	h.outboundDomain = domain
+	h.dkimSelector = strings.TrimSpace(os.Getenv("KANBAN_DKIM_SELECTOR"))
+	if h.dkimSelector == "" {
+		h.dkimSelector = "default"
+	}
+	if path := strings.TrimSpace(os.Getenv("KANBAN_DKIM_KEY")); path != "" {
+		if key, err := loadRSAKey(path); err != nil {
+			log.Printf("mail: DKIM key load failed: %v", err)
+		} else {
+			h.dkimKey = key
+		}
+	}
+	log.Printf("outbound mail enabled for domain %s (dkim=%v)", h.outboundDomain, h.dkimKey != nil)
+}
+
+func loadRSAKey(path string) (*rsa.PrivateKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block in %s", path)
+	}
+	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return k, nil
+	}
+	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	rk, ok := k.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("not an RSA key")
+	}
+	return rk, nil
+}
+
+func (h *Handler) outboundEnabled() bool { return h.outboundDomain != "" }
+
+// buildRFC822 assembles a minimal RFC 5322 text/plain message.
+func buildRFC822(fromAddr, fromName string, to []string, subject, body, date string) []byte {
+	var b strings.Builder
+	if fromName != "" {
+		fmt.Fprintf(&b, "From: %s <%s>\r\n", fromName, fromAddr)
+	} else {
+		fmt.Fprintf(&b, "From: %s\r\n", fromAddr)
+	}
+	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(to, ", "))
+	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
+	fmt.Fprintf(&b, "Date: %s\r\n", date)
+	fmt.Fprintf(&b, "MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&b, "Content-Type: text/plain; charset=utf-8\r\n")
+	b.WriteString("\r\n")
+	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+	return []byte(b.String())
+}
+
+// dkimSign returns the message with a DKIM-Signature header prepended. If no key
+// is configured it returns the input unchanged.
+func (h *Handler) dkimSign(raw []byte) ([]byte, error) {
+	if h.dkimKey == nil {
+		return raw, nil
+	}
+	var out bytes.Buffer
+	opts := &dkim.SignOptions{
+		Domain:                 h.outboundDomain,
+		Selector:               h.dkimSelector,
+		Signer:                 h.dkimKey,
+		Hash:                   crypto.SHA256,
+		HeaderCanonicalization: dkim.CanonicalizationRelaxed,
+		BodyCanonicalization:   dkim.CanonicalizationRelaxed,
+		HeaderKeys:             []string{"From", "To", "Subject", "Date", "MIME-Version", "Content-Type"},
+	}
+	if err := dkim.Sign(&out, bytes.NewReader(raw), opts); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// sendExternal builds, signs and delivers a message to external recipients via
+// their MX hosts. No-op unless outbound is enabled.
+func (h *Handler) sendExternal(fromName string, to []string, subject, body string) {
+	if !h.outboundEnabled() || len(to) == 0 {
+		return
+	}
+	fromAddr := fromName + "@" + h.outboundDomain
+	raw := buildRFC822(fromAddr, fromName, to, subject, body, time.Now().UTC().Format(time.RFC1123Z))
+	signed, err := h.dkimSign(raw)
+	if err != nil {
+		log.Printf("mail: DKIM sign failed: %v", err)
+		signed = raw
+	}
+	byDomain := map[string][]string{}
+	for _, addr := range to {
+		at := strings.LastIndex(addr, "@")
+		if at < 0 {
+			continue
+		}
+		byDomain[addr[at+1:]] = append(byDomain[addr[at+1:]], addr)
+	}
+	for domain, rcpts := range byDomain {
+		if err := deliverToMX(domain, fromAddr, rcpts, signed); err != nil {
+			log.Printf("mail: delivery to %s failed: %v", domain, err)
+		}
+	}
+}
+
+// deliverToMX looks up the domain's mail exchanger and sends the message.
+func deliverToMX(domain, from string, to []string, msg []byte) error {
+	mxs, err := net.LookupMX(domain)
+	if err != nil || len(mxs) == 0 {
+		return fmt.Errorf("no MX for %s: %v", domain, err)
+	}
+	return smtp.SendMail(strings.TrimSuffix(mxs[0].Host, ".")+":25", nil, from, to, msg)
+}

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -50,18 +51,18 @@ const (
 	resetCodeFormat = "%08d"
 
 	// Text truncation limits
-	truncateShort    = 200  // notifications, previews
-	truncateComment  = 300  // comment body in notifications
-	truncateActivity = 1000 // activity log details
-	truncateDesc     = 500  // description in TG view
-	truncateCommentTG = 100 // comment preview in TG task view
+	truncateShort     = 200  // notifications, previews
+	truncateComment   = 300  // comment body in notifications
+	truncateActivity  = 1000 // activity log details
+	truncateDesc      = 500  // description in TG view
+	truncateCommentTG = 100  // comment preview in TG task view
 
 	// Telegram message limit
 	tgMessageMaxLen = 4000
 
 	// Telegram UI limits
-	tgMaxInlineButtons   = 30
-	tgMaxCommentsShown   = 5
+	tgMaxInlineButtons = 30
+	tgMaxCommentsShown = 5
 
 	// Search
 	maxSearchQueryLen = 200
@@ -122,10 +123,16 @@ type Handler struct {
 	oidcMu       sync.Mutex           // protects oidcStates
 	oidcStates   map[string]time.Time // CSRF state tokens for OIDC
 	sse          *sseHub              // live events for ecosystem services
+	// Outbound mail (optional; configured from env in New). When outboundDomain
+	// is empty, external sending is disabled and mail stays internal.
+	outboundDomain string
+	dkimSelector   string
+	dkimKey        *rsa.PrivateKey
 }
 
 func New(store *db.Store, dbPath string) *Handler {
 	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: filepath.Dir(dbPath), oidcStates: make(map[string]time.Time), sse: newSSEHub()}
+	h.loadMailOutboundConfig()
 	h.routes()
 	h.initTelegramBot()
 	go h.runBackupScheduler()
@@ -1711,15 +1718,15 @@ func (h *Handler) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	tgConfigured := h.store.GetSetting("telegram_bot_token") != ""
 	tgBotUsername := h.store.GetSetting("telegram_bot_username")
 	jsonResp(w, map[string]any{
-		"id":                   fullUser.ID,
-		"username":             fullUser.Username,
-		"role":                 fullUser.Role,
-		"is_admin":             fullUser.IsAdmin,
-		"created_at":           fullUser.CreatedAt,
-		"telegram_id":          fullUser.TelegramID,
-		"link_hash":            fullUser.LinkHash,
-		"unread":               unread,
-		"telegram_configured":  tgConfigured,
+		"id":                    fullUser.ID,
+		"username":              fullUser.Username,
+		"role":                  fullUser.Role,
+		"is_admin":              fullUser.IsAdmin,
+		"created_at":            fullUser.CreatedAt,
+		"telegram_id":           fullUser.TelegramID,
+		"link_hash":             fullUser.LinkHash,
+		"unread":                unread,
+		"telegram_configured":   tgConfigured,
 		"telegram_bot_username": tgBotUsername,
 	})
 }
@@ -2576,17 +2583,17 @@ func (h *Handler) handleSSOSettings(w http.ResponseWriter, r *http.Request) {
 			"ldap_admin_group":   h.store.GetSetting("ldap_admin_group"),
 			"ldap_member_attr":   h.store.GetSetting("ldap_member_attr"),
 			// OIDC settings
-			"oidc_enabled":       h.store.GetSetting("oidc_enabled") == "true",
-			"oidc_label":         h.store.GetSetting("oidc_label"),
-			"oidc_provider_url":  h.store.GetSetting("oidc_provider_url"),
-			"oidc_client_id":     h.store.GetSetting("oidc_client_id"),
-			"oidc_client_secret": h.store.GetSetting("oidc_client_secret") != "",
-			"oidc_redirect_url":  h.store.GetSetting("oidc_redirect_url"),
-			"oidc_scopes":        h.store.GetSetting("oidc_scopes"),
+			"oidc_enabled":        h.store.GetSetting("oidc_enabled") == "true",
+			"oidc_label":          h.store.GetSetting("oidc_label"),
+			"oidc_provider_url":   h.store.GetSetting("oidc_provider_url"),
+			"oidc_client_id":      h.store.GetSetting("oidc_client_id"),
+			"oidc_client_secret":  h.store.GetSetting("oidc_client_secret") != "",
+			"oidc_redirect_url":   h.store.GetSetting("oidc_redirect_url"),
+			"oidc_scopes":         h.store.GetSetting("oidc_scopes"),
 			"oidc_username_claim": h.store.GetSetting("oidc_username_claim"),
-			"oidc_default_role":  h.store.GetSetting("oidc_default_role"),
-			"oidc_admin_claim":   h.store.GetSetting("oidc_admin_claim"),
-			"oidc_admin_value":   h.store.GetSetting("oidc_admin_value"),
+			"oidc_default_role":   h.store.GetSetting("oidc_default_role"),
+			"oidc_admin_claim":    h.store.GetSetting("oidc_admin_claim"),
+			"oidc_admin_value":    h.store.GetSetting("oidc_admin_value"),
 		})
 
 	case http.MethodPost:

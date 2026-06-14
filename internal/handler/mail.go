@@ -226,20 +226,25 @@ func (h *Handler) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	if req.BodyHTML != "" {
 		req.BodyHTML = sanitizeHTML(req.BodyHTML)
 	}
-	toIDs, toNames := h.resolveMailRecipients(req.To)
-	if len(toIDs) == 0 {
+	toIDs, toNames, external := h.resolveMailRecipients(req.To)
+	if len(toIDs) == 0 && len(external) == 0 {
 		http.Error(w, "no valid recipients", http.StatusBadRequest)
 		return
 	}
-	if len(toIDs) > mailMaxRecipients {
+	if len(toIDs)+len(external) > mailMaxRecipients {
 		http.Error(w, "too many recipients", http.StatusBadRequest)
 		return
 	}
-	id, err := h.store.SendInternalMail(user.ID, user.Username, toIDs, strings.Join(toNames, ", "), req.Cc,
+	displayTo := strings.Join(append(append([]string{}, toNames...), external...), ", ")
+	id, err := h.store.SendInternalMail(user.ID, user.Username, toIDs, displayTo, req.Cc,
 		strings.TrimSpace(req.Subject), req.BodyText, req.BodyHTML, req.InReplyTo, req.ThreadID, req.Attachments)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	// Relay to external recipients (no-op unless outbound mail is configured).
+	if len(external) > 0 && h.outboundEnabled() {
+		go h.sendExternal(user.Username, external, strings.TrimSpace(req.Subject), req.BodyText)
 	}
 	// Notify recipients: live event + in-app + Telegram.
 	subj := req.Subject
@@ -254,25 +259,31 @@ func (h *Handler) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, map[string]int64{"id": id})
 }
 
-// resolveMailRecipients maps comma-separated usernames to ids (unknown skipped).
-func (h *Handler) resolveMailRecipients(list string) ([]int64, []string) {
-	var ids []int64
-	var names []string
+// resolveMailRecipients splits comma-separated recipients into local users
+// (matched by username) and external email addresses (tokens containing "@"
+// that don't match a local user). Unknown bare names are dropped.
+func (h *Handler) resolveMailRecipients(list string) (ids []int64, names []string, external []string) {
 	seen := map[int64]bool{}
+	extSeen := map[string]bool{}
 	for _, name := range strings.Split(list, ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
 		}
-		u, err := h.store.GetUserByUsername(name)
-		if err != nil || u == nil || seen[u.ID] {
+		if u, err := h.store.GetUserByUsername(name); err == nil && u != nil {
+			if !seen[u.ID] {
+				seen[u.ID] = true
+				ids = append(ids, u.ID)
+				names = append(names, u.Username)
+			}
 			continue
 		}
-		seen[u.ID] = true
-		ids = append(ids, u.ID)
-		names = append(names, u.Username)
+		if strings.Contains(name, "@") && !extSeen[name] {
+			extSeen[name] = true
+			external = append(external, name)
+		}
 	}
-	return ids, names
+	return ids, names, external
 }
 
 func (h *Handler) handleMailStream(w http.ResponseWriter, r *http.Request) {
