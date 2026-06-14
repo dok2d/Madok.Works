@@ -30,22 +30,27 @@ func (h *Handler) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, []globalHit{})
 		return
 	}
+	// scope "" or "all" = everything; otherwise restrict to one service.
+	scope := r.URL.Query().Get("scope")
+	want := func(s string) bool { return scope == "" || scope == "all" || scope == s }
 	out := []globalHit{}
 
 	// Kanban tasks
-	if ids, err := h.store.SearchTasks(q, false); err == nil {
-		for i, id := range ids {
-			if i >= globalSearchPerService {
-				break
-			}
-			if t, err := h.store.GetTask(id); err == nil {
-				out = append(out, globalHit{Service: "kanban", Title: t.Title, URL: "/task/" + itoa(id)})
+	if want("kanban") {
+		if ids, err := h.store.SearchTasks(q, false); err == nil {
+			for i, id := range ids {
+				if i >= globalSearchPerService {
+					break
+				}
+				if t, err := h.store.GetTask(id); err == nil {
+					out = append(out, globalHit{Service: "kanban", Title: t.Title, URL: "/task/" + itoa(id)})
+				}
 			}
 		}
 	}
 
 	// Wiki pages
-	if h.serviceEnabled("wiki") {
+	if want("wiki") && h.serviceEnabled("wiki") {
 		if hits, err := h.store.SearchWikiPages(user.ID, user.IsAdmin, q, globalSearchPerService); err == nil {
 			for _, hit := range hits {
 				out = append(out, globalHit{Service: "wiki", Title: hit.SpaceKey + " / " + hit.Title, Snippet: hit.Snippet, URL: "/wiki/page/" + itoa(hit.PageID)})
@@ -54,7 +59,7 @@ func (h *Handler) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Chat messages
-	if h.serviceEnabled("chat") {
+	if want("chat") && h.serviceEnabled("chat") {
 		if hits, err := h.store.SearchChatMessages(user.ID, q, globalSearchPerService); err == nil {
 			for _, hit := range hits {
 				out = append(out, globalHit{Service: "chat", Title: hit.ChannelName, Snippet: hit.Text, URL: "/chat/channel/" + itoa(hit.ChannelID)})
@@ -62,8 +67,17 @@ func (h *Handler) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Calendar events
+	if want("calendar") && h.serviceEnabled("calendar") {
+		if hits, err := h.store.SearchCalendarEvents(user.ID, user.IsAdmin, q, globalSearchPerService); err == nil {
+			for _, hit := range hits {
+				out = append(out, globalHit{Service: "calendar", Title: hit.Title, Snippet: hit.Snippet, URL: "/calendar"})
+			}
+		}
+	}
+
 	// Mail
-	if h.serviceEnabled("mail") {
+	if want("mail") && h.serviceEnabled("mail") {
 		if hits, err := h.store.SearchMail(user.ID, q, globalSearchPerService); err == nil {
 			for _, hit := range hits {
 				title := hit.Subject

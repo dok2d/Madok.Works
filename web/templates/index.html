@@ -13,6 +13,7 @@
 <script src="/static/js/chat.js"></script>
 <script src="/static/js/calendar.js"></script>
 <script src="/static/js/mail.js"></script>
+<script src="/static/js/admin.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -94,6 +95,8 @@ body.has-rail #app{margin-left:52px}
 .rail-btn.active::before{content:'';position:absolute;left:-7px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent)}
 .rail-badge{position:absolute;top:1px;right:1px;min-width:15px;height:15px;border-radius:8px;background:var(--red);color:#fff;font-size:.62rem;font-weight:600;line-height:15px;text-align:center;padding:0 3px}
 .rail-sep{width:26px;height:1px;background:var(--bg4);margin:4px 0;flex-shrink:0}
+.rail-admin{margin-top:auto}
+@media (max-width:760px){ .rail-admin{margin-top:0} }
 [dir="rtl"] .app-rail{left:auto;right:0;border-right:none;border-left:1px solid var(--bg4)}
 [dir="rtl"] body.has-rail #app{margin-left:0;margin-right:52px}
 [dir="rtl"] .rail-btn.active::before{left:auto;right:-7px}
@@ -434,7 +437,7 @@ body.has-rail #app{margin-left:52px}
 .col-add-btn:hover{border-color:var(--accent);color:var(--accent2)}
 
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
-.modal{background:var(--bg2);border-radius:var(--radius-lg);width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.modal{background:var(--bg2);border-radius:var(--radius-lg);width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5);padding:12px}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--bg3)}
 .modal-header h2{font-size:1rem}
 .modal-body{padding:20px;display:flex;flex-direction:column;gap:14px}
@@ -519,6 +522,29 @@ body.has-rail #app{margin-left:52px}
 .epic-task-prio{font-size:.75rem;font-weight:600}
 
 .search-input{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:6px 10px;color:var(--fg);font-family:inherit;font-size:.85rem;outline:none;width:240px;transition:border .15s}
+.search-wrap{display:flex;align-items:center;gap:0}
+.search-scope{background:var(--bg3);border:1px solid var(--bg4);border-right:none;border-radius:var(--radius) 0 0 var(--radius);color:var(--fg2);font-size:.78rem;padding:6px 4px;outline:none;max-width:96px}
+.search-wrap .search-input{border-radius:0 var(--radius) var(--radius) 0}
+[dir="rtl"] .search-scope{border-radius:0 var(--radius) var(--radius) 0;border-right:1px solid var(--bg4);border-left:none}
+[dir="rtl"] .search-wrap .search-input{border-radius:var(--radius) 0 0 var(--radius)}
+/* hide kanban-only header controls outside kanban views */
+body:not(.kanban-view) .hdr-filter,
+body:not(.kanban-view) .hdr-sep,
+body:not(.kanban-view) .hdr-kanban-only{display:none !important}
+/* === Admin page === */
+#admin-page{display:none;position:fixed;top:52px;left:0;right:0;bottom:0;overflow-y:auto;background:var(--bg);z-index:90}
+body.has-rail #admin-page{left:52px}
+[dir="rtl"] body.has-rail #admin-page{left:0;right:52px}
+body.view-admin #admin-page{display:block}
+.admin-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:14px 24px 0;border-bottom:1px solid var(--bg4);position:sticky;top:0;background:var(--bg);z-index:1}
+.admin-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--fg2);cursor:pointer;font-size:.88rem;padding:8px 12px}
+.admin-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.admin-body{padding:20px 24px 60px;max-width:900px}
+.admin-panel{display:none}
+.admin-panel.active{display:block}
+.admin-panel .sidebar-section{margin-bottom:24px}
+.admin-h{font-size:1.2rem;margin:0 0 16px}
+@media (max-width:760px){ body.has-rail #admin-page{left:0;bottom:50px} }
 .search-input:focus{border-color:var(--accent);width:300px}
 .search-results{position:fixed;top:52px;left:0;right:0;z-index:99;background:var(--bg2);border-bottom:1px solid var(--bg4);padding:12px 24px;max-height:60vh;overflow-y:auto;box-shadow:var(--shadow)}
 .search-result-item{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg3);border-radius:var(--radius);cursor:pointer;margin-bottom:4px;transition:all .15s}
@@ -706,11 +732,13 @@ body.has-rail #app{margin-left:52px}
     </span>
   </h1>
   <div class="header-actions">
-    <input class="search-input" id="search" autocomplete="off">
-    <button class="btn btn-ghost btn-sm" id="gsearch-btn" onclick="openGlobalSearch()" title="Search everything (Ctrl+K)" style="font-size:.9rem">&#128269;</button>
-    <button class="btn btn-ghost btn-sm" onclick="navigateTo('/backlog')" data-i18n="sprintBacklog" style="font-size:.8rem"></button>
+    <span class="search-wrap">
+      <select class="search-scope" id="search-scope" onchange="onSearchScopeChange()" title="Search scope"></select>
+      <input class="search-input" id="search" autocomplete="off">
+    </span>
+    <button class="btn btn-ghost btn-sm hdr-kanban-only" id="backlog-btn" onclick="navigateTo('/backlog')" data-i18n="sprintBacklog" style="font-size:.8rem"></button>
     <button class="btn btn-ghost btn-sm" id="notif-btn" onclick="toggleNotifications()" style="position:relative">&#128276;<span id="notif-count" class="notif-badge hidden">0</span></button>
-    <button class="btn btn-ghost btn-sm" id="personal-toggle" onclick="togglePersonalView()" style="display:none"></button>
+    <button class="btn btn-ghost btn-sm hdr-kanban-only" id="personal-toggle" onclick="togglePersonalView()" style="display:none"></button>
     <button class="btn btn-ghost btn-sm" onclick="toggleSidebar()">&#9881;</button>
   </div>
 </div>
@@ -1197,6 +1225,12 @@ function route() {
     return;
   }
   currentServicePath = '';
+  if (path === '/admin' && isAdmin()) {
+    prevEpicId = null; prevPath = null;
+    currentView = 'admin'; currentTaskId = null; currentEpicId = null; currentSprintId = null; currentProfileId = null;
+    renderCurrentView();
+    return;
+  }
   if (taskMatch) {
     if (currentView === 'epic' && currentEpicId) { prevEpicId = currentEpicId; prevPath = '/epic/' + currentEpicId; }
     else if (currentView === 'sprint' && currentSprintId) { prevPath = '/sprint/' + currentSprintId; }
@@ -1228,7 +1262,11 @@ function goBack() {
 window.addEventListener('popstate', route);
 
 function renderCurrentView() {
-  if (currentView === 'task' && currentTaskId) { renderTaskPage(currentTaskId).then(() => highlightCode()); }
+  const kanbanViews = ['board', 'task', 'epic', 'sprint', 'backlog', 'user'];
+  document.body.classList.toggle('kanban-view', kanbanViews.includes(currentView));
+  document.body.classList.toggle('view-admin', currentView === 'admin');
+  if (currentView === 'admin') { if (typeof renderAdminView === 'function') renderAdminView(); }
+  else if (currentView === 'task' && currentTaskId) { renderTaskPage(currentTaskId).then(() => highlightCode()); }
   else if (currentView === 'epic' && currentEpicId) { renderEpicPage(currentEpicId).then(() => highlightCode()); }
   else if (currentView === 'sprint' && currentSprintId) { renderSprintPage(currentSprintId); }
   else if (currentView === 'backlog') { renderBacklogPage(); }
@@ -1240,6 +1278,7 @@ function renderCurrentView() {
   else { renderBoard(); }
   renderAppRail();
   renderSidebar();
+  if (typeof updateSearchScope === 'function') updateSearchScope();
 }
 
 // === Ecosystem services ===
@@ -1251,14 +1290,19 @@ function renderAppRail() {
   const rail = document.getElementById('app-rail');
   if (!rail) return;
   const enabled = services.filter(s => s.enabled);
-  document.body.classList.toggle('has-rail', enabled.length > 0);
-  if (enabled.length === 0) { rail.innerHTML = ''; return; }
+  const showRail = enabled.length > 0 || isAdmin();
+  document.body.classList.toggle('has-rail', showRail);
+  if (!showRail) { rail.innerHTML = ''; return; }
   const kanbanViews = ['board','task','epic','sprint','backlog','user'];
   const items = [`<a class="rail-btn ${kanbanViews.includes(currentView) ? 'active' : ''}" href="/" title="${t('svc_kanban')}"
     onclick="resetBoardFilters();navigateTo('/');return false;">${SERVICE_ICONS.kanban}</a>`, `<div class="rail-sep"></div>`];
   for (const s of enabled) {
     items.push(`<a class="rail-btn ${currentView === s.name ? 'active' : ''}" href="/${s.name}" title="${t('svc_' + s.name)}"
       onclick="navigateTo('/${s.name}');return false;"><span id="rail-badge-${s.name}-wrap">${SERVICE_ICONS[s.name]}</span><span class="rail-badge hidden" id="rail-badge-${s.name}"></span></a>`);
+  }
+  if (isAdmin()) {
+    items.push(`<a class="rail-btn rail-admin ${currentView === 'admin' ? 'active' : ''}" href="/admin" title="${t('adminTitle')}"
+      onclick="navigateTo('/admin');return false;">&#9881;</a>`);
   }
   rail.innerHTML = items.join('');
 }
@@ -2605,32 +2649,51 @@ function gsearchGo(url) {
 }
 
 // === Search ===
+// Unified cross-service search. The scope dropdown limits results to one service
+// (default = the current service); empty scope searches everything.
+function serviceForView(v) {
+  if (['board', 'task', 'epic', 'sprint', 'backlog', 'user'].includes(v)) return 'kanban';
+  if (['wiki', 'chat', 'calendar', 'mail'].includes(v)) return v;
+  return '';
+}
+function updateSearchScope() {
+  const sel = document.getElementById('search-scope');
+  if (!sel) return;
+  const allLabel = (currentLang === 'ru') ? 'Везде' : 'All';
+  const opts = [['', allLabel], ['kanban', t('svc_kanban')]];
+  for (const s of services.filter(s => s.enabled)) opts.push([s.name, t('svc_' + s.name)]);
+  const cur = serviceForView(currentView);
+  sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
+  sel.value = opts.some(o => o[0] === cur) ? cur : '';
+}
+function onSearchScopeChange() {
+  const s = document.getElementById('search');
+  if (s && s.value.trim()) doSearch(s.value);
+}
+function searchGo(url) {
+  const r = document.getElementById('search-results'); if (r) r.classList.add('hidden');
+  const s = document.getElementById('search'); if (s) s.value = '';
+  navigateTo(url);
+}
 async function doSearch(query) {
-  searchQuery = query.trim();
+  const q = query.trim();
   const resultsEl = document.getElementById('search-results');
-  if (!searchQuery) {
-    searchMatchIds = null;
-    if (resultsEl) resultsEl.classList.add('hidden');
-    if (currentView === 'board') renderBoard();
-    return;
-  }
+  if (!q) { if (resultsEl) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; } return; }
+  const scopeEl = document.getElementById('search-scope');
+  const scope = scopeEl ? scopeEl.value : '';
   try {
-    const res = await api('/api/search?q=' + encodeURIComponent(searchQuery));
-    searchMatchIds = res.task_ids || [];
-    if (currentView === 'board') renderBoard();
-    // Show results dropdown
-    if (resultsEl) {
-      if (searchMatchIds.length === 0) {
-        resultsEl.innerHTML = `<p style="color:var(--fg3)">${t('nothingFound')}</p>`;
-      } else {
-        const matchTasks = searchMatchIds.slice(0, 20).map(id => state.tasks.find(t => t.id === id)).filter(Boolean);
-        resultsEl.innerHTML = matchTasks.map(t => `<div class="search-result-item" onclick="navigateTo('/task/${t.id}');document.getElementById('search').value='';doSearch('')">
-          <span class="card-id">#${t.id}</span><span>${esc(t.title)}</span>
-        </div>`).join('') + (searchMatchIds.length > 20 ? `<p style="color:var(--fg3);font-size:.82rem">${t('andMore')}</p>` : '');
-      }
-      resultsEl.classList.remove('hidden');
+    const hits = await api('/api/search/global?q=' + encodeURIComponent(q) + (scope ? '&scope=' + encodeURIComponent(scope) : ''));
+    if (!resultsEl) return;
+    if (!hits.length) {
+      resultsEl.innerHTML = `<p style="color:var(--fg3)">${t('nothingFound')}</p>`;
+    } else {
+      resultsEl.innerHTML = hits.map(h => `<div class="search-result-item" onclick="searchGo('${escAttr(h.url)}')">
+        <span class="gsearch-svc">${SERVICE_ICONS[h.service] || ''}</span>
+        <span><b>${esc(h.title)}</b>${h.snippet ? ` <span style="color:var(--fg3)">${esc(h.snippet)}</span>` : ''}</span>
+      </div>`).join('');
     }
-  } catch { searchMatchIds = null; }
+    resultsEl.classList.remove('hidden');
+  } catch (e) { /* ignore */ }
 }
 
 // Close search results on outside click
@@ -3366,10 +3429,11 @@ document.addEventListener('click', function(e) {
 // === Keyboard shortcuts ===
 let _preModalFocus = null;
 document.addEventListener('keydown', function(e) {
-  // Ctrl/Cmd+K opens the global search palette
+  // Ctrl/Cmd+K focuses the unified search field
   if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
     e.preventDefault();
-    openGlobalSearch();
+    const s = document.getElementById('search');
+    if (s) { s.focus(); s.select(); }
     return;
   }
   if (e.key === 'Escape') {

@@ -462,6 +462,51 @@ func (s *Store) UpcomingEventCount(userID int64, isAdmin bool, fromStr, toStr st
 	return n
 }
 
+// CalendarSearchHit is one event match for global search.
+type CalendarSearchHit struct {
+	EventID int64
+	Title   string
+	Snippet string
+	Start   string
+}
+
+// SearchCalendarEvents does a LIKE search over events in calendars the user can see.
+func (s *Store) SearchCalendarEvents(userID int64, isAdmin bool, query string, limit int) ([]CalendarSearchHit, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	cals, err := s.ListCalendars(userID, isAdmin)
+	if err != nil {
+		return nil, err
+	}
+	if len(cals) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(cals))
+	for _, c := range cals {
+		ids = append(ids, strconv.FormatInt(c.ID, 10))
+	}
+	like := "%" + escapeLike(query) + "%"
+	rows, err := s.db.Query(`SELECT id, title, description, start_utc FROM calendar_events
+		WHERE calendar_id IN (`+strings.Join(ids, ",")+`) AND (title LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\')
+		ORDER BY start_utc DESC LIMIT ?`, like, like, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CalendarSearchHit
+	for rows.Next() {
+		var h CalendarSearchHit
+		var desc string
+		if err := rows.Scan(&h.EventID, &h.Title, &desc, &h.Start); err != nil {
+			return nil, err
+		}
+		h.Snippet = desc
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 // CanEditCalendar reports whether the user may modify the calendar.
 func (s *Store) CanEditCalendar(c *model.Calendar, userID int64, isAdmin bool) bool {
 	return isAdmin || (c.OwnerID != nil && *c.OwnerID == userID)
