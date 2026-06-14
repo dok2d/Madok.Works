@@ -323,6 +323,29 @@ type MailFolder struct {
 	Name string `json:"name"`
 }
 
+// MailRuleCondition / MailRuleAction / MailRule define a user's inbound filter.
+type MailRuleCondition struct {
+	Field string `json:"field"` // from | to | subject | body
+	Op    string `json:"op"`    // contains | equals | starts_with | regex
+	Value string `json:"value"`
+}
+
+type MailRuleAction struct {
+	Type string `json:"type"` // move_to_folder | flag | mark_read | delete
+	Arg  string `json:"arg"`
+}
+
+type MailRule struct {
+	ID         int64               `json:"id"`
+	UserID     int64               `json:"user_id"`
+	Name       string              `json:"name"`
+	Enabled    bool                `json:"enabled"`
+	MatchType  string              `json:"match_type"` // all | any
+	Conditions []MailRuleCondition `json:"conditions"`
+	Actions    []MailRuleAction    `json:"actions"`
+	Position   int                 `json:"position"`
+}
+
 // MailAudit is one security/attack-investigation event for the mail subsystem.
 type MailAudit struct {
 	ID        int64  `json:"id"`

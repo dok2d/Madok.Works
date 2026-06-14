@@ -10,6 +10,7 @@ import (
 	gomail "github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 
+	"kanban/internal/db"
 	"kanban/internal/model"
 )
 
@@ -169,6 +170,11 @@ func (h *Handler) ingestInbound(from string, rcpts []string, r io.Reader, source
 	if folder == "junk" {
 		h.store.LogMailAudit(model.MailAudit{Event: "spam", SourceIP: sourceIP, MailFrom: fromAddr,
 			Rcpt: toAddrs, Subject: subject, Score: score, Detail: strings.Join(reasons, ", ")})
+	}
+	// Apply each recipient's filter rules (may override the antispam routing).
+	for _, uid := range toIDs {
+		h.applyMailRules(uid, h.store.MailBoxForMessage(uid, id),
+			db.RuleContext{From: fromAddr, To: toAddrs, Subject: subject, Body: bodyText})
 	}
 	// Notify recipients (live + in-app), mirroring internal delivery.
 	subj := subject

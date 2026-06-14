@@ -2,6 +2,8 @@ package db
 
 import (
 	"testing"
+
+	"kanban/internal/model"
 )
 
 func TestInternalMailFlow(t *testing.T) {
@@ -100,6 +102,34 @@ func TestMailCustomFolders(t *testing.T) {
 	}
 	if in, _ := s.ListMailbox(bob, "inbox", 50, 0); len(in) != 1 {
 		t.Errorf("messages should return to inbox after folder delete, got %d", len(in))
+	}
+}
+
+func TestEvaluateRules(t *testing.T) {
+	rules := []model.MailRule{
+		{Enabled: true, MatchType: "all",
+			Conditions: []model.MailRuleCondition{{Field: "subject", Op: "contains", Value: "invoice"}},
+			Actions:    []model.MailRuleAction{{Type: "move_to_folder", Arg: "Work"}}},
+		{Enabled: false, MatchType: "all",
+			Conditions: []model.MailRuleCondition{{Field: "from", Op: "contains", Value: "spam"}},
+			Actions:    []model.MailRuleAction{{Type: "delete"}}},
+		{Enabled: true, MatchType: "any",
+			Conditions: []model.MailRuleCondition{{Field: "from", Op: "equals", Value: "boss@x"}, {Field: "subject", Op: "starts_with", Value: "URGENT"}},
+			Actions:    []model.MailRuleAction{{Type: "flag"}}},
+	}
+	acts := EvaluateRules(rules, RuleContext{From: "billing@x", Subject: "Your invoice #5"})
+	if len(acts) != 1 || acts[0].Type != "move_to_folder" || acts[0].Arg != "Work" {
+		t.Fatalf("expected move_to_folder Work, got %+v", acts)
+	}
+	// disabled rule must not fire even if it would match
+	acts = EvaluateRules(rules, RuleContext{From: "spammer", Subject: "nothing"})
+	if len(acts) != 0 {
+		t.Errorf("disabled rule fired: %+v", acts)
+	}
+	// any-match rule fires on one condition
+	acts = EvaluateRules(rules, RuleContext{From: "boss@x", Subject: "hi"})
+	if len(acts) != 1 || acts[0].Type != "flag" {
+		t.Errorf("any-rule should flag, got %+v", acts)
 	}
 }
 

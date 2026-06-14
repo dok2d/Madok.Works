@@ -1,7 +1,9 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"kanban/internal/model"
@@ -13,6 +15,144 @@ func mailSnippet(text string) string {
 		return text[:140] + "…"
 	}
 	return text
+}
+
+// === Rules / filters ===
+
+// RuleContext is the message data evaluated against a user's rules.
+type RuleContext struct {
+	From    string
+	To      string
+	Subject string
+	Body    string
+}
+
+func (s *Store) ListMailRules(userID int64) ([]model.MailRule, error) {
+	rows, err := s.db.Query(`SELECT id, user_id, name, enabled, match_type, conditions, actions, position
+		FROM mail_rules WHERE user_id = ? ORDER BY position, id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.MailRule
+	for rows.Next() {
+		var r model.MailRule
+		var enabled int
+		var cond, act string
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Name, &enabled, &r.MatchType, &cond, &act, &r.Position); err != nil {
+			return nil, err
+		}
+		r.Enabled = enabled == 1
+		json.Unmarshal([]byte(cond), &r.Conditions)
+		json.Unmarshal([]byte(act), &r.Actions)
+		out = append(out, r)
+	}
+	if out == nil {
+		out = []model.MailRule{}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateMailRule(userID int64, r model.MailRule) (int64, error) {
+	cond, _ := json.Marshal(r.Conditions)
+	act, _ := json.Marshal(r.Actions)
+	en := 0
+	if r.Enabled {
+		en = 1
+	}
+	if r.MatchType != "any" {
+		r.MatchType = "all"
+	}
+	res, err := s.db.Exec(`INSERT INTO mail_rules(user_id, name, enabled, match_type, conditions, actions, position)
+		VALUES(?,?,?,?,?,?,?)`, userID, strings.TrimSpace(r.Name), en, r.MatchType, string(cond), string(act), r.Position)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) UpdateMailRule(id, userID int64, r model.MailRule) error {
+	cond, _ := json.Marshal(r.Conditions)
+	act, _ := json.Marshal(r.Actions)
+	en := 0
+	if r.Enabled {
+		en = 1
+	}
+	if r.MatchType != "any" {
+		r.MatchType = "all"
+	}
+	_, err := s.db.Exec(`UPDATE mail_rules SET name=?, enabled=?, match_type=?, conditions=?, actions=?, position=? WHERE id=? AND user_id=?`,
+		strings.TrimSpace(r.Name), en, r.MatchType, string(cond), string(act), r.Position, id, userID)
+	return err
+}
+
+func (s *Store) DeleteMailRule(id, userID int64) error {
+	_, err := s.db.Exec(`DELETE FROM mail_rules WHERE id=? AND user_id=?`, id, userID)
+	return err
+}
+
+// EvaluateRules returns the actions of all enabled rules that match ctx, in rule
+// order. Pure function (no DB) for testability.
+func EvaluateRules(rules []model.MailRule, ctx RuleContext) []model.MailRuleAction {
+	var actions []model.MailRuleAction
+	for _, r := range rules {
+		if !r.Enabled || len(r.Conditions) == 0 {
+			continue
+		}
+		matched := r.MatchType != "any" // all => start true; any => start false
+		for _, c := range r.Conditions {
+			m := matchRuleCond(c, ctx)
+			if r.MatchType == "any" {
+				matched = matched || m
+			} else {
+				matched = matched && m
+			}
+		}
+		if matched {
+			actions = append(actions, r.Actions...)
+		}
+	}
+	return actions
+}
+
+func matchRuleCond(c model.MailRuleCondition, ctx RuleContext) bool {
+	var field string
+	switch c.Field {
+	case "from":
+		field = ctx.From
+	case "to":
+		field = ctx.To
+	case "subject":
+		field = ctx.Subject
+	case "body":
+		field = ctx.Body
+	default:
+		return false
+	}
+	fl := strings.ToLower(field)
+	vl := strings.ToLower(c.Value)
+	switch c.Op {
+	case "contains":
+		return strings.Contains(fl, vl)
+	case "equals":
+		return fl == vl
+	case "starts_with":
+		return strings.HasPrefix(fl, vl)
+	case "regex":
+		re, err := regexp.Compile("(?i)" + c.Value)
+		if err != nil {
+			return false
+		}
+		return re.MatchString(field)
+	}
+	return false
+}
+
+// MailBoxForMessage returns the user's mailbox row id for a message, or 0.
+func (s *Store) MailBoxForMessage(userID, messageID int64) int64 {
+	var id int64
+	s.db.QueryRow(`SELECT id FROM mail_box WHERE user_id=? AND message_id=? LIMIT 1`, userID, messageID).Scan(&id)
+	return id
 }
 
 // === Mailbox aliases (managed in admin; resolution used by inbound SMTP) ===

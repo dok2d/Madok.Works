@@ -24,7 +24,7 @@ const MAIL_I18N = {
     mailSearchPh: 'Search mail…', mailNoMessages: 'No messages', mailNoSubject: '(no subject)',
     mailAttach: 'Attach', mailAttachments: 'Attachments', mailDeleteConfirm: 'Delete this message permanently?',
     mailFrom: 'From', mailReadonly: 'Read-only access', mailRecipientsRequired: 'Add at least one recipient',
-    mailToPlaceholder: 'username, username…', mailFlag: 'Flag', mailUnflag: 'Unflag', mailBack: 'Back', mailJunk: 'Junk', mailNewFolder: 'New folder', mailDeleteFolder: 'Delete folder', mailMoveTo: 'Move to',
+    mailToPlaceholder: 'username, username…', mailFlag: 'Flag', mailUnflag: 'Unflag', mailBack: 'Back', mailJunk: 'Junk', mailNewFolder: 'New folder', mailDeleteFolder: 'Delete folder', mailMoveTo: 'Move to', mailSave: 'Save', mailEdit: 'Edit', mailRules: 'Rules', mailRuleNew: 'New rule', mailRuleName: 'Name', mailRuleEnabled: 'Enabled', mailRuleMatch: 'Match', mailRuleAll: 'all conditions', mailRuleAny: 'any condition', mailRuleIf: 'If', mailRuleThen: 'Then',
   },
   ru: {
     mailCompose: 'Написать', mailInbox: 'Входящие', mailSent: 'Отправленные', mailDrafts: 'Черновики', mailTrash: 'Корзина',
@@ -33,7 +33,7 @@ const MAIL_I18N = {
     mailSearchPh: 'Поиск почты…', mailNoMessages: 'Нет писем', mailNoSubject: '(без темы)',
     mailAttach: 'Прикрепить', mailAttachments: 'Вложения', mailDeleteConfirm: 'Удалить письмо навсегда?',
     mailFrom: 'От', mailReadonly: 'Только чтение', mailRecipientsRequired: 'Укажите хотя бы одного получателя',
-    mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад', mailJunk: 'Спам', mailNewFolder: 'Новая папка', mailDeleteFolder: 'Удалить папку', mailMoveTo: 'Переместить в',
+    mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад', mailJunk: 'Спам', mailNewFolder: 'Новая папка', mailDeleteFolder: 'Удалить папку', mailMoveTo: 'Переместить в', mailSave: 'Сохранить', mailEdit: 'Изменить', mailRules: 'Правила', mailRuleNew: 'Новое правило', mailRuleName: 'Название', mailRuleEnabled: 'Включено', mailRuleMatch: 'Совпадение', mailRuleAll: 'все условия', mailRuleAny: 'любое условие', mailRuleIf: 'Если', mailRuleThen: 'То',
   },
   es: {
     mailCompose: "Redactar", mailInbox: "Entrada", mailSent: "Enviados", mailDrafts: "Borradores", mailTrash: "Papelera",
@@ -42,7 +42,7 @@ const MAIL_I18N = {
     mailSearchPh: "Buscar correo…", mailNoMessages: "Sin mensajes", mailNoSubject: "(sin asunto)",
     mailAttach: "Adjuntar", mailAttachments: "Adjuntos", mailDeleteConfirm: "¿Eliminar este mensaje permanentemente?",
     mailFrom: "De", mailReadonly: "Acceso de solo lectura", mailRecipientsRequired: "Añade al menos un destinatario",
-    mailToPlaceholder: "usuario, usuario…", mailFlag: "Destacar", mailUnflag: "Quitar marca", mailBack: "Atrás", mailJunk: "Spam", mailNewFolder: "Nueva carpeta", mailDeleteFolder: "Eliminar carpeta", mailMoveTo: "Mover a",
+    mailToPlaceholder: "usuario, usuario…", mailFlag: "Destacar", mailUnflag: "Quitar marca", mailBack: "Atrás", mailJunk: "Spam", mailNewFolder: "Nueva carpeta", mailDeleteFolder: "Eliminar carpeta", mailMoveTo: "Mover a", mailSave: "Guardar", mailEdit: "Editar", mailRules: "Reglas", mailRuleNew: "Nueva regla", mailRuleName: "Nombre", mailRuleEnabled: "Activado", mailRuleMatch: "Coincidir", mailRuleAll: "todas las condiciones", mailRuleAny: "cualquier condición", mailRuleIf: "Si", mailRuleThen: "Entonces",
   },
   fr: {
     mailCompose: "Nouveau", mailInbox: "Boîte de réception", mailSent: "Envoyés", mailDrafts: "Brouillons", mailTrash: "Corbeille",
@@ -51,7 +51,7 @@ const MAIL_I18N = {
     mailSearchPh: "Rechercher du courrier…", mailNoMessages: "Aucun message", mailNoSubject: "(sans objet)",
     mailAttach: "Joindre", mailAttachments: "Pièces jointes", mailDeleteConfirm: "Supprimer définitivement ce message ?",
     mailFrom: "De", mailReadonly: "Accès en lecture seule", mailRecipientsRequired: "Ajoutez au moins un destinataire",
-    mailToPlaceholder: "utilisateur, utilisateur…", mailFlag: "Marquer", mailUnflag: "Retirer la marque", mailBack: "Retour", mailJunk: "Indésirables", mailNewFolder: "Nouveau dossier", mailDeleteFolder: "Supprimer le dossier", mailMoveTo: "Déplacer vers",
+    mailToPlaceholder: "utilisateur, utilisateur…", mailFlag: "Marquer", mailUnflag: "Retirer la marque", mailBack: "Retour", mailJunk: "Indésirables", mailNewFolder: "Nouveau dossier", mailDeleteFolder: "Supprimer le dossier", mailMoveTo: "Déplacer vers", mailSave: "Enregistrer", mailEdit: "Modifier", mailRules: "Règles", mailRuleNew: "Nouvelle règle", mailRuleName: "Nom", mailRuleEnabled: "Activée", mailRuleMatch: "Correspondance", mailRuleAll: "toutes les conditions", mailRuleAny: "une condition", mailRuleIf: "Si", mailRuleThen: "Alors",
   },
   de: {
     mailCompose: "Verfassen", mailInbox: "Posteingang", mailSent: "Gesendet", mailDrafts: "Entwürfe", mailTrash: "Papierkorb",
@@ -60,7 +60,7 @@ const MAIL_I18N = {
     mailSearchPh: "E-Mail suchen…", mailNoMessages: "Keine Nachrichten", mailNoSubject: "(kein Betreff)",
     mailAttach: "Anhängen", mailAttachments: "Anhänge", mailDeleteConfirm: "Diese Nachricht endgültig löschen?",
     mailFrom: "Von", mailReadonly: "Nur-Lese-Zugriff", mailRecipientsRequired: "Mindestens einen Empfänger hinzufügen",
-    mailToPlaceholder: "Benutzer, Benutzer…", mailFlag: "Markieren", mailUnflag: "Markierung entfernen", mailBack: "Zurück", mailJunk: "Spam", mailNewFolder: "Neuer Ordner", mailDeleteFolder: "Ordner löschen", mailMoveTo: "Verschieben nach",
+    mailToPlaceholder: "Benutzer, Benutzer…", mailFlag: "Markieren", mailUnflag: "Markierung entfernen", mailBack: "Zurück", mailJunk: "Spam", mailNewFolder: "Neuer Ordner", mailDeleteFolder: "Ordner löschen", mailMoveTo: "Verschieben nach", mailSave: "Speichern", mailEdit: "Bearbeiten", mailRules: "Regeln", mailRuleNew: "Neue Regel", mailRuleName: "Name", mailRuleEnabled: "Aktiv", mailRuleMatch: "Treffer", mailRuleAll: "alle Bedingungen", mailRuleAny: "eine Bedingung", mailRuleIf: "Wenn", mailRuleThen: "Dann",
   },
   pt: {
     mailCompose: "Escrever", mailInbox: "Caixa de entrada", mailSent: "Enviados", mailDrafts: "Rascunhos", mailTrash: "Lixeira",
@@ -69,7 +69,7 @@ const MAIL_I18N = {
     mailSearchPh: "Buscar e-mail…", mailNoMessages: "Sem mensagens", mailNoSubject: "(sem assunto)",
     mailAttach: "Anexar", mailAttachments: "Anexos", mailDeleteConfirm: "Excluir esta mensagem permanentemente?",
     mailFrom: "De", mailReadonly: "Acesso somente leitura", mailRecipientsRequired: "Adicione pelo menos um destinatário",
-    mailToPlaceholder: "usuário, usuário…", mailFlag: "Marcar", mailUnflag: "Remover marca", mailBack: "Voltar", mailJunk: "Spam", mailNewFolder: "Nova pasta", mailDeleteFolder: "Excluir pasta", mailMoveTo: "Mover para",
+    mailToPlaceholder: "usuário, usuário…", mailFlag: "Marcar", mailUnflag: "Remover marca", mailBack: "Voltar", mailJunk: "Spam", mailNewFolder: "Nova pasta", mailDeleteFolder: "Excluir pasta", mailMoveTo: "Mover para", mailSave: "Salvar", mailEdit: "Editar", mailRules: "Regras", mailRuleNew: "Nova regra", mailRuleName: "Nome", mailRuleEnabled: "Ativada", mailRuleMatch: "Correspondência", mailRuleAll: "todas as condições", mailRuleAny: "qualquer condição", mailRuleIf: "Se", mailRuleThen: "Então",
   },
 };
 let mailI18nMerged = false;
@@ -113,6 +113,7 @@ function mailRenderLayout() {
       ${canWrite ? `<button class="btn btn-primary mail-compose" onclick="mailComposeDialog()">${t('mailCompose')}</button>` : ''}
       <input class="mail-search" id="mail-search" placeholder="${t('mailSearchPh')}" autocomplete="off">
       <div class="mail-folders" id="mail-folders"></div>
+      ${canWrite ? `<button class="btn btn-ghost btn-sm mail-rules-btn" onclick="mailRulesDialog()">&#9881; ${t('mailRules')}</button>` : ''}
     </aside>
     <main class="mail-main" id="mail-main"></main>
   </div>`;
@@ -389,4 +390,105 @@ async function mailUpdateBadge() {
     const r = await api('/api/mail/unread');
     if (typeof setRailBadge === 'function') setRailBadge('mail', r.unread || 0);
   } catch (e) { }
+}
+
+// === Rules / filters ===
+const MAIL_RULE_FIELDS = ['from', 'to', 'subject', 'body'];
+const MAIL_RULE_OPS = ['contains', 'equals', 'starts_with', 'regex'];
+const MAIL_RULE_ACTIONS = ['move_to_folder', 'flag', 'mark_read', 'delete'];
+
+async function mailRulesDialog() {
+  let rules = [];
+  try { rules = await api('/api/mail/rules'); } catch (e) { /* ignore */ }
+  const body = `
+    <div class="mail-rule-list">${rules.map(r => `<div class="mail-rule-row">
+      <span>${r.enabled ? '' : '⊘ '}${esc(r.name || '—')}</span>
+      <span>
+        <button class="btn btn-ghost btn-sm" onclick="mailRuleEditor(${r.id})">${t('mailEdit') || 'Edit'}</button>
+        <button class="btn btn-ghost btn-sm mail-danger" onclick="mailRuleDelete(${r.id})">${t('mailDelete')}</button>
+      </span></div>`).join('') || `<div class="mail-empty">—</div>`}</div>
+    <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="mailRuleEditor(0)">+ ${t('mailRuleNew')}</button>`;
+  mailModal(t('mailRules'), body, null);
+  mailRulesCache = rules;
+}
+
+let mailRulesCache = [];
+
+function mailModal(title, bodyHtml, onSave) {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML = `<div class="modal mail-modal">
+    <h3>${esc(title)}</h3>
+    <div class="mail-modal-inner">${bodyHtml}</div>
+    <div class="mail-modal-foot">
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('.modal-overlay').remove()">${t('mailCancel')}</button>
+      ${onSave ? `<button class="btn btn-primary btn-sm" id="mail-modal-save">${t('mailSave')}</button>` : ''}
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  if (onSave) ov.querySelector('#mail-modal-save').addEventListener('click', () => onSave(ov));
+  return ov;
+}
+
+function mailRuleEditor(id) {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+  const r = mailRulesCache.find(x => x.id === id) || { name: '', enabled: true, match_type: 'all', conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move_to_folder', arg: '' }] };
+  mailRuleDraft = JSON.parse(JSON.stringify(r));
+  mailRuleDraft.id = id;
+  mailRenderRuleEditor();
+}
+
+let mailRuleDraft = null;
+
+function mailRenderRuleEditor() {
+  const r = mailRuleDraft;
+  const folderOpts = ['inbox', 'junk', 'trash'].concat(mailState.customFolders.map(f => f.name));
+  const lbl = (k, v) => `<option value="${v}">${esc(mailRuleLabel(k, v))}</option>`;
+  const body = `
+    <label class="mail-fld">${t('mailRuleName')}<input id="mr-name" value="${escAttr(r.name)}"></label>
+    <label class="mail-fld mail-fld-row"><input type="checkbox" id="mr-enabled" ${r.enabled ? 'checked' : ''}> ${t('mailRuleEnabled')}</label>
+    <label class="mail-fld">${t('mailRuleMatch')}
+      <select id="mr-match"><option value="all" ${r.match_type === 'all' ? 'selected' : ''}>${t('mailRuleAll')}</option><option value="any" ${r.match_type === 'any' ? 'selected' : ''}>${t('mailRuleAny')}</option></select>
+    </label>
+    <div class="mail-rule-h">${t('mailRuleIf')}</div>
+    <div id="mr-conds">${r.conditions.map((c, i) => `<div class="mail-rule-cond">
+      <select onchange="mailRuleDraft.conditions[${i}].field=this.value">${MAIL_RULE_FIELDS.map(f => `<option value="${f}" ${c.field === f ? 'selected' : ''}>${esc(mailRuleLabel('field', f))}</option>`).join('')}</select>
+      <select onchange="mailRuleDraft.conditions[${i}].op=this.value">${MAIL_RULE_OPS.map(o => `<option value="${o}" ${c.op === o ? 'selected' : ''}>${esc(mailRuleLabel('op', o))}</option>`).join('')}</select>
+      <input value="${escAttr(c.value)}" oninput="mailRuleDraft.conditions[${i}].value=this.value">
+      <button class="btn-icon btn-sm mail-danger" onclick="mailRuleDraft.conditions.splice(${i},1);mailRenderRuleEditor()">&#10005;</button>
+    </div>`).join('')}</div>
+    <button class="btn btn-ghost btn-sm" onclick="mailRuleDraft.conditions.push({field:'from',op:'contains',value:''});mailRenderRuleEditor()">+ ${t('mailRuleIf')}</button>
+    <div class="mail-rule-h">${t('mailRuleThen')}</div>
+    <div id="mr-acts">${r.actions.map((a, i) => `<div class="mail-rule-act">
+      <select onchange="mailRuleDraft.actions[${i}].type=this.value;mailRenderRuleEditor()">${MAIL_RULE_ACTIONS.map(t2 => `<option value="${t2}" ${a.type === t2 ? 'selected' : ''}>${esc(mailRuleLabel('action', t2))}</option>`).join('')}</select>
+      ${a.type === 'move_to_folder' ? `<select onchange="mailRuleDraft.actions[${i}].arg=this.value">${folderOpts.map(f => `<option value="${escAttr(f)}" ${a.arg === f ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>` : ''}
+      <button class="btn-icon btn-sm mail-danger" onclick="mailRuleDraft.actions.splice(${i},1);mailRenderRuleEditor()">&#10005;</button>
+    </div>`).join('')}</div>
+    <button class="btn btn-ghost btn-sm" onclick="mailRuleDraft.actions.push({type:'flag',arg:''});mailRenderRuleEditor()">+ ${t('mailRuleThen')}</button>`;
+  document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+  mailModal(t('mailRules'), body, async ov => {
+    r.name = ov.querySelector('#mr-name').value.trim();
+    r.enabled = ov.querySelector('#mr-enabled').checked;
+    r.match_type = ov.querySelector('#mr-match').value;
+    // ensure default args for move actions
+    for (const a of r.actions) if (a.type === 'move_to_folder' && !a.arg) a.arg = folderOpts[0];
+    try {
+      if (r.id) await api('/api/mail/rules/' + r.id, 'PUT', r);
+      else await api('/api/mail/rules', 'POST', r);
+      ov.remove();
+    } catch (e) { alert(e.message); }
+  });
+}
+
+async function mailRuleDelete(id) {
+  if (!confirm(t('mailDelete') + '?')) return;
+  try { await api('/api/mail/rules/' + id, 'DELETE'); mailRulesDialog(); } catch (e) { alert(e.message); }
+}
+
+function mailRuleLabel(kind, v) {
+  const en = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', contains: 'contains', equals: 'equals', starts_with: 'starts with', regex: 'matches regex', move_to_folder: 'move to folder', flag: 'flag', mark_read: 'mark read', delete: 'delete' };
+  const ru = { from: 'От', to: 'Кому', subject: 'Тема', body: 'Текст', contains: 'содержит', equals: 'равно', starts_with: 'начинается с', regex: 'регэксп', move_to_folder: 'в папку', flag: 'пометить', mark_read: 'прочитано', delete: 'удалить' };
+  const m = (currentLang === 'ru') ? ru : en;
+  return m[v] || v;
 }

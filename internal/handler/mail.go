@@ -9,8 +9,97 @@ import (
 	"strconv"
 	"strings"
 
+	"kanban/internal/db"
 	"kanban/internal/model"
 )
+
+// applyMailRules evaluates a user's filters against a freshly delivered message
+// (identified by box id) and applies the resulting actions.
+func (h *Handler) applyMailRules(userID, boxID int64, ctx db.RuleContext) {
+	if boxID == 0 {
+		return
+	}
+	rules, err := h.store.ListMailRules(userID)
+	if err != nil || len(rules) == 0 {
+		return
+	}
+	for _, a := range db.EvaluateRules(rules, ctx) {
+		switch a.Type {
+		case "move_to_folder":
+			if a.Arg != "" {
+				h.store.MoveMail(boxID, userID, a.Arg)
+			}
+		case "flag":
+			h.store.SetMailFlagged(boxID, userID, true)
+		case "mark_read":
+			h.store.SetMailSeen(boxID, userID, true)
+		case "delete":
+			h.store.DeleteMailBox(boxID, userID)
+			return
+		}
+	}
+}
+
+// handleMailRules lists (GET) or creates (POST) the user's rules.
+func (h *Handler) handleMailRules(w http.ResponseWriter, r *http.Request) {
+	user := h.mailUser(w, r)
+	if user == nil {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		rules, err := h.store.ListMailRules(user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, rules)
+	case http.MethodPost:
+		var rule model.MailRule
+		if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		id, err := h.store.CreateMailRule(user.ID, rule)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		jsonResp(w, map[string]int64{"id": id})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMailRule updates (PUT) or deletes (DELETE) one rule.
+func (h *Handler) handleMailRule(w http.ResponseWriter, r *http.Request) {
+	user := h.mailUser(w, r)
+	if user == nil {
+		return
+	}
+	id := extractID(r.URL.Path, "/api/mail/rules/")
+	switch r.Method {
+	case http.MethodPut:
+		var rule model.MailRule
+		if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := h.store.UpdateMailRule(id, user.ID, rule); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	case http.MethodDelete:
+		if err := h.store.DeleteMailRule(id, user.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
 
 const (
 	mailMaxSubjectLen = 300
@@ -364,6 +453,11 @@ func (h *Handler) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	for _, uid := range toIDs {
 		h.store.CreateNotification(uid, "mail", fmt.Sprintf("Новое письмо от %s: %s", user.Username, subj), nil)
 		h.sendTelegramNotification(uid, fmt.Sprintf("Новое письмо от %s: %s", user.Username, subj))
+	}
+	// Apply each recipient's filter rules to their inbox copy.
+	for _, rid := range toIDs {
+		h.applyMailRules(rid, h.store.MailBoxForMessage(rid, id),
+			db.RuleContext{From: user.Username, To: displayTo, Subject: req.Subject, Body: req.BodyText})
 	}
 	h.sse.sendTo(append(toIDs, user.ID), map[string]string{"type": "mail"})
 	jsonResp(w, map[string]int64{"id": id})
