@@ -366,6 +366,21 @@ function chatTimeFmt(s, opts) {
 function chatFmtTime(s) { return chatTimeFmt(s, { hour: '2-digit', minute: '2-digit', hour12: false }); }
 function chatFmtDay(s) { return chatTimeFmt(s, { year: 'numeric', month: 'short', day: 'numeric' }); }
 
+// chatInitGlobal is called once at app startup so the unread badge updates and
+// live events flow even before the user first opens the chat view.
+async function chatInitGlobal() {
+  if (typeof isServiceEnabled === 'function' && !isServiceEnabled('chat')) return;
+  chatConnectSSE();
+  try {
+    const r = await api('/api/chat/unread');
+    if (typeof setRailBadge === 'function') setRailBadge('chat', r.unread || 0);
+  } catch (e) { /* ignore */ }
+}
+
+function chatDisconnect() {
+  if (chatState.es) { try { chatState.es.close(); } catch (e) { /* ignore */ } chatState.es = null; }
+}
+
 // === Live updates (SSE) ===
 function chatConnectSSE() {
   if (chatState.es || typeof EventSource === 'undefined') return;
