@@ -204,7 +204,126 @@ func scanEvent(sc interface{ Scan(...any) error }) (*model.CalendarEvent, error)
 const eventCols = `id, calendar_id, title, description, location, start_utc, end_utc, all_day, rrule, created_by, created_at, updated_at`
 
 func (s *Store) GetCalendarEvent(id int64) (*model.CalendarEvent, error) {
-	return scanEvent(s.db.QueryRow(`SELECT `+eventCols+` FROM calendar_events WHERE id = ?`, id))
+	e, err := scanEvent(s.db.QueryRow(`SELECT `+eventCols+` FROM calendar_events WHERE id = ?`, id))
+	if err != nil {
+		return nil, err
+	}
+	e.Reminders, _ = s.GetEventReminders(id)
+	return e, nil
+}
+
+// GetEventReminders returns an event's reminder definitions (templates).
+func (s *Store) GetEventReminders(eventID int64) ([]model.CalendarReminder, error) {
+	rows, err := s.db.Query(`SELECT lead_min, channel FROM calendar_reminders WHERE event_id=? AND occurrence_start='' ORDER BY lead_min`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.CalendarReminder
+	for rows.Next() {
+		var r model.CalendarReminder
+		if err := rows.Scan(&r.LeadMin, &r.Channel); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// SetEventReminders replaces an event's reminder templates (keeps sent markers).
+func (s *Store) SetEventReminders(eventID int64, reminders []model.CalendarReminder) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM calendar_reminders WHERE event_id=? AND occurrence_start=''`, eventID); err != nil {
+		return err
+	}
+	for _, r := range reminders {
+		if r.LeadMin < 0 {
+			continue
+		}
+		ch := r.Channel
+		if ch != "telegram" && ch != "inapp" {
+			ch = "both"
+		}
+		if _, err := tx.Exec(`INSERT INTO calendar_reminders(event_id, lead_min, channel, occurrence_start, sent) VALUES(?,?,?, '', 0)`, eventID, r.LeadMin, ch); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// MarkReminderSent records that a specific occurrence reminder has fired.
+// Returns true only on the first call for that (event,lead,occurrence).
+func (s *Store) MarkReminderSent(eventID int64, leadMin int, occ string) bool {
+	res, err := s.db.Exec(`INSERT OR IGNORE INTO calendar_reminders(event_id, lead_min, channel, occurrence_start, sent) VALUES(?,?,'',?,1)`, eventID, leadMin, occ)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
+// DueReminderInstance is one reminder occurrence whose lead window includes now.
+type DueReminderInstance struct {
+	EventID         int64
+	Title           string
+	LeadMin         int
+	Channel         string
+	OccurrenceStart string
+	OwnerID         *int64
+	CreatedBy       *int64
+}
+
+// DueReminderInstances expands per-event reminder templates into occurrences whose
+// lead window currently includes now (recurring events supported). Dedup happens
+// later via MarkReminderSent.
+func (s *Store) DueReminderInstances(now time.Time) ([]DueReminderInstance, error) {
+	rows, err := s.db.Query(`SELECT e.id, e.title, e.start_utc, e.rrule, c.owner_id, e.created_by, r.lead_min, r.channel
+		FROM calendar_reminders r
+		JOIN calendar_events e ON e.id = r.event_id
+		JOIN calendars c ON c.id = e.calendar_id
+		WHERE r.occurrence_start = ''`)
+	if err != nil {
+		return nil, err
+	}
+	type tmpl struct {
+		id               int64
+		title, start     string
+		rrule            string
+		owner, createdBy *int64
+		lead             int
+		channel          string
+	}
+	var tmpls []tmpl
+	for rows.Next() {
+		var x tmpl
+		if err := rows.Scan(&x.id, &x.title, &x.start, &x.rrule, &x.owner, &x.createdBy, &x.lead, &x.channel); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		tmpls = append(tmpls, x)
+	}
+	rows.Close()
+
+	var out []DueReminderInstance
+	for _, x := range tmpls {
+		st, ok := parseCalTime(x.start)
+		if !ok {
+			continue
+		}
+		lead := time.Duration(x.lead) * time.Minute
+		// occurrences whose start is within [now, now+lead] have a lead window covering now
+		for _, occ := range expandOccurrences(st, x.rrule, now, now.Add(lead)) {
+			out = append(out, DueReminderInstance{
+				EventID: x.id, Title: x.title, LeadMin: x.lead, Channel: x.channel,
+				OccurrenceStart: occ.Format(calTimeLayout), OwnerID: x.owner, CreatedBy: x.createdBy,
+			})
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) CreateCalendarEvent(e *model.CalendarEvent, createdBy int64) (*model.CalendarEvent, error) {
@@ -229,6 +348,7 @@ func (s *Store) CreateCalendarEvent(e *model.CalendarEvent, createdBy int64) (*m
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
+	s.SetEventReminders(id, e.Reminders)
 	return s.GetCalendarEvent(id)
 }
 
@@ -253,6 +373,7 @@ func (s *Store) UpdateCalendarEvent(id int64, e *model.CalendarEvent) (*model.Ca
 	if err != nil {
 		return nil, err
 	}
+	s.SetEventReminders(id, e.Reminders)
 	return s.GetCalendarEvent(id)
 }
 
@@ -425,7 +546,8 @@ type DueReminder struct {
 func (s *Store) DueReminders(nowStr, untilStr string) ([]DueReminder, error) {
 	rows, err := s.db.Query(`SELECT e.id, e.title, e.start_utc, c.owner_id, e.created_by
 		FROM calendar_events e JOIN calendars c ON c.id = e.calendar_id
-		WHERE e.rrule = '' AND e.reminded = 0 AND e.start_utc >= ? AND e.start_utc <= ?`, nowStr, untilStr)
+		WHERE e.rrule = '' AND e.reminded = 0 AND e.start_utc >= ? AND e.start_utc <= ?
+		AND NOT EXISTS(SELECT 1 FROM calendar_reminders r WHERE r.event_id = e.id AND r.occurrence_start = '')`, nowStr, untilStr)
 	if err != nil {
 		return nil, err
 	}

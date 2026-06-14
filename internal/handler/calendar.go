@@ -35,9 +35,10 @@ func (h *Handler) calUser(w http.ResponseWriter, r *http.Request) *model.User {
 
 const calReminderLeadMin = 15 // notify this many minutes before an event starts
 
-// runCalendarReminders periodically notifies users about events that are about to
-// start (in-app + Telegram), once per event. Recurring events are not reminded
-// (their occurrences have no per-instance state) — a future enhancement.
+// runCalendarReminders periodically notifies users about upcoming events.
+// Events with explicit per-event reminders (including recurring ones, via
+// per-occurrence dedup) use the configurable path; events without any explicit
+// reminder fall back to a single default 15-minute reminder.
 func (h *Handler) runCalendarReminders() {
 	const layout = "2006-01-02 15:04:05"
 	for {
@@ -46,24 +47,43 @@ func (h *Handler) runCalendarReminders() {
 			continue
 		}
 		now := time.Now().UTC()
-		due, err := h.store.DueReminders(now.Format(layout), now.Add(calReminderLeadMin*time.Minute).Format(layout))
-		if err != nil {
-			continue
+
+		// Default path: events without explicit reminders (non-recurring, 15 min).
+		if due, err := h.store.DueReminders(now.Format(layout), now.Add(calReminderLeadMin*time.Minute).Format(layout)); err == nil {
+			for _, d := range due {
+				h.notifyReminder("both", d.Title, d.OwnerID, d.CreatedBy)
+				h.store.MarkReminded(d.EventID)
+			}
 		}
-		for _, d := range due {
-			targets := map[int64]bool{}
-			if d.OwnerID != nil {
-				targets[*d.OwnerID] = true
+
+		// Configurable path: per-event reminders, recurring-aware (occurrence dedup).
+		if inst, err := h.store.DueReminderInstances(now); err == nil {
+			for _, it := range inst {
+				if !h.store.MarkReminderSent(it.EventID, it.LeadMin, it.OccurrenceStart) {
+					continue
+				}
+				h.notifyReminder(it.Channel, it.Title, it.OwnerID, it.CreatedBy)
 			}
-			if d.CreatedBy != nil {
-				targets[*d.CreatedBy] = true
-			}
-			text := fmt.Sprintf("Напоминание: «%s» скоро начнётся", d.Title)
-			for uid := range targets {
-				h.store.CreateNotification(uid, "calendar_reminder", text, nil)
-				h.sendTelegramNotification(uid, text)
-			}
-			h.store.MarkReminded(d.EventID)
+		}
+	}
+}
+
+// notifyReminder delivers a reminder to the event owner/creator via the channel.
+func (h *Handler) notifyReminder(channel, title string, owner, createdBy *int64) {
+	targets := map[int64]bool{}
+	if owner != nil {
+		targets[*owner] = true
+	}
+	if createdBy != nil {
+		targets[*createdBy] = true
+	}
+	text := fmt.Sprintf("Напоминание: «%s» скоро начнётся", title)
+	for uid := range targets {
+		if channel == "inapp" || channel == "both" || channel == "" {
+			h.store.CreateNotification(uid, "calendar_reminder", text, nil)
+		}
+		if channel == "telegram" || channel == "both" || channel == "" {
+			h.sendTelegramNotification(uid, text)
 		}
 	}
 }

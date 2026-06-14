@@ -14,6 +14,29 @@ let calState = {
 };
 
 const CAL_VIEW_KEY = 'kanban-cal-view';
+let calReminders = []; // draft reminder rows {value,unit,channel} for the open editor
+const CAL_REM_UNIT = { min: 1, hour: 60, day: 1440 };
+
+function calRemToDraft(r) {
+  let value = r.lead_min, unit = 'min';
+  if (r.lead_min > 0 && r.lead_min % 1440 === 0) { value = r.lead_min / 1440; unit = 'day'; }
+  else if (r.lead_min > 0 && r.lead_min % 60 === 0) { value = r.lead_min / 60; unit = 'hour'; }
+  return { value, unit, channel: r.channel || 'both' };
+}
+function calAddReminder() { calReminders.push({ value: 15, unit: 'min', channel: 'both' }); calRenderReminders(); }
+function calRenderReminders() {
+  const el = document.getElementById('cal-reminders');
+  if (!el) return;
+  const unitOpts = [['min', 'calRemMin'], ['hour', 'calRemHour'], ['day', 'calRemDay']];
+  const chOpts = [['both', 'calRemBoth'], ['telegram', 'calRemTg'], ['inapp', 'calRemInApp']];
+  el.innerHTML = calReminders.map((r, i) => `<div class="cal-rem-row">
+    <input type="number" min="0" value="${r.value}" oninput="calReminders[${i}].value=Number(this.value)">
+    <select onchange="calReminders[${i}].unit=this.value">${unitOpts.map(([u, k]) => `<option value="${u}" ${r.unit === u ? 'selected' : ''}>${t(k)}</option>`).join('')}</select>
+    <span class="cal-rem-before">${t('calRemBefore')}</span>
+    <select onchange="calReminders[${i}].channel=this.value">${chOpts.map(([c, k]) => `<option value="${c}" ${r.channel === c ? 'selected' : ''}>${t(k)}</option>`).join('')}</select>
+    <button class="btn-icon btn-sm cal-danger" onclick="calReminders.splice(${i},1);calRenderReminders()">&#10005;</button>
+  </div>`).join('');
+}
 
 // === i18n (ru/en; other languages fall back to en until the Phase D sweep) ===
 const CAL_I18N = {
@@ -30,7 +53,7 @@ const CAL_I18N = {
     calNameRequired: 'Name is required', calVisibility: 'Visibility', calPrivate: 'Private',
     calShared: 'Shared', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
     calDeleteCalendarConfirm: 'Delete this calendar and all its events?', calName: 'Name',
-    calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints',
+    calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints', calReminders: 'Reminders', calReminderAdd: 'Add reminder', calRemBefore: 'before', calRemMin: 'minutes', calRemHour: 'hours', calRemDay: 'days', calRemTg: 'Telegram', calRemInApp: 'In-app', calRemBoth: 'Both',
   },
   ru: {
     calNewEvent: 'Новое событие', calNewCalendar: 'Новый календарь', calToday: 'Сегодня',
@@ -45,7 +68,7 @@ const CAL_I18N = {
     calNameRequired: 'Введите название', calVisibility: 'Видимость', calPrivate: 'Личный',
     calShared: 'Общий', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
     calDeleteCalendarConfirm: 'Удалить календарь и все его события?', calName: 'Название',
-    calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты',
+    calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты', calReminders: 'Напоминания', calReminderAdd: 'Добавить напоминание', calRemBefore: 'до начала', calRemMin: 'минут', calRemHour: 'часов', calRemDay: 'дней', calRemTg: 'Telegram', calRemInApp: 'В приложении', calRemBoth: 'Оба',
   },
   es: {
     calNewEvent: "Nuevo evento", calNewCalendar: "Nuevo calendario", calToday: "Hoy",
@@ -113,7 +136,7 @@ function ensureCalI18n() {
   if (calI18nMerged || typeof LANGS === 'undefined') return;
   for (const lang of ['ru', 'en', 'zh', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ar']) {
     if (!LANGS[lang]) continue;
-    const dict = CAL_I18N[lang] || CAL_I18N.en;
+    const dict = Object.assign({}, CAL_I18N.en, CAL_I18N[lang] || {});
     for (const k in dict) if (!(k in LANGS[lang])) LANGS[lang][k] = dict[k];
   }
   calI18nMerged = true;
@@ -383,14 +406,15 @@ function calRenderGrid(el) {
   const todayKey = calDayKeyLocal(new Date());
   const curMonth = calState.cursor.getMonth();
   let html = `<div class="cal-grid cal-grid-${calState.view}">`;
-  for (const w of calWeekdayNames()) html += `<div class="cal-wd">${esc(w)}</div>`;
+  calWeekdayNames().forEach((w, i) => { html += `<div class="cal-wd ${i >= 5 ? 'cal-wd-weekend' : ''}">${esc(w)}</div>`; });
   for (let i = 0; i < days; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
     const key = calDayKeyLocal(d);
     const out = calState.view === 'month' && d.getMonth() !== curMonth ? 'cal-out' : '';
     const today = key === todayKey ? 'cal-today' : '';
+    const weekend = (d.getDay() === 0 || d.getDay() === 6) ? 'cal-weekend' : '';
     const evs = byDay[key] || [];
-    html += `<div class="cal-cell ${out} ${today}" onclick="calCellClick('${key}')" ondragover="event.preventDefault()" ondrop="calDrop(event,'${key}')">
+    html += `<div class="cal-cell ${out} ${today} ${weekend}" onclick="calCellClick('${key}')" ondragover="event.preventDefault()" ondrop="calDrop(event,'${key}')">
       <div class="cal-cell-date">${d.getDate()}</div>
       <div class="cal-cell-events">
         ${evs.map(e => calEventChip(e)).join('')}
@@ -484,6 +508,10 @@ function calEventForm(ev) {
       <label class="cal-fld">${t('calRepeatCount')}<input type="number" min="1" max="999" id="cal-f-count" value="${rr.count}"></label>
     </div>
     <label class="cal-fld">${t('calDescription')}<textarea id="cal-f-desc" maxlength="4000" rows="3">${ev ? esc(ev.description) : ''}</textarea></label>
+    <div class="cal-fld"><div class="cal-rem-head">${t('calReminders')}</div>
+      <div id="cal-reminders"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="calAddReminder()">+ ${t('calReminderAdd')}</button>
+    </div>
     ${ev ? `<button class="btn btn-ghost btn-sm cal-danger cal-del-btn" onclick="calDeleteEvent(${ev.id})">${t('calDelete')}</button>` : ''}`;
 }
 
@@ -528,11 +556,13 @@ function calCollectEvent(ov) {
     start: calInputToUTC(start),
     end: calInputToUTC(end),
     rrule: calBuildRRule(),
+    reminders: calReminders.map(r => ({ lead_min: Math.max(0, (r.value || 0) * (CAL_REM_UNIT[r.unit] || 1)), channel: r.channel })),
   };
 }
 
 function calNewEventDialog(dayKey) {
   if (!calEditableCalendars().length) { alert(t('calNoCalendars')); calNewCalendarDialog(); return; }
+  calReminders = [];
   const ov = calModal(t('calNewEvent'), calEventForm(null), async ov => {
     const ev = calCollectEvent(ov);
     if (!ev.title) { alert(t('calTitleRequired')); return; }
@@ -543,9 +573,10 @@ function calNewEventDialog(dayKey) {
     const si = ov.querySelector('#cal-f-start'), ei = ov.querySelector('#cal-f-end');
     si.value = dayKey + 'T09:00'; ei.value = dayKey + 'T10:00';
   }
+  calRenderReminders();
 }
 
-function calEventDialog(ev) {
+async function calEventDialog(ev) {
   const canEdit = (calState.calendars.find(c => c.id === ev.calendar_id) || {}).can_edit;
   if (!canEdit) { // view-only
     calModal(ev.title, `<div class="cal-view">
@@ -555,12 +586,17 @@ function calEventDialog(ev) {
     </div>`, null);
     return;
   }
-  calModal(t('calEditEvent'), calEventForm(ev), async ov => {
+  // Fetch the full event to get its reminder definitions.
+  let full = ev;
+  try { full = await api('/api/calendar/events/' + ev.id); } catch (e) { /* use list copy */ }
+  calReminders = (full.reminders || []).map(calRemToDraft);
+  calModal(t('calEditEvent'), calEventForm(full), async ov => {
     const upd = calCollectEvent(ov);
     if (!upd.title) { alert(t('calTitleRequired')); return; }
     try { await api('/api/calendar/events/' + ev.id, 'PUT', upd); ov.remove(); await calLoadAndRender(); }
     catch (e) { alert(e.message); }
   });
+  calRenderReminders();
 }
 
 async function calDeleteEvent(id) {

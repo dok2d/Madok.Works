@@ -148,6 +148,48 @@ func TestDueReminders(t *testing.T) {
 	}
 }
 
+func TestConfigurableReminders(t *testing.T) {
+	s := newTestStore(t)
+	u := mustUser(t, s, "alice")
+	cal, _ := s.CreateCalendar("Work", "#abc", u, "private")
+	now := time.Now().UTC().Truncate(time.Minute)
+	start := now.Add(10 * time.Minute).Format(calTimeLayout)
+	ev, err := s.CreateCalendarEvent(&model.CalendarEvent{
+		CalendarID: cal, Title: "Standup", Start: start, End: now.Add(40 * time.Minute).Format(calTimeLayout),
+		Reminders: []model.CalendarReminder{{LeadMin: 30, Channel: "both"}},
+	}, u)
+	if err != nil {
+		t.Fatalf("CreateCalendarEvent: %v", err)
+	}
+	if len(ev.Reminders) != 1 || ev.Reminders[0].LeadMin != 30 {
+		t.Fatalf("reminders not persisted: %+v", ev.Reminders)
+	}
+	// start is 10 min away; a 30-min lead window covers now -> due
+	inst, _ := s.DueReminderInstances(now)
+	var found *DueReminderInstance
+	for i := range inst {
+		if inst[i].EventID == ev.ID {
+			found = &inst[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected a due reminder instance for the event")
+	}
+	if !s.MarkReminderSent(found.EventID, found.LeadMin, found.OccurrenceStart) {
+		t.Error("first MarkReminderSent should return true")
+	}
+	if s.MarkReminderSent(found.EventID, found.LeadMin, found.OccurrenceStart) {
+		t.Error("second MarkReminderSent should return false (dedup)")
+	}
+	// an event with explicit reminders must not also fire via the default path
+	due, _ := s.DueReminders(now.Format(calTimeLayout), now.Add(15*time.Minute).Format(calTimeLayout))
+	for _, d := range due {
+		if d.EventID == ev.ID {
+			t.Error("templated event leaked into default reminder path")
+		}
+	}
+}
+
 func TestCalendarVisibility(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")

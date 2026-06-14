@@ -22,7 +22,7 @@
   --bg:#0f1117;--bg2:#181a24;--bg3:#1e2030;--bg4:#262840;
   --fg:#c8cad8;--fg2:#8b8fa8;--fg3:#5c6078;
   --accent:#7c6ff7;--accent2:#a78bfa;
-  --red:#ef4444;--orange:#f59e0b;--green:#22c55e;--blue:#3b82f6;
+  --red:#ef4444;--orange:#f59e0b;--green:#22c55e;--blue:#3b82f6;--weekend:#7d2b3a;
   --radius:6px;--radius-lg:10px;
   --shadow:0 2px 8px rgba(0,0,0,.3);
   --col-w:300px;
@@ -32,49 +32,49 @@
   --bg:#f5f5f7;--bg2:#ffffff;--bg3:#eef0f4;--bg4:#d8dbe5;
   --fg:#1a1a2e;--fg2:#4a4e69;--fg3:#8b8fa8;
   --accent:#6c5ce7;--accent2:#5b4cdb;
-  --red:#dc2626;--orange:#d97706;--green:#16a34a;--blue:#2563eb;
+  --red:#dc2626;--orange:#d97706;--green:#16a34a;--blue:#2563eb;--weekend:#a83246;
   --shadow:0 2px 8px rgba(0,0,0,.1);
 }
 [data-theme="ocean"]{
   --bg:#0b1622;--bg2:#101d2e;--bg3:#162435;--bg4:#1e3148;
   --fg:#c4d4e0;--fg2:#7f99b0;--fg3:#506882;
   --accent:#0ea5e9;--accent2:#38bdf8;
-  --red:#f43f5e;--orange:#fb923c;--green:#34d399;--blue:#60a5fa;
+  --red:#f43f5e;--orange:#fb923c;--green:#34d399;--blue:#60a5fa;--weekend:#8b2c44;
   --shadow:0 2px 8px rgba(0,0,0,.4);
 }
 [data-theme="forest"]{
   --bg:#0f1a0f;--bg2:#162016;--bg3:#1c2b1c;--bg4:#2a3f2a;
   --fg:#c4d8c4;--fg2:#88a888;--fg3:#5c7a5c;
   --accent:#22c55e;--accent2:#4ade80;
-  --red:#ef4444;--orange:#f59e0b;--green:#22c55e;--blue:#60a5fa;
+  --red:#ef4444;--orange:#f59e0b;--green:#22c55e;--blue:#60a5fa;--weekend:#7a3340;
   --shadow:0 2px 8px rgba(0,0,0,.35);
 }
 [data-theme="nord"]{
   --bg:#2e3440;--bg2:#3b4252;--bg3:#434c5e;--bg4:#4c566a;
   --fg:#eceff4;--fg2:#d8dee9;--fg3:#8892a6;
   --accent:#88c0d0;--accent2:#81a1c1;
-  --red:#bf616a;--orange:#d08770;--green:#a3be8c;--blue:#5e81ac;
+  --red:#bf616a;--orange:#d08770;--green:#a3be8c;--blue:#5e81ac;--weekend:#9d5560;
   --shadow:0 2px 8px rgba(0,0,0,.3);
 }
 [data-theme="dracula"]{
   --bg:#282a36;--bg2:#21222c;--bg3:#313545;--bg4:#44475a;
   --fg:#f8f8f2;--fg2:#bfc1d4;--fg3:#6272a4;
   --accent:#bd93f9;--accent2:#ff79c6;
-  --red:#ff5555;--orange:#ffb86c;--green:#50fa7b;--blue:#8be9fd;
+  --red:#ff5555;--orange:#ffb86c;--green:#50fa7b;--blue:#8be9fd;--weekend:#b03a55;
   --shadow:0 2px 8px rgba(0,0,0,.35);
 }
 [data-theme="solarized"]{
   --bg:#fdf6e3;--bg2:#eee8d5;--bg3:#e8e1ca;--bg4:#d6cdb5;
   --fg:#586e75;--fg2:#657b83;--fg3:#93a1a1;
   --accent:#268bd2;--accent2:#2aa198;
-  --red:#dc322f;--orange:#cb4b16;--green:#859900;--blue:#268bd2;
+  --red:#dc322f;--orange:#cb4b16;--green:#859900;--blue:#268bd2;--weekend:#a8324a;
   --shadow:0 2px 8px rgba(0,0,0,.08);
 }
 [data-theme="spacedust"]{
   --bg:#0a0e14;--bg2:#131920;--bg3:#1a222c;--bg4:#253040;
   --fg:#dfd5c1;--fg2:#b0a890;--fg3:#6e6b5e;
   --accent:#e7a84f;--accent2:#e35b00;
-  --red:#e24c49;--orange:#e7a84f;--green:#5cab7d;--blue:#6e98a4;
+  --red:#e24c49;--orange:#e7a84f;--green:#5cab7d;--blue:#6e98a4;--weekend:#9a3b3a;
   --shadow:0 2px 8px rgba(0,0,0,.4);
 }
 
@@ -230,6 +230,9 @@ body.has-rail #app{margin-left:52px}
 .cal-grid-week .cal-cell{min-height:60vh}
 .cal-cell:hover{background:var(--bg2)}
 .cal-cell.cal-out{background:var(--bg2);opacity:.55}
+.cal-cell.cal-weekend{background:color-mix(in srgb,var(--weekend) 12%,transparent)}
+.cal-cell.cal-weekend.cal-out{background:color-mix(in srgb,var(--weekend) 7%,transparent)}
+.cal-wd-weekend{color:var(--weekend)}
 .cal-cell.cal-today .cal-cell-date{background:var(--accent);color:#fff;border-radius:50%}
 .cal-cell-date{font-size:.78rem;width:22px;height:22px;line-height:22px;text-align:center;align-self:flex-end}
 .cal-cell-events{display:flex;flex-direction:column;gap:2px;overflow:hidden}
@@ -257,6 +260,11 @@ body.has-rail #app{margin-left:52px}
 .cal-del-btn{align-self:flex-start;margin-top:4px}
 .cal-view{display:flex;flex-direction:column;gap:8px;font-size:.88rem;margin:10px 0}
 .cal-view-desc{white-space:pre-wrap;color:var(--fg2)}
+.cal-rem-head{font-size:.8rem;color:var(--fg2);margin-bottom:4px}
+.cal-rem-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap}
+.cal-rem-row input{width:64px;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:6px;color:var(--fg)}
+.cal-rem-row select{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:6px;color:var(--fg);font-size:.82rem}
+.cal-rem-before{font-size:.8rem;color:var(--fg3)}
 @media (max-width:760px){
   .cal-layout{flex-direction:column;height:auto}
   .cal-side{width:100%;min-width:0;max-height:28vh;border-right:none;border-bottom:1px solid var(--bg4)}

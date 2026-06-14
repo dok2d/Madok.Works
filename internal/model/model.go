@@ -269,11 +269,18 @@ type CalendarEvent struct {
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 	// Rendering helpers / virtual events from other services
-	Color      string `json:"color,omitempty"`
-	CalName    string `json:"calendar_name,omitempty"`
-	Source     string `json:"source,omitempty"`     // "" (real) | "task" | "sprint"
-	RefID      int64  `json:"ref_id,omitempty"`     // task/sprint id for virtual events
-	Occurrence string `json:"occurrence,omitempty"` // set on expanded recurring instances
+	Color      string             `json:"color,omitempty"`
+	CalName    string             `json:"calendar_name,omitempty"`
+	Source     string             `json:"source,omitempty"`     // "" (real) | "task" | "sprint"
+	RefID      int64              `json:"ref_id,omitempty"`     // task/sprint id for virtual events
+	Occurrence string             `json:"occurrence,omitempty"` // set on expanded recurring instances
+	Reminders  []CalendarReminder `json:"reminders,omitempty"`
+}
+
+// CalendarReminder is one reminder definition for an event.
+type CalendarReminder struct {
+	LeadMin int    `json:"lead_min"`
+	Channel string `json:"channel"` // telegram | inapp | both
 }
 
 // === Mail (ecosystem service) ===
