@@ -253,7 +253,32 @@ func (s *Store) migrate() error {
 			edited_at DATETIME,
 			deleted INTEGER NOT NULL DEFAULT 0
 		)`,
+		// === Calendar (ecosystem service) ===
+		`CREATE TABLE IF NOT EXISTS calendars (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL DEFAULT '',
+			color TEXT NOT NULL DEFAULT '#6366f1',
+			owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			visibility TEXT NOT NULL DEFAULT 'private',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS calendar_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			calendar_id INTEGER NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+			title TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT '',
+			location TEXT NOT NULL DEFAULT '',
+			start_utc TEXT NOT NULL,
+			end_utc TEXT NOT NULL,
+			all_day INTEGER NOT NULL DEFAULT 0,
+			rrule TEXT NOT NULL DEFAULT '',
+			created_by INTEGER REFERENCES users(id),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 		// indexes for FK lookups
+		`CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id, start_utc)`,
+		`CREATE INDEX IF NOT EXISTS idx_calendars_owner_id ON calendars(owner_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_id ON chat_messages(channel_id, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_space_id ON wiki_pages(space_id)`,

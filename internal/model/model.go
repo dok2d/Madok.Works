@@ -47,7 +47,7 @@ type Task struct {
 	AssigneeID  *int64    `json:"assignee_id"`
 	Position    int       `json:"position"`
 	Priority    int       `json:"priority"` // 0=none,1=low,2=med,3=high,4=critical
-	Deadline    string    `json:"deadline"`  // ISO datetime or empty
+	Deadline    string    `json:"deadline"` // ISO datetime or empty
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	Tags        []Tag     `json:"tags"`
@@ -130,7 +130,7 @@ type ActivityEntry struct {
 // WikiSpace is a documentation space — a tree of pages with its own access list.
 type WikiSpace struct {
 	ID          int64  `json:"id"`
-	Key         string `json:"key"`  // short uppercase identifier, e.g. "DOCS"
+	Key         string `json:"key"` // short uppercase identifier, e.g. "DOCS"
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Visibility  string `json:"visibility"` // "open" (all users) or "restricted" (members only)
@@ -226,6 +226,45 @@ type ChatSearchHit struct {
 	AuthorName  string `json:"author_name"`
 	Text        string `json:"text"`
 	CreatedAt   string `json:"created_at"`
+}
+
+// === Calendar (ecosystem service) ===
+
+// Calendar groups events. "private" calendars are visible only to the owner;
+// "shared" calendars are visible to all users (editable by owner/admin).
+type Calendar struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Color      string `json:"color"`
+	OwnerID    *int64 `json:"owner_id"`
+	Visibility string `json:"visibility"` // "private" | "shared"
+	CreatedAt  string `json:"created_at"`
+	OwnerName  string `json:"owner_name,omitempty"`
+	CanEdit    bool   `json:"can_edit"`
+}
+
+// CalendarEvent is one event or, when expanded from an RRULE, one occurrence.
+// Times are stored and transported in UTC ("YYYY-MM-DD HH:MM:SS"); the client
+// renders them in the user's timezone.
+type CalendarEvent struct {
+	ID          int64  `json:"id"`
+	CalendarID  int64  `json:"calendar_id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	Start       string `json:"start"` // UTC
+	End         string `json:"end"`   // UTC
+	AllDay      bool   `json:"all_day"`
+	RRule       string `json:"rrule,omitempty"` // e.g. "FREQ=WEEKLY;INTERVAL=1;COUNT=10"
+	CreatedBy   *int64 `json:"created_by"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	// Rendering helpers / virtual events from other services
+	Color      string `json:"color,omitempty"`
+	CalName    string `json:"calendar_name,omitempty"`
+	Source     string `json:"source,omitempty"`     // "" (real) | "task" | "sprint"
+	RefID      int64  `json:"ref_id,omitempty"`     // task/sprint id for virtual events
+	Occurrence string `json:"occurrence,omitempty"` // set on expanded recurring instances
 }
 
 // ExportUser contains user data for export (password hash omitted by default for security)

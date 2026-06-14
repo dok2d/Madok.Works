@@ -318,6 +318,12 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/chat/unread", h.handleChatUnread)
 	h.mux.HandleFunc("/api/chat/events", h.handleChatEvents)
 
+	// Calendar
+	h.mux.HandleFunc("/api/calendar/calendars", h.handleCalendars)
+	h.mux.HandleFunc("/api/calendar/calendars/", h.handleCalendar)
+	h.mux.HandleFunc("/api/calendar/events", h.handleCalendarEvents)
+	h.mux.HandleFunc("/api/calendar/events/", h.handleCalendarEvent)
+
 	// Admin settings
 	h.mux.HandleFunc("/api/settings/telegram", h.handleTelegramSettings)
 	h.mux.HandleFunc("/api/settings/telegram/status", h.handleTelegramStatus)

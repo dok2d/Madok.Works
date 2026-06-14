@@ -19,7 +19,7 @@ var serviceOrder = []string{"wiki", "chat", "calendar", "mail"}
 var serviceAvailable = map[string]bool{
 	"wiki":     true,
 	"chat":     true,
-	"calendar": false,
+	"calendar": true,
 	"mail":     false,
 }
 
