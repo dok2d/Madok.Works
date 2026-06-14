@@ -10,6 +10,9 @@ PORT="${KANBAN_PORT:-}"
 TLS="${KANBAN_TLS:-yes}"
 SSL_CERT="${KANBAN_SSL_CERT:-/etc/nginx/ssl/kanban.crt}"
 SSL_KEY="${KANBAN_SSL_KEY:-/etc/nginx/ssl/kanban.key}"
+# Интерфейс публикации порта. 127.0.0.1 — только локально (по умолчанию, безопасно);
+# 0.0.0.0 — доступ по сети с других машин.
+BIND="${KANBAN_BIND:-127.0.0.1}"
 
 # Парсинг флагов
 parse_flags() {
@@ -18,6 +21,7 @@ parse_flags() {
             --name)   CONTAINER="$2"; shift 2 ;;
             --host)   HOST="$2";      shift 2 ;;
             --port)   PORT="$2";      shift 2 ;;
+            --bind)   BIND="$2";      shift 2 ;;
             --tls)    TLS="yes";      shift   ;;
             --no-tls) TLS="no";       shift   ;;
             --cert)   SSL_CERT="$2";  shift 2 ;;
@@ -52,6 +56,7 @@ usage() {
   --name <имя>       Имя инстанса        (по умолчанию kanban)
   --host <FQDN|IP>   Имя хоста / IP      (по умолчанию kanban.local)
   --port <порт>       Порт               (по умолчанию 443/TLS или 80/HTTP)
+  --bind <addr>       Интерфейс публикации (127.0.0.1 локально; 0.0.0.0 по сети)
   --tls               Включить TLS       (по умолчанию)
   --no-tls            Без TLS — только HTTP
   --cert <путь>       Путь к сертификату (по умолчанию /etc/nginx/ssl/kanban.crt)
@@ -86,7 +91,7 @@ cmd_run() {
     podman run -d \
         --name "$CONTAINER" \
         --replace \
-        --publish "127.0.0.1:${PORT}:8080" \
+        --publish "${BIND}:${PORT}:8080" \
         --volume "${VOLUME}:/data:Z" \
         --read-only \
         --tmpfs /tmp:rw,noexec,nosuid,size=64m \
@@ -101,7 +106,7 @@ cmd_run() {
         "$IMAGE" \
         -addr :8080 -db /data/kanban.db $verbose_flag
 
-    echo "==> ${CONTAINER} запущен: http://127.0.0.1:${PORT}"
+    echo "==> ${CONTAINER} запущен: http://${BIND}:${PORT}"
     [[ -n "$verbose_flag" ]] && echo "    (verbose logging включен)"
 }
 
@@ -245,7 +250,7 @@ Wants=network-online.target
 [Container]
 Image=${IMAGE}
 ContainerName=${CONTAINER}
-PublishPort=127.0.0.1:${PORT}:8080
+PublishPort=${BIND}:${PORT}:8080
 Volume=${VOLUME}.volume:/data:Z
 
 # Security hardening
