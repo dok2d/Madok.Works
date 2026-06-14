@@ -2,11 +2,20 @@
 
 [Русская версия](README.RUS.md)
 
-Self-hosted Kanban board that runs anywhere with zero external dependencies. One binary, one SQLite file, one container — full project management for small teams.
+Self-hosted team workspace built around a Kanban board, now a small **ecosystem**: board + wiki, chat, calendar and mail under one interface, one binary and one SQLite file.
 
-## Why Kanban
+## Ecosystem services
 
-- **Zero dependencies** — Go + SQLite, no Redis, no Postgres, no message queue
+Beyond the Kanban board, optional services share the same auth, roles, notifications, search, themes and i18n. Each can be toggled per-instance by an admin (app rail + admin settings):
+
+- **Wiki** — Confluence-style spaces with a page tree, WYSIWYG editor, revision history and per-space roles (admin/editor/viewer).
+- **Chat** — public channels, private groups and direct messages with live updates (SSE), @-mentions, search and unread badges.
+- **Calendar** — private/shared calendars, recurring events (RRULE), month/week/day/agenda views, reminders, and an overlay of task deadlines & sprints.
+- **Mail** — internal mail between users (folders, threads, attachments, search) out of the box; optional inbound SMTP receiving via `-smtp-addr` (external send/DKIM/IMAP are deploy-time, see docs).
+
+## Why this project
+
+- **Minimal dependencies** — Go + SQLite at the core (single `mattn/go-sqlite3`); the mail stack adds a small, self-contained SMTP/MIME library set. No Redis, no Postgres, no message queue.
 - **One command to run** — `./kanban.sh build && ./kanban.sh run`, open browser
 - **Batteries included** — sprints, epics, tags, file attachments, Markdown, comments with @mentions, search (text + regex), drag-and-drop, Telegram notifications
 - **Hardened by default** — rootless Podman, read-only FS, all capabilities dropped, 127.0.0.1 only
@@ -40,8 +49,9 @@ To deploy on a server with TLS behind nginx:
 | Search | Plaintext and regex across tasks, comments, tags, and epics |
 | Files | Attachments, image paste (Ctrl+V), Markdown with syntax highlighting |
 | Notifications | In-app + Telegram bot (assignments, mentions, updates) |
-| Access control | Three roles: Admin, User, Read-only |
-| Data | JSON export/import, scheduled backups via `./kanban.sh backup` |
+| Access control | Three roles: Admin, User, Read-only; per-space wiki roles |
+| Ecosystem | Wiki, Chat, Calendar, Mail — toggleable services in one UI |
+| Data | JSON export/import (incl. ecosystem services), scheduled backups via `./kanban.sh backup` |
 | Customization | 8 themes, 10 languages, adjustable font size, timezone selector |
 
 ## Comparison
