@@ -10,6 +10,7 @@ let calState = {
   hidden: {}, // calendarId -> true when unchecked
   hideKanban: false, // hide task/sprint overlay
   es: null, // EventSource for live updates
+  dragId: null, // event id being dragged
 };
 
 const CAL_VIEW_KEY = 'kanban-cal-view';
@@ -18,7 +19,7 @@ const CAL_VIEW_KEY = 'kanban-cal-view';
 const CAL_I18N = {
   en: {
     calNewEvent: 'New event', calNewCalendar: 'New calendar', calToday: 'Today',
-    calMonth: 'Month', calWeek: 'Week', calAgenda: 'Agenda', calCalendars: 'Calendars',
+    calMonth: 'Month', calWeek: 'Week', calDay: 'Day', calAgenda: 'Agenda', calCalendars: 'Calendars',
     calTitle: 'Title', calCalendar: 'Calendar', calStart: 'Start', calEnd: 'End',
     calAllDay: 'All day', calLocation: 'Location', calDescription: 'Description',
     calRepeat: 'Repeat', calRepeatNone: 'Does not repeat', calRepeatDaily: 'Daily',
@@ -33,7 +34,7 @@ const CAL_I18N = {
   },
   ru: {
     calNewEvent: 'Новое событие', calNewCalendar: 'Новый календарь', calToday: 'Сегодня',
-    calMonth: 'Месяц', calWeek: 'Неделя', calAgenda: 'Повестка', calCalendars: 'Календари',
+    calMonth: 'Месяц', calWeek: 'Неделя', calDay: 'День', calAgenda: 'Повестка', calCalendars: 'Календари',
     calTitle: 'Название', calCalendar: 'Календарь', calStart: 'Начало', calEnd: 'Конец',
     calAllDay: 'Весь день', calLocation: 'Место', calDescription: 'Описание',
     calRepeat: 'Повтор', calRepeatNone: 'Без повтора', calRepeatDaily: 'Ежедневно',
@@ -142,7 +143,7 @@ function calRenderLayout() {
           <span class="cal-period" id="cal-period"></span>
         </div>
         <div class="cal-views">
-          ${['month', 'week', 'agenda'].map(v => `<button class="cal-vbtn ${calState.view === v ? 'active' : ''}" onclick="calSetView('${v}')">${t('cal' + v[0].toUpperCase() + v.slice(1))}</button>`).join('')}
+          ${['month', 'week', 'day', 'agenda'].map(v => `<button class="cal-vbtn ${calState.view === v ? 'active' : ''}" onclick="calSetView('${v}')">${t('cal' + v[0].toUpperCase() + v.slice(1))}</button>`).join('')}
           ${canWrite ? `<button class="btn btn-primary btn-sm" onclick="calNewEventDialog()">+ ${t('calNewEvent')}</button>` : ''}
         </div>
       </div>
@@ -190,7 +191,10 @@ function calVisibleEvents() {
 function calPeriodRange() {
   const c = calState.cursor;
   let start, end;
-  if (calState.view === 'week') {
+  if (calState.view === 'day') {
+    start = new Date(c); start.setHours(0, 0, 0, 0);
+    end = new Date(start);
+  } else if (calState.view === 'week') {
     start = new Date(c); start.setDate(c.getDate() - ((c.getDay() + 6) % 7)); start.setHours(0, 0, 0, 0);
     end = new Date(start); end.setDate(start.getDate() + 6);
   } else { // month & agenda use the month grid
@@ -219,7 +223,9 @@ function calRenderPeriodLabel() {
   const el = document.getElementById('cal-period');
   if (!el) return;
   const c = calState.cursor;
-  if (calState.view === 'week') {
+  if (calState.view === 'day') {
+    el.textContent = new Intl.DateTimeFormat(calLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(c);
+  } else if (calState.view === 'week') {
     const { start, end } = calPeriodRange();
     const f = new Intl.DateTimeFormat(calLocale(), { day: 'numeric', month: 'short' });
     el.textContent = f.format(start) + ' – ' + f.format(end) + ' ' + start.getFullYear();
@@ -232,7 +238,8 @@ function calSetView(v) { calState.view = v; localStorage.setItem(CAL_VIEW_KEY, v
 function calToday() { calState.cursor = new Date(); calLoadAndRender(); }
 function calMove(dir) {
   const c = calState.cursor;
-  if (calState.view === 'week') c.setDate(c.getDate() + 7 * dir);
+  if (calState.view === 'day') c.setDate(c.getDate() + dir);
+  else if (calState.view === 'week') c.setDate(c.getDate() + 7 * dir);
   else c.setMonth(c.getMonth() + dir);
   calState.cursor = new Date(c);
   calLoadAndRender();
@@ -243,7 +250,54 @@ function calRenderBody() {
   const el = document.getElementById('cal-body');
   if (!el) return;
   if (calState.view === 'agenda') { calRenderAgenda(el); return; }
+  if (calState.view === 'day') { calRenderDay(el); return; }
   calRenderGrid(el);
+}
+
+function calAgendaRow(e) {
+  return `<div class="cal-agenda-row" onclick="calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})">
+    <span class="cal-dot" style="background:${escAttr(e.color || '#6366f1')}"></span>
+    <span class="cal-agenda-time">${e.all_day ? t('calAllDay') : esc(calFmtTime(e.start))}</span>
+    <span class="cal-agenda-title">${esc(e.title)}</span>
+    ${e.location ? `<span class="cal-agenda-loc">${esc(e.location)}</span>` : ''}
+  </div>`;
+}
+
+function calRenderDay(el) {
+  const key = calDayKeyLocal(calState.cursor);
+  const evs = calVisibleEvents().filter(e => calEventDayKey(e) === key).sort((a, b) => a.start.localeCompare(b.start));
+  if (!evs.length) { el.innerHTML = `<div class="cal-empty cal-empty-lg">${t('calNoEvents')}</div>`; return; }
+  el.innerHTML = `<div class="cal-agenda"><div class="cal-agenda-day">${evs.map(calAgendaRow).join('')}</div></div>`;
+}
+
+// === Drag to reschedule (whole-day moves; single, editable events only) ===
+function calDragStart(ev, id) { calState.dragId = id; }
+function calDayDelta(fromKey, toKey) {
+  return Math.round((new Date(toKey + 'T00:00') - new Date(fromKey + 'T00:00')) / 86400000);
+}
+function calShiftUTCDays(s, days) {
+  const d = calParseUTC(s); d.setUTCDate(d.getUTCDate() + days);
+  return d.getUTCFullYear() + '-' + calPad(d.getUTCMonth() + 1) + '-' + calPad(d.getUTCDate()) + ' ' +
+    calPad(d.getUTCHours()) + ':' + calPad(d.getUTCMinutes()) + ':' + calPad(d.getUTCSeconds());
+}
+async function calDrop(ev, toKey) {
+  ev.preventDefault();
+  const id = calState.dragId; calState.dragId = null;
+  if (!id) return;
+  const e = calState.events.find(x => x.id === id && !x.source);
+  if (!e) return;
+  const cal = calState.calendars.find(c => c.id === e.calendar_id);
+  if (!cal || !cal.can_edit) return;
+  const delta = calDayDelta(calEventDayKey(e), toKey);
+  if (!delta) return;
+  try {
+    await api('/api/calendar/events/' + id, 'PUT', {
+      calendar_id: e.calendar_id, title: e.title, location: e.location, description: e.description,
+      all_day: e.all_day, rrule: e.rrule || '',
+      start: calShiftUTCDays(e.start, delta), end: calShiftUTCDays(e.end, delta),
+    });
+    await calLoadAndRender();
+  } catch (err) { alert(err.message); }
 }
 
 function calWeekdayNames() {
@@ -276,7 +330,7 @@ function calRenderGrid(el) {
     const out = calState.view === 'month' && d.getMonth() !== curMonth ? 'cal-out' : '';
     const today = key === todayKey ? 'cal-today' : '';
     const evs = byDay[key] || [];
-    html += `<div class="cal-cell ${out} ${today}" onclick="calCellClick('${key}')">
+    html += `<div class="cal-cell ${out} ${today}" onclick="calCellClick('${key}')" ondragover="event.preventDefault()" ondrop="calDrop(event,'${key}')">
       <div class="cal-cell-date">${d.getDate()}</div>
       <div class="cal-cell-events">
         ${evs.map(e => calEventChip(e)).join('')}
@@ -290,7 +344,9 @@ function calRenderGrid(el) {
 function calEventChip(e) {
   const color = e.color || '#6366f1';
   const time = e.all_day ? '' : calFmtTime(e.start) + ' ';
-  return `<div class="cal-chip" style="--c:${escAttr(color)}" onclick="event.stopPropagation();calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})" title="${escAttr(e.title)}">
+  const cal = calState.calendars.find(c => c.id === e.calendar_id);
+  const drag = !e.source && !e.rrule && cal && cal.can_edit;
+  return `<div class="cal-chip" style="--c:${escAttr(color)}" ${drag ? `draggable="true" ondragstart="calDragStart(event, ${e.id})"` : ''} onclick="event.stopPropagation();calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})" title="${escAttr(e.title)}">
     <span class="cal-chip-dot"></span>${esc(time)}${esc(e.title)}</div>`;
 }
 
@@ -303,14 +359,7 @@ function calRenderAgenda(el) {
   let html = '<div class="cal-agenda">';
   for (const k of Object.keys(byDay).sort()) {
     html += `<div class="cal-agenda-day"><div class="cal-agenda-date">${esc(fmt.format(calParseUTC(k + ' 12:00:00')))}</div>`;
-    for (const e of byDay[k]) {
-      html += `<div class="cal-agenda-row" onclick="calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})">
-        <span class="cal-dot" style="background:${escAttr(e.color || '#6366f1')}"></span>
-        <span class="cal-agenda-time">${e.all_day ? t('calAllDay') : esc(calFmtTime(e.start))}</span>
-        <span class="cal-agenda-title">${esc(e.title)}</span>
-        ${e.location ? `<span class="cal-agenda-loc">${esc(e.location)}</span>` : ''}
-      </div>`;
-    }
+    for (const e of byDay[k]) html += calAgendaRow(e);
     html += `</div>`;
   }
   html += '</div>';
