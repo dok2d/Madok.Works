@@ -187,6 +187,47 @@ type WikiSearchHit struct {
 	Snippet  string `json:"snippet"`
 }
 
+// === Chat (ecosystem service) ===
+
+// ChatChannel is a public channel, private group or direct-message pair.
+type ChatChannel struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Topic       string `json:"topic"`
+	Type        string `json:"type"` // "channel" (public), "group" (private), "dm"
+	CreatedBy   *int64 `json:"created_by"`
+	CreatedAt   string `json:"created_at"`
+	MemberCount int    `json:"member_count"`
+	Unread      int    `json:"unread"`
+	LastMsgAt   string `json:"last_msg_at,omitempty"`
+	IsMember    bool   `json:"is_member"`
+	// For DM channels: the other participant
+	PeerID   *int64 `json:"peer_id,omitempty"`
+	PeerName string `json:"peer_name,omitempty"`
+}
+
+// ChatMessage is one message in a channel.
+type ChatMessage struct {
+	ID         int64  `json:"id"`
+	ChannelID  int64  `json:"channel_id"`
+	AuthorID   *int64 `json:"author_id"`
+	AuthorName string `json:"author_name"`
+	Text       string `json:"text"`
+	CreatedAt  string `json:"created_at"`
+	EditedAt   string `json:"edited_at,omitempty"`
+	Deleted    bool   `json:"deleted"`
+}
+
+// ChatSearchHit is one full-text search result across visible channels.
+type ChatSearchHit struct {
+	MessageID   int64  `json:"message_id"`
+	ChannelID   int64  `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+	AuthorName  string `json:"author_name"`
+	Text        string `json:"text"`
+	CreatedAt   string `json:"created_at"`
+}
+
 // ExportUser contains user data for export (password hash omitted by default for security)
 type ExportUser struct {
 	ID           int64  `json:"id"`

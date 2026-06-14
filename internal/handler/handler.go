@@ -121,10 +121,11 @@ type Handler struct {
 	oidcProvider *auth.OIDCProvider
 	oidcMu       sync.Mutex           // protects oidcStates
 	oidcStates   map[string]time.Time // CSRF state tokens for OIDC
+	sse          *sseHub              // live events for ecosystem services
 }
 
 func New(store *db.Store, dbPath string) *Handler {
-	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: filepath.Dir(dbPath), oidcStates: make(map[string]time.Time)}
+	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: filepath.Dir(dbPath), oidcStates: make(map[string]time.Time), sse: newSSEHub()}
 	h.routes()
 	h.initTelegramBot()
 	go h.runBackupScheduler()
@@ -209,6 +210,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if path != "/api/auth/logout" &&
 			path != "/api/notifications/read" &&
 			path != "/api/notifications/read-all" &&
+			!(strings.HasPrefix(path, "/api/chat/channels/") && strings.HasSuffix(path, "/read")) &&
 			!strings.HasPrefix(path, "/api/user/") {
 			http.Error(w, "read-only access", http.StatusForbidden)
 			return
@@ -306,6 +308,15 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/wiki/pages/", h.handleWikiPageRoute)
 	h.mux.HandleFunc("/api/wiki/revisions/", h.handleWikiRevision)
 	h.mux.HandleFunc("/api/wiki/search", h.handleWikiSearch)
+
+	// Chat
+	h.mux.HandleFunc("/api/chat/channels", h.handleChatChannels)
+	h.mux.HandleFunc("/api/chat/channels/", h.handleChatChannelRoute)
+	h.mux.HandleFunc("/api/chat/messages/", h.handleChatMessage)
+	h.mux.HandleFunc("/api/chat/dm", h.handleChatDM)
+	h.mux.HandleFunc("/api/chat/search", h.handleChatSearch)
+	h.mux.HandleFunc("/api/chat/unread", h.handleChatUnread)
+	h.mux.HandleFunc("/api/chat/events", h.handleChatEvents)
 
 	// Admin settings
 	h.mux.HandleFunc("/api/settings/telegram", h.handleTelegramSettings)

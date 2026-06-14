@@ -228,7 +228,34 @@ func (s *Store) migrate() error {
 			comment TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// === Chat (ecosystem service) ===
+		`CREATE TABLE IF NOT EXISTS chat_channels (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL DEFAULT '',
+			topic TEXT NOT NULL DEFAULT '',
+			type TEXT NOT NULL DEFAULT 'channel',
+			created_by INTEGER REFERENCES users(id),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS chat_members (
+			channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			last_read_id INTEGER NOT NULL DEFAULT 0,
+			joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (channel_id, user_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS chat_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+			author_id INTEGER REFERENCES users(id),
+			text TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			edited_at DATETIME,
+			deleted INTEGER NOT NULL DEFAULT 0
+		)`,
 		// indexes for FK lookups
+		`CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_id ON chat_messages(channel_id, id)`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_space_id ON wiki_pages(space_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_parent_id ON wiki_pages(parent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_revisions_page_id ON wiki_revisions(page_id)`,
