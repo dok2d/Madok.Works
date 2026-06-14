@@ -15,6 +15,55 @@ func mailSnippet(text string) string {
 	return text
 }
 
+// === Mailbox aliases (managed in admin; resolution used by inbound SMTP) ===
+
+// ResolveAlias returns the user id owning the given local-part alias, or 0.
+func (s *Store) ResolveAlias(localpart string) int64 {
+	var uid int64
+	s.db.QueryRow(`SELECT user_id FROM mail_aliases WHERE localpart = ?`, localpart).Scan(&uid)
+	return uid
+}
+
+// === Audit ===
+
+// LogMailAudit records one mail security event (best-effort; ignores errors).
+func (s *Store) LogMailAudit(e model.MailAudit) {
+	s.db.Exec(`INSERT INTO mail_audit(event, source_ip, mail_from, rcpt, subject, user_id, score, detail)
+		VALUES(?,?,?,?,?,?,?,?)`, e.Event, e.SourceIP, e.MailFrom, e.Rcpt, e.Subject, e.UserID, e.Score, e.Detail)
+}
+
+// ListMailAudit returns recent audit rows, optionally filtered by event type.
+func (s *Store) ListMailAudit(event string, limit, offset int) ([]model.MailAudit, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	q := `SELECT id, created_at, event, source_ip, mail_from, rcpt, subject, user_id, score, detail FROM mail_audit`
+	args := []any{}
+	if event != "" {
+		q += ` WHERE event = ?`
+		args = append(args, event)
+	}
+	q += ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.MailAudit
+	for rows.Next() {
+		var a model.MailAudit
+		if err := rows.Scan(&a.ID, &a.CreatedAt, &a.Event, &a.SourceIP, &a.MailFrom, &a.Rcpt, &a.Subject, &a.UserID, &a.Score, &a.Detail); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	if out == nil {
+		out = []model.MailAudit{}
+	}
+	return out, rows.Err()
+}
+
 // mailSystemFolders are the built-in folders that can't be created/renamed/deleted.
 var mailSystemFolders = map[string]bool{"inbox": true, "sent": true, "drafts": true, "trash": true, "junk": true}
 

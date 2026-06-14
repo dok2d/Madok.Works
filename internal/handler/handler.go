@@ -340,6 +340,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/mail/folders/custom", h.handleMailCustomFolders)
 	h.mux.HandleFunc("/api/mail/folders/custom/", h.handleMailCustomFolder)
 	h.mux.HandleFunc("/api/mail/unread", h.handleMailUnread)
+	h.mux.HandleFunc("/api/mail/audit", h.handleMailAudit)
 	h.mux.HandleFunc("/api/mail/messages", h.handleMailMessages)
 	h.mux.HandleFunc("/api/mail/messages/", h.handleMailMessage)
 	h.mux.HandleFunc("/api/mail/thread/", h.handleMailThread)

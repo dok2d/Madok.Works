@@ -18,6 +18,39 @@ const (
 	mailMaxRecipients = 50
 )
 
+// resolveLocalRecipient maps an address local-part to a local user. Phase 7
+// extends this to also match mailbox aliases.
+func (h *Handler) resolveLocalRecipient(localpart string) *model.User {
+	if u, err := h.store.GetUserByUsername(localpart); err == nil && u != nil {
+		return u
+	}
+	if uid := h.store.ResolveAlias(localpart); uid > 0 {
+		if u, err := h.store.GetUser(uid); err == nil {
+			return u
+		}
+	}
+	return nil
+}
+
+// handleMailAudit returns recent mail security events (admin only).
+func (h *Handler) handleMailAudit(w http.ResponseWriter, r *http.Request) {
+	user := h.mailUser(w, r)
+	if user == nil {
+		return
+	}
+	if !user.IsAdmin {
+		http.Error(w, "admin only", http.StatusForbidden)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	rows, err := h.store.ListMailAudit(r.URL.Query().Get("event"), limit, 0)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, rows)
+}
+
 func (h *Handler) mailUser(w http.ResponseWriter, r *http.Request) *model.User {
 	if !h.serviceEnabled("mail") {
 		http.Error(w, "mail service disabled", http.StatusNotFound)
@@ -307,9 +340,21 @@ func (h *Handler) handleMailSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	uid := user.ID
+	// Audit unusually large sends and external relay attempts.
+	if len(toIDs)+len(external) >= 10 {
+		h.store.LogMailAudit(model.MailAudit{Event: "mass_send", MailFrom: user.Username, UserID: &uid,
+			Subject: strings.TrimSpace(req.Subject), Detail: fmt.Sprintf("%d recipients", len(toIDs)+len(external))})
+	}
 	// Relay to external recipients (no-op unless outbound mail is configured).
-	if len(external) > 0 && h.outboundEnabled() {
-		go h.sendExternal(user.Username, external, strings.TrimSpace(req.Subject), req.BodyText)
+	if len(external) > 0 {
+		ev := "relay_attempt"
+		if h.outboundEnabled() {
+			ev = "relay"
+			go h.sendExternal(user.Username, external, strings.TrimSpace(req.Subject), req.BodyText)
+		}
+		h.store.LogMailAudit(model.MailAudit{Event: ev, MailFrom: user.Username, UserID: &uid,
+			Rcpt: strings.Join(external, ", "), Subject: strings.TrimSpace(req.Subject)})
 	}
 	// Notify recipients: live event + in-app + Telegram.
 	subj := req.Subject

@@ -39,7 +39,7 @@ attached file contents
 --BOUND--
 `, "\n", "\r\n")
 
-	if err := h.ingestInbound("alice@example.com", []string{"bob@kanban.local"}, strings.NewReader(raw)); err != nil {
+	if err := h.ingestInbound("alice@example.com", []string{"bob@kanban.local"}, strings.NewReader(raw), "1.2.3.4:5555"); err != nil {
 		t.Fatalf("ingestInbound: %v", err)
 	}
 
@@ -65,7 +65,22 @@ attached file contents
 	}
 
 	// unknown recipient -> rejected
-	if err := h.ingestInbound("x@y.z", []string{"nobody@kanban.local"}, strings.NewReader(raw)); err == nil {
+	if err := h.ingestInbound("x@y.z", []string{"nobody@kanban.local"}, strings.NewReader(raw), ""); err == nil {
 		t.Error("expected error for unknown recipient")
+	}
+
+	// audit recorded both an accept and a reject
+	rows, _ := store.ListMailAudit("", 50, 0)
+	var accepts, rejects int
+	for _, a := range rows {
+		if a.Event == "inbound_accept" {
+			accepts++
+		}
+		if a.Event == "inbound_reject" {
+			rejects++
+		}
+	}
+	if accepts != 1 || rejects != 1 {
+		t.Errorf("audit: accepts=%d rejects=%d (want 1/1)", accepts, rejects)
 	}
 }

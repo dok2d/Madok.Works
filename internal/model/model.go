@@ -323,6 +323,20 @@ type MailFolder struct {
 	Name string `json:"name"`
 }
 
+// MailAudit is one security/attack-investigation event for the mail subsystem.
+type MailAudit struct {
+	ID        int64  `json:"id"`
+	CreatedAt string `json:"created_at"`
+	Event     string `json:"event"` // inbound_accept|inbound_reject|spam|rule_trigger|mass_send|relay_attempt
+	SourceIP  string `json:"source_ip"`
+	MailFrom  string `json:"mail_from"`
+	Rcpt      string `json:"rcpt"`
+	Subject   string `json:"subject"`
+	UserID    *int64 `json:"user_id"`
+	Score     int    `json:"score"`
+	Detail    string `json:"detail"`
+}
+
 // ExportUser contains user data for export (password hash omitted by default for security)
 type ExportUser struct {
 	ID           int64  `json:"id"`

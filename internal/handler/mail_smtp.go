@@ -21,14 +21,19 @@ const smtpMaxMessageBytes = 25 * 1024 * 1024
 
 type smtpBackend struct{ h *Handler }
 
-func (b *smtpBackend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
-	return &smtpSession{h: b.h}, nil
+func (b *smtpBackend) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	ip := ""
+	if c != nil && c.Conn() != nil {
+		ip = c.Conn().RemoteAddr().String()
+	}
+	return &smtpSession{h: b.h, sourceIP: ip}, nil
 }
 
 type smtpSession struct {
-	h     *Handler
-	from  string
-	rcpts []string
+	h        *Handler
+	from     string
+	rcpts    []string
+	sourceIP string
 }
 
 func (s *smtpSession) Reset()        { s.from = ""; s.rcpts = nil }
@@ -41,7 +46,7 @@ func (s *smtpSession) Rcpt(to string, _ *smtp.RcptOptions) error {
 }
 
 func (s *smtpSession) Data(r io.Reader) error {
-	return s.h.ingestInbound(s.from, s.rcpts, r)
+	return s.h.ingestInbound(s.from, s.rcpts, r, s.sourceIP)
 }
 
 // StartSMTPServer launches an inbound SMTP listener on addr (e.g. ":25").
@@ -69,19 +74,21 @@ func localPart(addr string) string {
 }
 
 // ingestInbound parses an RFC 5322 message and delivers it to local recipients.
-func (h *Handler) ingestInbound(from string, rcpts []string, r io.Reader) error {
+func (h *Handler) ingestInbound(from string, rcpts []string, r io.Reader, sourceIP string) error {
 	// Resolve recipients to local users by the address local-part.
 	var toIDs []int64
 	seen := map[int64]bool{}
 	for _, rc := range rcpts {
-		u, err := h.store.GetUserByUsername(localPart(rc))
-		if err != nil || u == nil || seen[u.ID] {
+		u := h.resolveLocalRecipient(localPart(rc))
+		if u == nil || seen[u.ID] {
 			continue
 		}
 		seen[u.ID] = true
 		toIDs = append(toIDs, u.ID)
 	}
 	if len(toIDs) == 0 {
+		h.store.LogMailAudit(model.MailAudit{Event: "inbound_reject", SourceIP: sourceIP, MailFrom: from,
+			Rcpt: strings.Join(rcpts, ", "), Detail: "no local recipients"})
 		return fmt.Errorf("no local recipients")
 	}
 
@@ -138,6 +145,8 @@ func (h *Handler) ingestInbound(from string, rcpts []string, r io.Reader) error 
 	if err != nil {
 		return err
 	}
+	h.store.LogMailAudit(model.MailAudit{Event: "inbound_accept", SourceIP: sourceIP, MailFrom: fromAddr,
+		Rcpt: toAddrs, Subject: subject, Detail: fmt.Sprintf("%d recipient(s)", len(toIDs))})
 	// Notify recipients (live + in-app), mirroring internal delivery.
 	subj := subject
 	if subj == "" {
