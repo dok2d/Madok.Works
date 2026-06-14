@@ -44,6 +44,71 @@ func (h *Handler) handleMailFolders(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, counts)
 }
 
+// handleMailCustomFolders lists (GET) or creates (POST) the user's custom folders.
+func (h *Handler) handleMailCustomFolders(w http.ResponseWriter, r *http.Request) {
+	user := h.mailUser(w, r)
+	if user == nil {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		folders, err := h.store.ListMailFolders(user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, folders)
+	case http.MethodPost:
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		id, err := h.store.CreateMailFolder(user.ID, req.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		jsonResp(w, map[string]int64{"id": id})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMailCustomFolder renames (PUT) or deletes (DELETE) one custom folder.
+func (h *Handler) handleMailCustomFolder(w http.ResponseWriter, r *http.Request) {
+	user := h.mailUser(w, r)
+	if user == nil {
+		return
+	}
+	id := extractID(r.URL.Path, "/api/mail/folders/custom/")
+	switch r.Method {
+	case http.MethodPut:
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := h.store.RenameMailFolder(id, user.ID, req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	case http.MethodDelete:
+		if err := h.store.DeleteMailFolder(id, user.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (h *Handler) handleMailUnread(w http.ResponseWriter, r *http.Request) {
 	user := h.mailUser(w, r)
 	if user == nil {

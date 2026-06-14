@@ -67,6 +67,42 @@ func TestInternalMailFlow(t *testing.T) {
 	}
 }
 
+func TestMailCustomFolders(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	bob := mustUser(t, s, "bob")
+	mid, _ := s.SendInternalMail(alice, "alice", []int64{bob}, "bob", "", "Hi", "x", "", "", 0, nil)
+	_ = mid
+
+	fid, err := s.CreateMailFolder(bob, "Work")
+	if err != nil {
+		t.Fatalf("CreateMailFolder: %v", err)
+	}
+	if _, err := s.CreateMailFolder(bob, "inbox"); err == nil {
+		t.Error("reserved folder name should be rejected")
+	}
+	box, _ := s.ListMailbox(bob, "inbox", 50, 0)
+	if len(box) != 1 {
+		t.Fatalf("expected 1 inbox msg, got %d", len(box))
+	}
+	if err := s.MoveMail(box[0].BoxID, bob, "Work"); err != nil {
+		t.Fatalf("MoveMail to custom: %v", err)
+	}
+	if err := s.MoveMail(box[0].BoxID, bob, "bogus"); err == nil {
+		t.Error("move to unknown folder should fail")
+	}
+	if w, _ := s.ListMailbox(bob, "Work", 50, 0); len(w) != 1 {
+		t.Errorf("Work should have 1 msg, got %d", len(w))
+	}
+	// deleting the folder returns its messages to inbox
+	if err := s.DeleteMailFolder(fid, bob); err != nil {
+		t.Fatalf("DeleteMailFolder: %v", err)
+	}
+	if in, _ := s.ListMailbox(bob, "inbox", 50, 0); len(in) != 1 {
+		t.Errorf("messages should return to inbox after folder delete, got %d", len(in))
+	}
+}
+
 func TestMailFolderCounts(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")

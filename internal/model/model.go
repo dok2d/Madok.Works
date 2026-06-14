@@ -317,6 +317,12 @@ type MailFolderCount struct {
 	Total  int    `json:"total"`
 }
 
+// MailFolder is a user-defined custom folder.
+type MailFolder struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // ExportUser contains user data for export (password hash omitted by default for security)
 type ExportUser struct {
 	ID           int64  `json:"id"`

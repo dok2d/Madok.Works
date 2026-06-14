@@ -10,10 +10,11 @@ let mailState = {
   view: 'list', // list | message
   search: '',
   compose: { attachments: [] },
+  customFolders: [], // [{id,name}]
   es: null,
 };
 
-const MAIL_FOLDERS = ['inbox', 'sent', 'drafts', 'trash'];
+const MAIL_FOLDERS = ['inbox', 'sent', 'drafts', 'junk', 'trash'];
 
 const MAIL_I18N = {
   en: {
@@ -23,7 +24,7 @@ const MAIL_I18N = {
     mailSearchPh: 'Search mail…', mailNoMessages: 'No messages', mailNoSubject: '(no subject)',
     mailAttach: 'Attach', mailAttachments: 'Attachments', mailDeleteConfirm: 'Delete this message permanently?',
     mailFrom: 'From', mailReadonly: 'Read-only access', mailRecipientsRequired: 'Add at least one recipient',
-    mailToPlaceholder: 'username, username…', mailFlag: 'Flag', mailUnflag: 'Unflag', mailBack: 'Back',
+    mailToPlaceholder: 'username, username…', mailFlag: 'Flag', mailUnflag: 'Unflag', mailBack: 'Back', mailJunk: 'Junk', mailNewFolder: 'New folder', mailDeleteFolder: 'Delete folder', mailMoveTo: 'Move to',
   },
   ru: {
     mailCompose: 'Написать', mailInbox: 'Входящие', mailSent: 'Отправленные', mailDrafts: 'Черновики', mailTrash: 'Корзина',
@@ -32,7 +33,7 @@ const MAIL_I18N = {
     mailSearchPh: 'Поиск почты…', mailNoMessages: 'Нет писем', mailNoSubject: '(без темы)',
     mailAttach: 'Прикрепить', mailAttachments: 'Вложения', mailDeleteConfirm: 'Удалить письмо навсегда?',
     mailFrom: 'От', mailReadonly: 'Только чтение', mailRecipientsRequired: 'Укажите хотя бы одного получателя',
-    mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад',
+    mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад', mailJunk: 'Спам', mailNewFolder: 'Новая папка', mailDeleteFolder: 'Удалить папку', mailMoveTo: 'Переместить в',
   },
   es: {
     mailCompose: "Redactar", mailInbox: "Entrada", mailSent: "Enviados", mailDrafts: "Borradores", mailTrash: "Papelera",
@@ -41,7 +42,7 @@ const MAIL_I18N = {
     mailSearchPh: "Buscar correo…", mailNoMessages: "Sin mensajes", mailNoSubject: "(sin asunto)",
     mailAttach: "Adjuntar", mailAttachments: "Adjuntos", mailDeleteConfirm: "¿Eliminar este mensaje permanentemente?",
     mailFrom: "De", mailReadonly: "Acceso de solo lectura", mailRecipientsRequired: "Añade al menos un destinatario",
-    mailToPlaceholder: "usuario, usuario…", mailFlag: "Destacar", mailUnflag: "Quitar marca", mailBack: "Atrás",
+    mailToPlaceholder: "usuario, usuario…", mailFlag: "Destacar", mailUnflag: "Quitar marca", mailBack: "Atrás", mailJunk: "Spam", mailNewFolder: "Nueva carpeta", mailDeleteFolder: "Eliminar carpeta", mailMoveTo: "Mover a",
   },
   fr: {
     mailCompose: "Nouveau", mailInbox: "Boîte de réception", mailSent: "Envoyés", mailDrafts: "Brouillons", mailTrash: "Corbeille",
@@ -50,7 +51,7 @@ const MAIL_I18N = {
     mailSearchPh: "Rechercher du courrier…", mailNoMessages: "Aucun message", mailNoSubject: "(sans objet)",
     mailAttach: "Joindre", mailAttachments: "Pièces jointes", mailDeleteConfirm: "Supprimer définitivement ce message ?",
     mailFrom: "De", mailReadonly: "Accès en lecture seule", mailRecipientsRequired: "Ajoutez au moins un destinataire",
-    mailToPlaceholder: "utilisateur, utilisateur…", mailFlag: "Marquer", mailUnflag: "Retirer la marque", mailBack: "Retour",
+    mailToPlaceholder: "utilisateur, utilisateur…", mailFlag: "Marquer", mailUnflag: "Retirer la marque", mailBack: "Retour", mailJunk: "Indésirables", mailNewFolder: "Nouveau dossier", mailDeleteFolder: "Supprimer le dossier", mailMoveTo: "Déplacer vers",
   },
   de: {
     mailCompose: "Verfassen", mailInbox: "Posteingang", mailSent: "Gesendet", mailDrafts: "Entwürfe", mailTrash: "Papierkorb",
@@ -59,7 +60,7 @@ const MAIL_I18N = {
     mailSearchPh: "E-Mail suchen…", mailNoMessages: "Keine Nachrichten", mailNoSubject: "(kein Betreff)",
     mailAttach: "Anhängen", mailAttachments: "Anhänge", mailDeleteConfirm: "Diese Nachricht endgültig löschen?",
     mailFrom: "Von", mailReadonly: "Nur-Lese-Zugriff", mailRecipientsRequired: "Mindestens einen Empfänger hinzufügen",
-    mailToPlaceholder: "Benutzer, Benutzer…", mailFlag: "Markieren", mailUnflag: "Markierung entfernen", mailBack: "Zurück",
+    mailToPlaceholder: "Benutzer, Benutzer…", mailFlag: "Markieren", mailUnflag: "Markierung entfernen", mailBack: "Zurück", mailJunk: "Spam", mailNewFolder: "Neuer Ordner", mailDeleteFolder: "Ordner löschen", mailMoveTo: "Verschieben nach",
   },
   pt: {
     mailCompose: "Escrever", mailInbox: "Caixa de entrada", mailSent: "Enviados", mailDrafts: "Rascunhos", mailTrash: "Lixeira",
@@ -68,7 +69,7 @@ const MAIL_I18N = {
     mailSearchPh: "Buscar e-mail…", mailNoMessages: "Sem mensagens", mailNoSubject: "(sem assunto)",
     mailAttach: "Anexar", mailAttachments: "Anexos", mailDeleteConfirm: "Excluir esta mensagem permanentemente?",
     mailFrom: "De", mailReadonly: "Acesso somente leitura", mailRecipientsRequired: "Adicione pelo menos um destinatário",
-    mailToPlaceholder: "usuário, usuário…", mailFlag: "Marcar", mailUnflag: "Remover marca", mailBack: "Voltar",
+    mailToPlaceholder: "usuário, usuário…", mailFlag: "Marcar", mailUnflag: "Remover marca", mailBack: "Voltar", mailJunk: "Spam", mailNewFolder: "Nova pasta", mailDeleteFolder: "Excluir pasta", mailMoveTo: "Mover para",
   },
 };
 let mailI18nMerged = false;
@@ -100,6 +101,8 @@ async function mailLoadCounts() {
     mailState.counts = {};
     for (const c of arr) mailState.counts[c.folder] = c;
   } catch (e) { mailState.counts = {}; }
+  try { mailState.customFolders = await api('/api/mail/folders/custom'); }
+  catch (e) { mailState.customFolders = []; }
 }
 
 function mailRenderLayout() {
@@ -122,15 +125,41 @@ function mailRenderLayout() {
   }
 }
 
+function mailFolderRow(name, label, deletable, fid) {
+  const c = mailState.counts[name] || {};
+  const unread = c.unread > 0 ? `<span class="mail-fcount">${c.unread}</span>` : '';
+  const active = mailState.folder === name && mailState.view === 'list' && !mailState.search;
+  return `<div class="mail-frow ${active ? 'active' : ''}" onclick="mailOpenFolder('${escAttr(name)}')">
+    <span class="mail-frow-name">${esc(label)}</span>
+    ${deletable ? `<button class="mail-fdel" title="${t('mailDeleteFolder')}" onclick="event.stopPropagation();mailDeleteFolder(${fid})">&#10005;</button>` : ''}
+    ${unread}</div>`;
+}
+
 function mailRenderFolders() {
   const el = document.getElementById('mail-folders');
   if (!el) return;
-  el.innerHTML = MAIL_FOLDERS.map(f => {
-    const c = mailState.counts[f] || {};
-    const unread = f === 'inbox' && c.unread > 0 ? `<span class="mail-fcount">${c.unread}</span>` : '';
-    return `<div class="mail-frow ${mailState.folder === f && mailState.view === 'list' && !mailState.search ? 'active' : ''}" onclick="mailOpenFolder('${f}')">
-      <span>${esc(mailFolderLabel(f))}</span>${unread}</div>`;
-  }).join('');
+  let html = MAIL_FOLDERS.map(f => mailFolderRow(f, mailFolderLabel(f), false, 0)).join('');
+  for (const cf of mailState.customFolders) html += mailFolderRow(cf.name, cf.name, true, cf.id);
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  if (canWrite) html += `<div class="mail-frow mail-newfolder" onclick="mailNewFolder()">+ ${t('mailNewFolder')}</div>`;
+  el.innerHTML = html;
+}
+
+async function mailNewFolder() {
+  const name = prompt(t('mailNewFolder'));
+  if (!name || !name.trim()) return;
+  try { await api('/api/mail/folders/custom', 'POST', { name: name.trim() }); await mailLoadCounts(); mailRenderFolders(); }
+  catch (e) { alert(e.message); }
+}
+
+async function mailDeleteFolder(id) {
+  if (!confirm(t('mailDeleteFolder') + '?')) return;
+  try {
+    await api('/api/mail/folders/custom/' + id, 'DELETE');
+    if (!MAIL_FOLDERS.includes(mailState.folder)) mailState.folder = 'inbox';
+    await mailLoadCounts();
+    await mailLoadFolder(mailState.folder);
+  } catch (e) { alert(e.message); }
 }
 
 function mailOpenFolder(f) {
@@ -186,11 +215,27 @@ function mailRenderMessage(box) {
       <h2 class="mail-msg-subject">${esc(subject)}</h2>
       <div class="mail-msg-actions">
         ${canWrite ? `<button class="btn btn-ghost btn-sm" onclick="mailReply()">${t('mailReply')}</button>` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="mailMove(${box.box_id}, 'trash')">${t('mailMove')}</button>
+        <select class="mail-move-sel" onchange="if(this.value){mailMove(${box.box_id}, this.value);this.value=''}">
+          <option value="">${t('mailMoveTo')}…</option>
+          ${mailMoveOptions(box.folder)}
+        </select>
         <button class="btn btn-ghost btn-sm mail-danger" onclick="mailDelete(${box.box_id})">${t('mailDelete')}</button>
       </div>
     </div>
     <div class="mail-thread">${msgs.map(mailRenderOne).join('')}</div>`;
+}
+
+// mailMoveOptions builds the "move to" option list (system + custom, excluding
+// the current folder and the read-only Sent folder).
+function mailMoveOptions(current) {
+  const opts = [];
+  for (const f of ['inbox', 'junk', 'trash']) {
+    if (f !== current) opts.push(`<option value="${f}">${esc(mailFolderLabel(f))}</option>`);
+  }
+  for (const cf of mailState.customFolders) {
+    if (cf.name !== current) opts.push(`<option value="${escAttr(cf.name)}">${esc(cf.name)}</option>`);
+  }
+  return opts.join('');
 }
 
 function mailRenderOne(m) {

@@ -281,7 +281,13 @@ body.has-rail #app{margin-left:52px}
 .mail-search{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:7px 10px;color:var(--fg);font-size:.82rem;width:100%}
 .mail-search:focus{outline:none;border-color:var(--accent)}
 .mail-folders{display:flex;flex-direction:column;gap:2px}
-.mail-frow{display:flex;align-items:center;justify-content:space-between;padding:7px 9px;border-radius:var(--radius);cursor:pointer;font-size:.88rem}
+.mail-frow{display:flex;align-items:center;gap:6px;justify-content:space-between;padding:7px 9px;border-radius:var(--radius);cursor:pointer;font-size:.88rem}
+.mail-frow-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mail-fdel{visibility:hidden;background:none;border:none;color:var(--fg3);cursor:pointer;font-size:.78rem;padding:0 2px}
+.mail-frow:hover .mail-fdel{visibility:visible}
+.mail-fdel:hover{color:var(--red)}
+.mail-newfolder{color:var(--fg3);font-size:.82rem}
+.mail-move-sel{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg2);font-size:.78rem;padding:5px 6px}
 .mail-frow:hover{background:var(--bg3)}
 .mail-frow.active{background:var(--bg3);color:var(--accent);font-weight:600}
 .mail-fcount{background:var(--red);color:#fff;font-size:.62rem;font-weight:600;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:8px;padding:0 4px}

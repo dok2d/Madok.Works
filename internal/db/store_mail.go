@@ -15,6 +15,99 @@ func mailSnippet(text string) string {
 	return text
 }
 
+// mailSystemFolders are the built-in folders that can't be created/renamed/deleted.
+var mailSystemFolders = map[string]bool{"inbox": true, "sent": true, "drafts": true, "trash": true, "junk": true}
+
+// === Custom folders ===
+
+func (s *Store) ListMailFolders(userID int64) ([]model.MailFolder, error) {
+	rows, err := s.db.Query(`SELECT id, name FROM mail_folders WHERE user_id = ? ORDER BY name COLLATE NOCASE`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.MailFolder
+	for rows.Next() {
+		var f model.MailFolder
+		if err := rows.Scan(&f.ID, &f.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	if out == nil {
+		out = []model.MailFolder{}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateMailFolder(userID int64, name string) (int64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 60 {
+		return 0, fmt.Errorf("invalid folder name")
+	}
+	if mailSystemFolders[strings.ToLower(name)] {
+		return 0, fmt.Errorf("reserved folder name")
+	}
+	res, err := s.db.Exec(`INSERT INTO mail_folders(user_id, name) VALUES(?,?)`, userID, name)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) RenameMailFolder(id, userID int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 60 || mailSystemFolders[strings.ToLower(name)] {
+		return fmt.Errorf("invalid folder name")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var old string
+	if err := tx.QueryRow(`SELECT name FROM mail_folders WHERE id=? AND user_id=?`, id, userID).Scan(&old); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE mail_folders SET name=? WHERE id=? AND user_id=?`, name, id, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE mail_box SET folder=? WHERE user_id=? AND folder=?`, name, userID, old); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteMailFolder removes a custom folder and moves its messages back to inbox.
+func (s *Store) DeleteMailFolder(id, userID int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var name string
+	if err := tx.QueryRow(`SELECT name FROM mail_folders WHERE id=? AND user_id=?`, id, userID).Scan(&name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE mail_box SET folder='inbox' WHERE user_id=? AND folder=?`, userID, name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM mail_folders WHERE id=? AND user_id=?`, id, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// validMailFolder reports whether folder is a system folder or one the user owns.
+func (s *Store) validMailFolder(userID int64, folder string) bool {
+	if mailSystemFolders[strings.ToLower(folder)] {
+		return true
+	}
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM mail_folders WHERE user_id=? AND name=?`, userID, folder).Scan(&n)
+	return n > 0
+}
+
 // SendInternalMail stores a message and delivers it: a "sent" copy for the
 // sender and an "inbox" copy for each recipient. threadID 0 starts a new thread.
 func (s *Store) SendInternalMail(fromUserID int64, fromName string, toUserIDs []int64, toAddrs, ccAddrs, subject, bodyText, bodyHTML, inReplyTo string, threadID int64, atts []model.MailAttachment) (int64, error) {
@@ -226,8 +319,13 @@ func (s *Store) SetMailFlagged(boxID, userID int64, flagged bool) error {
 	return err
 }
 
-// MoveMail changes the folder of a mailbox entry (e.g. to "trash").
+// MoveMail changes the folder of a mailbox entry (e.g. to "trash"). The target
+// must be a system folder or one the user owns.
 func (s *Store) MoveMail(boxID, userID int64, folder string) error {
+	folder = strings.TrimSpace(folder)
+	if !s.validMailFolder(userID, folder) {
+		return fmt.Errorf("unknown folder")
+	}
 	_, err := s.db.Exec(`UPDATE mail_box SET folder = ? WHERE id = ? AND user_id = ?`, folder, boxID, userID)
 	return err
 }
