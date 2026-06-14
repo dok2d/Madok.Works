@@ -1583,6 +1583,13 @@ func (s *Store) exportUsers() []model.ExportUser {
 	return users
 }
 
+// secretSettingKeys are never written to JSON exports (they stay only in the live
+// DB / full .db backup). Prevents leaking the DKIM private key and bot token.
+var secretSettingKeys = map[string]bool{
+	"mail_dkim_key":      true,
+	"telegram_bot_token": true,
+}
+
 func (s *Store) exportSettings() []model.ExportSetting {
 	rows, err := s.db.Query("SELECT key,value FROM app_settings")
 	if err != nil {
@@ -1593,6 +1600,9 @@ func (s *Store) exportSettings() []model.ExportSetting {
 	for rows.Next() {
 		var st model.ExportSetting
 		if err := rows.Scan(&st.Key, &st.Value); err != nil {
+			continue
+		}
+		if secretSettingKeys[st.Key] {
 			continue
 		}
 		settings = append(settings, st)
