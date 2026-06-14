@@ -8,6 +8,7 @@ let calState = {
   view: 'month', // month | week | agenda
   cursor: null, // a Date within the visible period (browser-local)
   hidden: {}, // calendarId -> true when unchecked
+  hideKanban: false, // hide task/sprint overlay
 };
 
 const CAL_VIEW_KEY = 'kanban-cal-view';
@@ -27,7 +28,7 @@ const CAL_I18N = {
     calNameRequired: 'Name is required', calVisibility: 'Visibility', calPrivate: 'Private',
     calShared: 'Shared', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
     calDeleteCalendarConfirm: 'Delete this calendar and all its events?', calName: 'Name',
-    calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings',
+    calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints',
   },
   ru: {
     calNewEvent: 'Новое событие', calNewCalendar: 'Новый календарь', calToday: 'Сегодня',
@@ -42,7 +43,7 @@ const CAL_I18N = {
     calNameRequired: 'Введите название', calVisibility: 'Видимость', calPrivate: 'Личный',
     calShared: 'Общий', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
     calDeleteCalendarConfirm: 'Удалить календарь и все его события?', calName: 'Название',
-    calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря',
+    calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты',
   },
 };
 let calI18nMerged = false;
@@ -135,8 +136,16 @@ function calRenderCalList() {
       <span class="cal-cl-name">${esc(c.name)}</span>
     </label>
     ${c.can_edit ? `<button class="cal-cl-edit" title="${t('calEditCalendar')}" onclick="calEditCalendarDialog(${c.id})">&#9881;</button>` : ''}
-  </div>`).join('');
+  </div>`).join('') + `<div class="cal-clrow cal-clrow-kanban">
+    <label class="cal-cl-label">
+      <input type="checkbox" ${calState.hideKanban ? '' : 'checked'} onchange="calToggleKanban(this.checked)">
+      <span class="cal-dot" style="background:#ef4444"></span>
+      <span class="cal-cl-name">${t('calKanban')}</span>
+    </label>
+  </div>`;
 }
+
+function calToggleKanban(checked) { calState.hideKanban = !checked; calRenderBody(); }
 
 function calToggleCal(id, checked) {
   if (checked) delete calState.hidden[id]; else calState.hidden[id] = true;
@@ -144,7 +153,10 @@ function calToggleCal(id, checked) {
 }
 
 function calVisibleEvents() {
-  return calState.events.filter(e => !calState.hidden[e.calendar_id]);
+  return calState.events.filter(e => {
+    if (e.source) return !calState.hideKanban;
+    return !calState.hidden[e.calendar_id];
+  });
 }
 
 // === Range + load ===
@@ -251,8 +263,7 @@ function calRenderGrid(el) {
 function calEventChip(e) {
   const color = e.color || '#6366f1';
   const time = e.all_day ? '' : calFmtTime(e.start) + ' ';
-  const id = e.source ? `'${esc(e.source)}'` : e.id;
-  return `<div class="cal-chip" style="--c:${escAttr(color)}" onclick="event.stopPropagation();calEventClick(${e.id}, '${esc(e.source || '')}')" title="${escAttr(e.title)}">
+  return `<div class="cal-chip" style="--c:${escAttr(color)}" onclick="event.stopPropagation();calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})" title="${escAttr(e.title)}">
     <span class="cal-chip-dot"></span>${esc(time)}${esc(e.title)}</div>`;
 }
 
@@ -266,7 +277,7 @@ function calRenderAgenda(el) {
   for (const k of Object.keys(byDay).sort()) {
     html += `<div class="cal-agenda-day"><div class="cal-agenda-date">${esc(fmt.format(calParseUTC(k + ' 12:00:00')))}</div>`;
     for (const e of byDay[k]) {
-      html += `<div class="cal-agenda-row" onclick="calEventClick(${e.id}, '${esc(e.source || '')}')">
+      html += `<div class="cal-agenda-row" onclick="calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})">
         <span class="cal-dot" style="background:${escAttr(e.color || '#6366f1')}"></span>
         <span class="cal-agenda-time">${e.all_day ? t('calAllDay') : esc(calFmtTime(e.start))}</span>
         <span class="cal-agenda-title">${esc(e.title)}</span>
@@ -284,8 +295,9 @@ function calCellClick(dayKey) {
   if (!currentUser || currentUser.role === 'readonly') return;
   calNewEventDialog(dayKey);
 }
-function calEventClick(id, source) {
-  if (source) return; // virtual events (task/sprint) are not editable here
+function calEventClick(id, source, refId) {
+  if (source === 'task') { navigateTo('/task/' + refId); return; }
+  if (source === 'sprint') { navigateTo('/sprint/' + refId); return; }
   const e = calState.events.find(x => x.id === id && !x.source);
   if (e) calEventDialog(e);
 }

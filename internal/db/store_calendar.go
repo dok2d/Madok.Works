@@ -275,9 +275,6 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 	if err != nil {
 		return nil, err
 	}
-	if len(cals) == 0 {
-		return []model.CalendarEvent{}, nil
-	}
 	meta := make(map[int64]model.Calendar, len(cals))
 	ids := make([]string, 0, len(cals))
 	for _, c := range cals {
@@ -285,29 +282,29 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 		ids = append(ids, strconv.FormatInt(c.ID, 10))
 	}
 
-	// start_utc <= to bounds both recurring and single events; for non-recurring
-	// also require end_utc >= from so only overlapping events are returned.
-	q := fmt.Sprintf(`SELECT `+eventCols+` FROM calendar_events
-		WHERE calendar_id IN (%s) AND start_utc <= ? AND (rrule != '' OR end_utc >= ?)
-		ORDER BY start_utc`, strings.Join(ids, ","))
-	rows, err := s.db.Query(q, toN, fromN)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	out := []model.CalendarEvent{}
 	var base []model.CalendarEvent
-	for rows.Next() {
-		e, err := scanEvent(rows)
+	if len(ids) > 0 {
+		// start_utc <= to bounds both recurring and single events; for non-recurring
+		// also require end_utc >= from so only overlapping events are returned. Rows
+		// are fully drained (releasing the single connection) before later queries.
+		q := fmt.Sprintf(`SELECT `+eventCols+` FROM calendar_events
+			WHERE calendar_id IN (%s) AND start_utc <= ? AND (rrule != '' OR end_utc >= ?)
+			ORDER BY start_utc`, strings.Join(ids, ","))
+		rows, err := s.db.Query(q, toN, fromN)
 		if err != nil {
 			return nil, err
 		}
-		base = append(base, *e)
+		for rows.Next() {
+			e, err := scanEvent(rows)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			base = append(base, *e)
+		}
+		rows.Close()
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	out := []model.CalendarEvent{}
 	for i := range base {
 		e := base[i]
 		c := meta[e.CalendarID]
@@ -329,6 +326,86 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 			inst.Occurrence = inst.Start
 			out = append(out, inst)
 		}
+	}
+
+	// Overlay read-only kanban events (task deadlines, sprint ranges).
+	kb, err := s.kanbanEvents(from, to)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, kb...)
+	return out, nil
+}
+
+// kanbanEvents surfaces task deadlines and sprint ranges as read-only virtual
+// events so the calendar reflects board activity. They belong to no calendar
+// (calendar_id 0) and carry source/ref_id for linking back to the board.
+func (s *Store) kanbanEvents(from, to time.Time) ([]model.CalendarEvent, error) {
+	var out []model.CalendarEvent
+
+	type taskRow struct {
+		id              int64
+		title, deadline string
+	}
+	var tasks []taskRow
+	rows, err := s.db.Query(`SELECT id, title, deadline FROM tasks WHERE deadline != ''`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var x taskRow
+		if err := rows.Scan(&x.id, &x.title, &x.deadline); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		tasks = append(tasks, x)
+	}
+	rows.Close()
+	for _, x := range tasks {
+		dl, ok := parseCalTime(x.deadline)
+		if !ok || dl.Before(from) || dl.After(to) {
+			continue
+		}
+		st := dl.Format(calTimeLayout)
+		out = append(out, model.CalendarEvent{
+			Title: x.title, Start: st, End: st,
+			Color: "#ef4444", Source: "task", RefID: x.id, CalName: "Kanban",
+		})
+	}
+
+	type sprintRow struct {
+		id     int64
+		name   string
+		sd, ed string
+	}
+	var sprints []sprintRow
+	rows2, err := s.db.Query(`SELECT id, name, start_date, end_date FROM sprints WHERE start_date != '' AND end_date != ''`)
+	if err != nil {
+		return nil, err
+	}
+	for rows2.Next() {
+		var x sprintRow
+		if err := rows2.Scan(&x.id, &x.name, &x.sd, &x.ed); err != nil {
+			rows2.Close()
+			return nil, err
+		}
+		sprints = append(sprints, x)
+	}
+	rows2.Close()
+	for _, x := range sprints {
+		sd, ok1 := parseCalTime(x.sd)
+		ed, ok2 := parseCalTime(x.ed)
+		if !ok1 || !ok2 {
+			continue
+		}
+		ed = ed.Add(24*time.Hour - time.Second) // inclusive of the end day
+		if ed.Before(from) || sd.After(to) {
+			continue
+		}
+		out = append(out, model.CalendarEvent{
+			Title: x.name, Start: sd.Format(calTimeLayout), End: ed.Format(calTimeLayout),
+			AllDay: true, Color: "#8b5cf6", Source: "sprint", RefID: x.id, CalName: "Kanban",
+		})
 	}
 	return out, nil
 }
