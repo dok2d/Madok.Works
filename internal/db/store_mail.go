@@ -201,17 +201,20 @@ func (s *Store) SendInternalMail(fromUserID int64, fromName string, toUserIDs []
 
 // DeliverInbound stores an externally-received message and files an Inbox copy
 // for each local recipient (no Sent copy; sender is external).
-func (s *Store) DeliverInbound(toUserIDs []int64, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML string, atts []model.MailAttachment) (int64, error) {
+func (s *Store) DeliverInbound(toUserIDs []int64, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML string, atts []model.MailAttachment, folder string, spamScore int) (int64, error) {
 	if len(toUserIDs) == 0 {
 		return 0, fmt.Errorf("no local recipients")
+	}
+	if folder == "" {
+		folder = "inbox"
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO mail_messages(thread_id, from_user_id, from_name, from_addr, to_addrs, subject, body_text, body_html)
-		VALUES(0, NULL, ?, ?, ?, ?, ?, ?)`, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML)
+	res, err := tx.Exec(`INSERT INTO mail_messages(thread_id, from_user_id, from_name, from_addr, to_addrs, subject, body_text, body_html, spam_score)
+		VALUES(0, NULL, ?, ?, ?, ?, ?, ?, ?)`, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML, spamScore)
 	if err != nil {
 		return 0, err
 	}
@@ -230,7 +233,7 @@ func (s *Store) DeliverInbound(toUserIDs []int64, fromName, fromAddr, toAddrs, s
 			continue
 		}
 		seen[uid] = true
-		if _, err := tx.Exec(`INSERT INTO mail_box(user_id, message_id, folder, seen) VALUES(?,?, 'inbox', 0)`, uid, id); err != nil {
+		if _, err := tx.Exec(`INSERT INTO mail_box(user_id, message_id, folder, seen) VALUES(?,?,?,0)`, uid, id, folder); err != nil {
 			return 0, err
 		}
 	}

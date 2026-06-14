@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -92,7 +93,11 @@ func (h *Handler) ingestInbound(from string, rcpts []string, r io.Reader, source
 		return fmt.Errorf("no local recipients")
 	}
 
-	mr, err := gomail.CreateReader(r)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+	mr, err := gomail.CreateReader(bytes.NewReader(raw))
 	if err != nil {
 		return fmt.Errorf("parse message: %w", err)
 	}
@@ -140,13 +145,31 @@ func (h *Handler) ingestInbound(from string, rcpts []string, r io.Reader, source
 		}
 	}
 
+	// Antispam scoring: high scores land in Junk.
+	attNames := make([]string, len(atts))
+	for i, a := range atts {
+		attNames[i] = a.Filename
+	}
+	score, reasons := scoreSpam(SpamSignals{
+		Subject: subject, Body: bodyText, Recipients: len(rcpts),
+		Attachments: attNames, DKIM: verifyDKIM(raw),
+	})
+	folder := "inbox"
+	if score >= spamThreshold {
+		folder = "junk"
+	}
+
 	toAddrs := strings.Join(rcpts, ", ")
-	id, err := h.store.DeliverInbound(toIDs, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML, atts)
+	id, err := h.store.DeliverInbound(toIDs, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML, atts, folder, score)
 	if err != nil {
 		return err
 	}
 	h.store.LogMailAudit(model.MailAudit{Event: "inbound_accept", SourceIP: sourceIP, MailFrom: fromAddr,
-		Rcpt: toAddrs, Subject: subject, Detail: fmt.Sprintf("%d recipient(s)", len(toIDs))})
+		Rcpt: toAddrs, Subject: subject, Score: score, Detail: fmt.Sprintf("%d recipient(s)", len(toIDs))})
+	if folder == "junk" {
+		h.store.LogMailAudit(model.MailAudit{Event: "spam", SourceIP: sourceIP, MailFrom: fromAddr,
+			Rcpt: toAddrs, Subject: subject, Score: score, Detail: strings.Join(reasons, ", ")})
+	}
 	// Notify recipients (live + in-app), mirroring internal delivery.
 	subj := subject
 	if subj == "" {
