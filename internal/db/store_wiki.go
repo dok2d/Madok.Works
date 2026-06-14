@@ -175,13 +175,13 @@ func (s *Store) ListWikiPageTree(spaceID int64) ([]model.WikiPage, error) {
 func (s *Store) GetWikiPage(id int64) (*model.WikiPage, error) {
 	var p model.WikiPage
 	var createdName, updatedName sql.NullString
-	err := s.db.QueryRow(`SELECT p.id, p.space_id, p.parent_id, p.title, p.content, p.position, p.rev_no,
+	err := s.db.QueryRow(`SELECT p.id, p.space_id, p.parent_id, p.title, p.content, p.content_md, p.position, p.rev_no,
 		p.created_by, p.created_at, p.updated_by, p.updated_at, cu.username, uu.username
 		FROM wiki_pages p
 		LEFT JOIN users cu ON cu.id = p.created_by
 		LEFT JOIN users uu ON uu.id = p.updated_by
 		WHERE p.id = ?`, id).
-		Scan(&p.ID, &p.SpaceID, &p.ParentID, &p.Title, &p.Content, &p.Position, &p.RevNo,
+		Scan(&p.ID, &p.SpaceID, &p.ParentID, &p.Title, &p.Content, &p.ContentMd, &p.Position, &p.RevNo,
 			&p.CreatedBy, &p.CreatedAt, &p.UpdatedBy, &p.UpdatedAt, &createdName, &updatedName)
 	if err != nil {
 		return nil, err
@@ -191,12 +191,12 @@ func (s *Store) GetWikiPage(id int64) (*model.WikiPage, error) {
 	return &p, nil
 }
 
-func (s *Store) CreateWikiPage(spaceID int64, parentID *int64, title, content string, author int64) (int64, error) {
+func (s *Store) CreateWikiPage(spaceID int64, parentID *int64, title, content, contentMd string, author int64) (int64, error) {
 	var pos int
 	s.db.QueryRow(`SELECT COALESCE(MAX(position),-1)+1 FROM wiki_pages WHERE space_id=? AND COALESCE(parent_id,0)=COALESCE(?,0)`,
 		spaceID, parentID).Scan(&pos)
-	res, err := s.db.Exec(`INSERT INTO wiki_pages(space_id, parent_id, title, content, position, created_by, updated_by)
-		VALUES(?,?,?,?,?,?,?)`, spaceID, parentID, title, content, pos, author, author)
+	res, err := s.db.Exec(`INSERT INTO wiki_pages(space_id, parent_id, title, content, content_md, position, created_by, updated_by)
+		VALUES(?,?,?,?,?,?,?,?)`, spaceID, parentID, title, content, contentMd, pos, author, author)
 	if err != nil {
 		return 0, err
 	}
@@ -205,14 +205,14 @@ func (s *Store) CreateWikiPage(spaceID int64, parentID *int64, title, content st
 		return 0, err
 	}
 	// first revision
-	_, err = s.db.Exec(`INSERT INTO wiki_revisions(page_id, rev_no, title, content, author_id, comment)
-		VALUES(?,?,?,?,?,?)`, pageID, 1, title, content, author, "")
+	_, err = s.db.Exec(`INSERT INTO wiki_revisions(page_id, rev_no, title, content, content_md, author_id, comment)
+		VALUES(?,?,?,?,?,?,?)`, pageID, 1, title, content, contentMd, author, "")
 	return pageID, err
 }
 
 // UpdateWikiPage saves a new revision. baseRev guards against concurrent
 // edits: if it does not match the stored rev_no the update is rejected.
-func (s *Store) UpdateWikiPage(id int64, title, content, comment string, author int64, baseRev int) (int, error) {
+func (s *Store) UpdateWikiPage(id int64, title, content, contentMd, comment string, author int64, baseRev int) (int, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -227,12 +227,12 @@ func (s *Store) UpdateWikiPage(id int64, title, content, comment string, author 
 		return cur, fmt.Errorf("conflict: page was modified (rev %d, your base %d)", cur, baseRev)
 	}
 	next := cur + 1
-	if _, err := tx.Exec(`UPDATE wiki_pages SET title=?, content=?, rev_no=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		title, content, next, author, id); err != nil {
+	if _, err := tx.Exec(`UPDATE wiki_pages SET title=?, content=?, content_md=?, rev_no=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		title, content, contentMd, next, author, id); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`INSERT INTO wiki_revisions(page_id, rev_no, title, content, author_id, comment)
-		VALUES(?,?,?,?,?,?)`, id, next, title, content, author, comment); err != nil {
+	if _, err := tx.Exec(`INSERT INTO wiki_revisions(page_id, rev_no, title, content, content_md, author_id, comment)
+		VALUES(?,?,?,?,?,?,?)`, id, next, title, content, contentMd, author, comment); err != nil {
 		return 0, err
 	}
 	return next, tx.Commit()
@@ -338,9 +338,9 @@ func (s *Store) ListWikiRevisions(pageID int64) ([]model.WikiRevision, error) {
 
 func (s *Store) GetWikiRevision(id int64) (*model.WikiRevision, error) {
 	var r model.WikiRevision
-	err := s.db.QueryRow(`SELECT r.id, r.page_id, r.rev_no, r.title, r.content, r.author_id, COALESCE(u.username,''), r.comment, r.created_at
+	err := s.db.QueryRow(`SELECT r.id, r.page_id, r.rev_no, r.title, r.content, r.content_md, r.author_id, COALESCE(u.username,''), r.comment, r.created_at
 		FROM wiki_revisions r LEFT JOIN users u ON u.id = r.author_id WHERE r.id = ?`, id).
-		Scan(&r.ID, &r.PageID, &r.RevNo, &r.Title, &r.Content, &r.AuthorID, &r.AuthorName, &r.Comment, &r.CreatedAt)
+		Scan(&r.ID, &r.PageID, &r.RevNo, &r.Title, &r.Content, &r.ContentMd, &r.AuthorID, &r.AuthorName, &r.Comment, &r.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

@@ -25,17 +25,17 @@ func TestCleanupOrphanFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWikiSpace: %v", err)
 	}
-	if _, err := s.CreateWikiPage(spaceID, nil, "Page", "<p>"+imgRef(wikiImg)+"</p>", author); err != nil {
+	if _, err := s.CreateWikiPage(spaceID, nil, "Page", "<p>"+imgRef(wikiImg)+"</p>", "", author); err != nil {
 		t.Fatalf("CreateWikiPage: %v", err)
 	}
 
 	// File referenced only by an old wiki revision (current content drops it).
 	revPageImg, _ := s.SaveImage([]byte("png2"), "image/png")
-	pid, err := s.CreateWikiPage(spaceID, nil, "Hist", "<p>"+imgRef(revPageImg)+"</p>", author)
+	pid, err := s.CreateWikiPage(spaceID, nil, "Hist", "<p>"+imgRef(revPageImg)+"</p>", "", author)
 	if err != nil {
 		t.Fatalf("CreateWikiPage hist: %v", err)
 	}
-	if _, err := s.UpdateWikiPage(pid, "Hist", "<p>no image now</p>", "drop", author, 1); err != nil {
+	if _, err := s.UpdateWikiPage(pid, "Hist", "<p>no image now</p>", "", "drop", author, 1); err != nil {
 		t.Fatalf("UpdateWikiPage: %v", err)
 	}
 

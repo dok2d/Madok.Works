@@ -5,6 +5,34 @@ import (
 	"testing"
 )
 
+// TestSanitizeKeepsMarkedOutput ensures representative HTML produced by the
+// client-side markdown renderer (marked) survives sanitization, so wiki pages
+// authored in Markdown render correctly after the server sanitizes them.
+func TestSanitizeKeepsMarkedOutput(t *testing.T) {
+	samples := []string{
+		`<h1>Title</h1>`,
+		`<p>text with <strong>bold</strong> and <em>em</em> and <code>code</code></p>`,
+		`<ul>` + "\n" + `<li>one</li>` + "\n" + `<li>two</li>` + "\n" + `</ul>`,
+		`<pre><code class="language-js">const x = 1;</code></pre>`,
+		`<table>` + "\n" + `<thead><tr><th>A</th><th>B</th></tr></thead>` + "\n" + `<tbody><tr><td>1</td><td>2</td></tr></tbody>` + "\n" + `</table>`,
+		`<ul class="task-list"><li class="task-item"><input type="checkbox" disabled> todo</li></ul>`,
+		`<blockquote><p>quoted</p></blockquote>`,
+		`<p><a href="https://example.com">link</a></p>`,
+	}
+	for _, s := range samples {
+		out := sanitizeHTML(s)
+		if strings.TrimSpace(out) == "" {
+			t.Errorf("sanitizer dropped everything for: %s", s)
+		}
+		// core tags must survive
+		for _, tag := range []string{"<h1", "<table", "<pre", "<blockquote", "<ul", "<a "} {
+			if strings.Contains(s, tag) && !strings.Contains(out, tag) {
+				t.Errorf("sanitizer removed %q from %q -> %q", tag, s, out)
+			}
+		}
+	}
+}
+
 func TestSanitizeHTMLKeepsSafeMarkup(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"<p>hello</p>", "<p>hello</p>"},

@@ -267,10 +267,11 @@ func (h *Handler) handleWikiPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		SpaceID  int64  `json:"space_id"`
-		ParentID *int64 `json:"parent_id"`
-		Title    string `json:"title"`
-		Content  string `json:"content"`
+		SpaceID   int64  `json:"space_id"`
+		ParentID  *int64 `json:"parent_id"`
+		Title     string `json:"title"`
+		Content   string `json:"content"`
+		ContentMd string `json:"content_md"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -306,7 +307,7 @@ func (h *Handler) handleWikiPages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	content := sanitizeHTML(req.Content)
-	id, err := h.store.CreateWikiPage(req.SpaceID, req.ParentID, req.Title, content, user.ID)
+	id, err := h.store.CreateWikiPage(req.SpaceID, req.ParentID, req.Title, content, req.ContentMd, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -384,10 +385,11 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 			return
 		}
 		var req struct {
-			Title   string `json:"title"`
-			Content string `json:"content"`
-			Comment string `json:"comment"`
-			BaseRev int    `json:"base_rev"`
+			Title     string `json:"title"`
+			Content   string `json:"content"`
+			ContentMd string `json:"content_md"`
+			Comment   string `json:"comment"`
+			BaseRev   int    `json:"base_rev"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -403,7 +405,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 			return
 		}
 		content := sanitizeHTML(req.Content)
-		rev, err := h.store.UpdateWikiPage(page.ID, req.Title, content, req.Comment, user.ID, req.BaseRev)
+		rev, err := h.store.UpdateWikiPage(page.ID, req.Title, content, req.ContentMd, req.Comment, user.ID, req.BaseRev)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "conflict:") {
 				w.Header().Set("Content-Type", "application/json")
@@ -486,7 +488,7 @@ func (h *Handler) handleWikiPageRestore(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	comment := "restored from v" + strconv.Itoa(rev.RevNo)
-	newRev, err := h.store.UpdateWikiPage(page.ID, rev.Title, rev.Content, comment, user.ID, 0)
+	newRev, err := h.store.UpdateWikiPage(page.ID, rev.Title, rev.Content, rev.ContentMd, comment, user.ID, 0)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -14,6 +14,26 @@ let wikiState = {
 
 const WIKI_COLLAPSE_KEY = 'kanban-wiki-collapsed';
 
+// Editor-mode i18n merged into LANGS (other wiki strings already live there).
+const WIKI_I18N = {
+  en: { wikiModeRich: 'Rich', wikiModeMarkdown: 'Markdown', wikiPreview: 'Preview' },
+  ru: { wikiModeRich: 'Визуально', wikiModeMarkdown: 'Markdown', wikiPreview: 'Предпросмотр' },
+  es: { wikiModeRich: 'Visual', wikiModeMarkdown: 'Markdown', wikiPreview: 'Vista previa' },
+  fr: { wikiModeRich: 'Visuel', wikiModeMarkdown: 'Markdown', wikiPreview: 'Aperçu' },
+  de: { wikiModeRich: 'Visuell', wikiModeMarkdown: 'Markdown', wikiPreview: 'Vorschau' },
+  pt: { wikiModeRich: 'Visual', wikiModeMarkdown: 'Markdown', wikiPreview: 'Pré-visualização' },
+};
+let wikiI18nMerged = false;
+function ensureWikiI18n() {
+  if (wikiI18nMerged || typeof LANGS === 'undefined') return;
+  for (const lang of ['ru', 'en', 'zh', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ar']) {
+    if (!LANGS[lang]) continue;
+    const dict = Object.assign({}, WIKI_I18N.en, WIKI_I18N[lang] || {});
+    for (const k in dict) if (!(k in LANGS[lang])) LANGS[lang][k] = dict[k];
+  }
+  wikiI18nMerged = true;
+}
+
 function wikiCollapsed() {
   try { return JSON.parse(localStorage.getItem(WIKI_COLLAPSE_KEY) || '{}'); } catch (e) { return {}; }
 }
@@ -26,6 +46,7 @@ function wikiToggleNode(id) {
 
 // === Entry point (called by the SPA router) ===
 async function renderWikiView() {
+  ensureWikiI18n();
   const m = currentServicePath.match(/^\/page\/(\d+)(\/edit|\/history)?$/);
   const sm = currentServicePath.match(/^\/space\/(\d+)$/);
   try {
@@ -257,16 +278,52 @@ const WIKI_TOOLBAR = [
   { cmd: 'redo', label: '&#8631;', key: 'tbRedo' },
 ];
 
+// wikiMdToHtml converts markdown to HTML via the bundled marked (falls back to
+// escaped text). The server sanitizes the result on save.
+function wikiMdToHtml(md) {
+  if (typeof marked !== 'undefined' && marked.parse) return marked.parse(md || '');
+  return '<p>' + escHtmlText(md || '') + '</p>';
+}
+
+function wikiSetEditorMode(m) {
+  // Preserve the current buffer so switching doesn't lose edits.
+  if (wikiState.editorMode === 'rich') {
+    const ed = document.getElementById('wiki-editor');
+    if (ed) wikiState.page.content = ed.innerHTML;
+  } else {
+    const ta = document.getElementById('wiki-md');
+    if (ta) { wikiState.page.content_md = ta.value; wikiState.page.content = wikiMdToHtml(ta.value); }
+  }
+  wikiState.editorMode = m;
+  wikiRenderMain();
+}
+
 function wikiRenderEditor(el) {
   const p = wikiState.page;
+  // Choose default mode once per page-edit: markdown if the page has md source.
+  if (wikiState.editorPageId !== p.id) {
+    wikiState.editorMode = p.content_md ? 'markdown' : 'rich';
+    wikiState.editorPageId = p.id;
+  }
+  const mode = wikiState.editorMode;
+  const body = mode === 'markdown'
+    ? `<div class="wiki-md-split">
+        <textarea class="wiki-md-input" id="wiki-md" placeholder="# Markdown…">${esc(p.content_md || '')}</textarea>
+        <div class="wiki-md-preview md-content" id="wiki-md-preview"></div>
+      </div>`
+    : `<div class="wiki-toolbar" id="wiki-toolbar">
+        ${WIKI_TOOLBAR.map(b => b.sep ? '<span class="wiki-tb-sep"></span>' :
+          `<button type="button" class="wiki-tb-btn" title="${t(b.key)}" data-cmd="${b.cmd || ''}" data-arg="${b.arg || ''}" data-custom="${b.custom || ''}">${b.label}</button>`).join('')}
+      </div>
+      <div class="wiki-editor md-content" id="wiki-editor" contenteditable="true">${p.content}</div>`;
   el.innerHTML = `
     ${wikiBreadcrumbs()}
     <input class="wiki-title-input" id="wiki-title-input" value="${escAttr(p.title)}" maxlength="300">
-    <div class="wiki-toolbar" id="wiki-toolbar">
-      ${WIKI_TOOLBAR.map(b => b.sep ? '<span class="wiki-tb-sep"></span>' :
-        `<button type="button" class="wiki-tb-btn" title="${t(b.key)}" data-cmd="${b.cmd || ''}" data-arg="${b.arg || ''}" data-custom="${b.custom || ''}">${b.label}</button>`).join('')}
+    <div class="wiki-mode-tabs">
+      <button class="wiki-mode-tab ${mode === 'rich' ? 'active' : ''}" onclick="wikiSetEditorMode('rich')">${t('wikiModeRich')}</button>
+      <button class="wiki-mode-tab ${mode === 'markdown' ? 'active' : ''}" onclick="wikiSetEditorMode('markdown')">${t('wikiModeMarkdown')}</button>
     </div>
-    <div class="wiki-editor md-content" id="wiki-editor" contenteditable="true">${p.content}</div>
+    ${body}
     <div class="wiki-edit-footer">
       <input class="wiki-comment-input" id="wiki-rev-comment" placeholder="${t('wikiComment')}" maxlength="200">
       <div style="display:flex;gap:8px">
@@ -275,10 +332,18 @@ function wikiRenderEditor(el) {
       </div>
     </div>`;
   wikiState.dirty = false;
+  document.getElementById('wiki-title-input').addEventListener('input', () => { wikiState.dirty = true; });
+  if (mode === 'markdown') {
+    const ta = document.getElementById('wiki-md');
+    const prev = document.getElementById('wiki-md-preview');
+    const render = () => { prev.innerHTML = wikiMdToHtml(ta.value); if (typeof highlightCode === 'function') highlightCode(); };
+    ta.addEventListener('input', () => { wikiState.dirty = true; render(); });
+    render();
+    ta.focus();
+    return;
+  }
   const editor = document.getElementById('wiki-editor');
   editor.addEventListener('input', () => { wikiState.dirty = true; });
-  document.getElementById('wiki-title-input').addEventListener('input', () => { wikiState.dirty = true; });
-  // toolbar (mousedown to keep selection in the editor)
   document.getElementById('wiki-toolbar').addEventListener('mousedown', e => {
     const btn = e.target.closest('.wiki-tb-btn');
     if (!btn) return;
@@ -287,9 +352,7 @@ function wikiRenderEditor(el) {
     document.execCommand(btn.dataset.cmd, false, btn.dataset.arg || null);
     editor.focus();
   });
-  // paste images
   editor.addEventListener('paste', wikiHandlePaste);
-  // Tab indents lists
   editor.addEventListener('keydown', e => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -394,12 +457,18 @@ async function wikiSavePage() {
   const p = wikiState.page;
   const btn = document.getElementById('wiki-save-btn');
   const title = document.getElementById('wiki-title-input').value.trim();
-  const content = document.getElementById('wiki-editor').innerHTML;
+  let content, contentMd = '';
+  if (wikiState.editorMode === 'markdown') {
+    contentMd = document.getElementById('wiki-md').value;
+    content = wikiMdToHtml(contentMd);
+  } else {
+    content = document.getElementById('wiki-editor').innerHTML;
+  }
   const comment = document.getElementById('wiki-rev-comment').value.trim();
   if (!title) { alert(t('wikiTitleRequired')); return; }
   btn.disabled = true;
   try {
-    await api('/api/wiki/pages/' + p.id, 'PUT', { title, content, comment, base_rev: p.rev_no });
+    await api('/api/wiki/pages/' + p.id, 'PUT', { title, content, content_md: contentMd, comment, base_rev: p.rev_no });
     wikiState.dirty = false;
     navigateTo('/wiki/page/' + p.id);
   } catch (e) {

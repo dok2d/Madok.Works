@@ -154,7 +154,8 @@ type WikiPage struct {
 	SpaceID       int64  `json:"space_id"`
 	ParentID      *int64 `json:"parent_id"`
 	Title         string `json:"title"`
-	Content       string `json:"content,omitempty"` // sanitized HTML
+	Content       string `json:"content,omitempty"`    // sanitized HTML (for view/search)
+	ContentMd     string `json:"content_md,omitempty"` // markdown source (for editing)
 	Position      int    `json:"position"`
 	RevNo         int    `json:"rev_no"`
 	CreatedBy     *int64 `json:"created_by"`
@@ -172,6 +173,7 @@ type WikiRevision struct {
 	RevNo      int    `json:"rev_no"`
 	Title      string `json:"title"`
 	Content    string `json:"content,omitempty"`
+	ContentMd  string `json:"content_md,omitempty"`
 	AuthorID   *int64 `json:"author_id"`
 	AuthorName string `json:"author_name,omitempty"`
 	Comment    string `json:"comment"`

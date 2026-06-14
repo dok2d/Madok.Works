@@ -16,7 +16,7 @@ func TestEcosystemExportRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWikiSpace: %v", err)
 	}
-	if _, err := a.CreateWikiPage(sp, nil, "Page", "<p>hello</p>", u); err != nil {
+	if _, err := a.CreateWikiPage(sp, nil, "Page", "<p>hello</p>", "hello", u); err != nil {
 		t.Fatalf("CreateWikiPage: %v", err)
 	}
 	ch, _ := a.CreateChatChannel("general", "", "channel", u, nil)
