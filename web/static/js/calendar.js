@@ -9,6 +9,7 @@ let calState = {
   cursor: null, // a Date within the visible period (browser-local)
   hidden: {}, // calendarId -> true when unchecked
   hideKanban: false, // hide task/sprint overlay
+  es: null, // EventSource for live updates
 };
 
 const CAL_VIEW_KEY = 'kanban-cal-view';
@@ -93,7 +94,20 @@ async function renderCalendarView() {
     return;
   }
   calRenderLayout();
+  calConnectSSE();
   await calLoadAndRender();
+}
+
+// Live updates: reload the visible range when any calendar the user can see changes.
+function calConnectSSE() {
+  if (calState.es || typeof EventSource === 'undefined') return;
+  try {
+    const es = new EventSource('/api/calendar/stream');
+    calState.es = es;
+    let tmo = null;
+    es.onmessage = () => { clearTimeout(tmo); tmo = setTimeout(() => calLoadAndRender(), 250); };
+    es.onerror = () => { /* browser auto-reconnects */ };
+  } catch (e) { /* SSE unavailable */ }
 }
 
 function calRenderLayout() {

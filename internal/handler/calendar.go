@@ -31,6 +31,31 @@ func (h *Handler) calUser(w http.ResponseWriter, r *http.Request) *model.User {
 	return user
 }
 
+// calAudience resolves which users should receive live updates for a calendar:
+// nil broadcasts (shared calendar), otherwise just the owner.
+func (h *Handler) calAudience(cal *model.Calendar) []int64 {
+	if cal.Visibility == "shared" {
+		return nil
+	}
+	if cal.OwnerID != nil {
+		return []int64{*cal.OwnerID}
+	}
+	return []int64{}
+}
+
+func (h *Handler) calNotify(cal *model.Calendar) {
+	h.sse.sendTo(h.calAudience(cal), map[string]string{"type": "calendar"})
+}
+
+// handleCalendarStream is the SSE endpoint for live calendar updates.
+func (h *Handler) handleCalendarStream(w http.ResponseWriter, r *http.Request) {
+	user := h.calUser(w, r)
+	if user == nil {
+		return
+	}
+	h.serveSSE(w, r, user.ID)
+}
+
 // === Calendars ===
 
 func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +90,7 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		h.calNotify(&model.Calendar{Visibility: req.Visibility, OwnerID: &user.ID})
 		jsonResp(w, map[string]int64{"id": id})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -109,12 +135,15 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		cal.Visibility = req.Visibility
+		h.calNotify(cal)
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodDelete:
 		if err := h.store.DeleteCalendar(id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		h.calNotify(cal)
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -164,6 +193,7 @@ func (h *Handler) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		h.calNotify(cal)
 		jsonResp(w, created)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -216,6 +246,7 @@ func (h *Handler) handleCalendarEvent(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		h.calNotify(cal)
 		jsonResp(w, updated)
 	case http.MethodDelete:
 		if !h.store.CanEditCalendar(cal, user.ID, user.IsAdmin) {
@@ -226,6 +257,7 @@ func (h *Handler) handleCalendarEvent(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		h.calNotify(cal)
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
