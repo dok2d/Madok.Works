@@ -1166,35 +1166,42 @@ func (s *Store) DeleteFile(id int64) error {
 	return err
 }
 
-// CleanupOrphanFiles removes images and files not referenced in any comment or task description.
+// scanFileRefs collects file/image references from the single text column
+// returned by query. With SetMaxOpenConns(1) the rows must be fully read and
+// closed before the next query runs, so this reads to completion before return.
+func (s *Store) scanFileRefs(query string, refImages, refFiles map[int64]bool) error {
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var text string
+		rows.Scan(&text)
+		collectFileRefs(text, refImages, refFiles)
+	}
+	return rows.Err()
+}
+
+// CleanupOrphanFiles removes images and files no longer referenced anywhere.
 func (s *Store) CleanupOrphanFiles() (int, error) {
-	// Collect all referenced IDs from comments and task descriptions
 	refImages := make(map[int64]bool)
 	refFiles := make(map[int64]bool)
 
-	// Scan comments
-	rows, err := s.db.Query("SELECT text FROM comments")
-	if err != nil {
-		return 0, err
+	// Collect referenced IDs from every place that can embed an uploaded file:
+	// kanban comments & task descriptions, wiki pages and their revision history,
+	// and chat messages. Omitting any source here would delete live attachments.
+	for _, q := range []string{
+		"SELECT text FROM comments",
+		"SELECT description FROM tasks WHERE description != ''",
+		"SELECT content FROM wiki_pages",
+		"SELECT content FROM wiki_revisions",
+		"SELECT text FROM chat_messages WHERE deleted = 0",
+	} {
+		if err := s.scanFileRefs(q, refImages, refFiles); err != nil {
+			return 0, err
+		}
 	}
-	for rows.Next() {
-		var text string
-		rows.Scan(&text)
-		collectFileRefs(text, refImages, refFiles)
-	}
-	rows.Close()
-
-	// Scan task descriptions
-	rows, err = s.db.Query("SELECT description FROM tasks WHERE description != ''")
-	if err != nil {
-		return 0, err
-	}
-	for rows.Next() {
-		var text string
-		rows.Scan(&text)
-		collectFileRefs(text, refImages, refFiles)
-	}
-	rows.Close()
 
 	count := 0
 
