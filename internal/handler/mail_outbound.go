@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -27,17 +28,33 @@ import (
 //   KANBAN_DKIM_SELECTOR — DKIM selector (default "default")
 //   KANBAN_DKIM_KEY      — path to a PEM RSA private key for DKIM signing
 
+// loadMailOutboundConfig (re)loads outbound config: app_settings first, env as
+// fallback. Safe to call again after admin changes settings.
 func (h *Handler) loadMailOutboundConfig() {
-	domain := strings.TrimSpace(os.Getenv("KANBAN_MAIL_DOMAIN"))
+	h.outboundDomain, h.dkimSelector, h.dkimKey = "", "", nil
+	domain := strings.TrimSpace(h.store.GetSetting("mail_domain"))
+	if domain == "" {
+		domain = strings.TrimSpace(os.Getenv("KANBAN_MAIL_DOMAIN"))
+	}
 	if domain == "" {
 		return
 	}
 	h.outboundDomain = domain
-	h.dkimSelector = strings.TrimSpace(os.Getenv("KANBAN_DKIM_SELECTOR"))
-	if h.dkimSelector == "" {
-		h.dkimSelector = "default"
+	sel := strings.TrimSpace(h.store.GetSetting("mail_dkim_selector"))
+	if sel == "" {
+		sel = strings.TrimSpace(os.Getenv("KANBAN_DKIM_SELECTOR"))
 	}
-	if path := strings.TrimSpace(os.Getenv("KANBAN_DKIM_KEY")); path != "" {
+	if sel == "" {
+		sel = "default"
+	}
+	h.dkimSelector = sel
+	if pemKey := strings.TrimSpace(h.store.GetSetting("mail_dkim_key")); pemKey != "" {
+		if key, err := parseRSAKeyPEM([]byte(pemKey)); err != nil {
+			log.Printf("mail: DKIM key (settings) load failed: %v", err)
+		} else {
+			h.dkimKey = key
+		}
+	} else if path := strings.TrimSpace(os.Getenv("KANBAN_DKIM_KEY")); path != "" {
 		if key, err := loadRSAKey(path); err != nil {
 			log.Printf("mail: DKIM key load failed: %v", err)
 		} else {
@@ -52,9 +69,13 @@ func loadRSAKey(path string) (*rsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseRSAKeyPEM(data)
+}
+
+func parseRSAKeyPEM(data []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, fmt.Errorf("no PEM block in %s", path)
+		return nil, fmt.Errorf("no PEM block")
 	}
 	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return k, nil
@@ -71,6 +92,18 @@ func loadRSAKey(path string) (*rsa.PrivateKey, error) {
 }
 
 func (h *Handler) outboundEnabled() bool { return h.outboundDomain != "" }
+
+// dkimPublicTXT returns the DNS TXT record value to publish for the DKIM key, or "".
+func (h *Handler) dkimPublicTXT() string {
+	if h.dkimKey == nil {
+		return ""
+	}
+	der, err := x509.MarshalPKIXPublicKey(&h.dkimKey.PublicKey)
+	if err != nil {
+		return ""
+	}
+	return "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(der)
+}
 
 // buildRFC822 assembles a minimal RFC 5322 text/plain message.
 func buildRFC822(fromAddr, fromName string, to []string, subject, body, date string) []byte {
@@ -118,7 +151,13 @@ func (h *Handler) sendExternal(fromName string, to []string, subject, body strin
 	if !h.outboundEnabled() || len(to) == 0 {
 		return
 	}
-	fromAddr := fromName + "@" + h.outboundDomain
+	local := fromName
+	if u, err := h.store.GetUserByUsername(fromName); err == nil && u != nil {
+		if p := h.store.PrimaryAlias(u.ID); p != "" {
+			local = p
+		}
+	}
+	fromAddr := local + "@" + h.outboundDomain
 	raw := buildRFC822(fromAddr, fromName, to, subject, body, time.Now().UTC().Format(time.RFC1123Z))
 	signed, err := h.dkimSign(raw)
 	if err != nil {

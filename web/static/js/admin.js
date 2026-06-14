@@ -4,8 +4,8 @@
 // existing populate functions keep working). Phase 7 adds Mail server / Mailboxes.
 
 const ADMIN_I18N = {
-  en: { adminTitle: 'Administration', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes' },
-  ru: { adminTitle: 'Администрирование', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики' },
+  en: { adminTitle: 'Administration', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key' },
+  ru: { adminTitle: 'Администрирование', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ' },
   es: { adminTitle: 'Administración', adminTabUsers: 'Usuarios', adminTabBoard: 'Tablero', adminTabServices: 'Servicios', adminTabIntegrations: 'Integraciones', adminTabData: 'Datos', adminTabMailServer: 'Servidor de correo', adminTabMailboxes: 'Buzones' },
   fr: { adminTitle: 'Administration', adminTabUsers: 'Utilisateurs', adminTabBoard: 'Tableau', adminTabServices: 'Services', adminTabIntegrations: 'Intégrations', adminTabData: 'Données', adminTabMailServer: 'Serveur de messagerie', adminTabMailboxes: 'Boîtes' },
   de: { adminTitle: 'Verwaltung', adminTabUsers: 'Benutzer', adminTabBoard: 'Board', adminTabServices: 'Dienste', adminTabIntegrations: 'Integrationen', adminTabData: 'Daten', adminTabMailServer: 'Mailserver', adminTabMailboxes: 'Postfächer' },
@@ -16,7 +16,7 @@ function ensureAdminI18n() {
   if (adminI18nMerged || typeof LANGS === 'undefined') return;
   for (const lang of ['ru', 'en', 'zh', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ar']) {
     if (!LANGS[lang]) continue;
-    const dict = ADMIN_I18N[lang] || ADMIN_I18N.en;
+    const dict = Object.assign({}, ADMIN_I18N.en, ADMIN_I18N[lang] || {});
     for (const k in dict) if (!(k in LANGS[lang])) LANGS[lang][k] = dict[k];
   }
   adminI18nMerged = true;
@@ -30,7 +30,88 @@ const ADMIN_TABS = [
   { key: 'services', i: 'adminTabServices', sections: ['services-section'] },
   { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section'] },
   { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'] },
+  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer },
+  { key: 'mailboxes', i: 'adminTabMailboxes', render: renderAdminMailboxes },
 ];
+
+// === Mail server tab (settings + DKIM + security audit) ===
+async function renderAdminMailServer(panel) {
+  if (!panel) return;
+  let s = {};
+  try { s = await api('/api/mail/settings'); } catch (e) { /* ignore */ }
+  panel.innerHTML = `
+    <h2 class="admin-h">${t('adminTabMailServer')}</h2>
+    <div class="admin-form">
+      <label class="admin-fld">${t('adminMailDomain')}<input id="ms-domain" value="${escAttr(s.domain || '')}" placeholder="example.com"></label>
+      <label class="admin-fld">${t('adminDkimSelector')}<input id="ms-selector" value="${escAttr(s.dkim_selector || 'default')}"></label>
+      <label class="admin-fld">${t('adminDkimKey')} <span class="admin-hint">(${t('adminDkimKeyHint')})</span>
+        <textarea id="ms-dkim" rows="4" placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
+      <div class="admin-row">
+        <button class="btn btn-primary btn-sm" onclick="adminSaveMailServer()">${t('adminSave')}</button>
+        ${s.dkim_configured ? `<button class="btn btn-ghost btn-sm admin-danger" onclick="adminSaveMailServer('__clear__')">${t('adminClear')}</button>` : ''}
+      </div>
+      ${!s.outbound_enabled ? `<div class="admin-note">${t('adminMailDisabled')}</div>` : ''}
+      ${s.dkim_txt ? `<div class="admin-fld">${t('adminDkimTxt')} <code class="admin-code">${esc(s.dkim_selector || 'default')}._domainkey TXT</code><textarea rows="3" readonly class="admin-code">${esc(s.dkim_txt)}</textarea></div>` : ''}
+    </div>
+    <h3 class="admin-h" style="font-size:1rem;margin-top:24px">${t('adminAudit')}</h3>
+    <div id="ms-audit" class="admin-audit"></div>`;
+  let audit = [];
+  try { audit = await api('/api/mail/audit?limit=100'); } catch (e) { /* ignore */ }
+  const ael = panel.querySelector('#ms-audit');
+  if (ael) {
+    ael.innerHTML = audit.length ? `<table class="admin-table"><thead><tr><th>time</th><th>event</th><th>source</th><th>from</th><th>subject</th><th>score</th></tr></thead><tbody>${audit.map(a => `<tr>
+      <td>${esc(fmtDate(a.created_at))}</td><td><span class="admin-ev admin-ev-${esc(a.event)}">${esc(a.event)}</span></td>
+      <td>${esc(a.source_ip || '')}</td><td>${esc(a.mail_from || '')}</td><td>${esc(a.subject || '')}</td><td>${a.score || ''}</td>
+    </tr>`).join('')}</tbody></table>` : `<div class="admin-note">${t('adminNoData')}</div>`;
+  }
+}
+
+async function adminSaveMailServer(clear) {
+  const body = {
+    domain: document.getElementById('ms-domain').value.trim(),
+    dkim_selector: document.getElementById('ms-selector').value.trim(),
+    dkim_key: clear === '__clear__' ? '__clear__' : document.getElementById('ms-dkim').value,
+  };
+  try { await api('/api/mail/settings', 'POST', body); renderAdminMailServer(document.getElementById('admin-panel-mailserver')); }
+  catch (e) { alert(e.message); }
+}
+
+// === Mailboxes tab (aliases) ===
+async function renderAdminMailboxes(panel) {
+  if (!panel) return;
+  let aliases = [];
+  try { aliases = await api('/api/mail/aliases'); } catch (e) { /* ignore */ }
+  const users = state.users || [];
+  panel.innerHTML = `
+    <h2 class="admin-h">${t('adminTabMailboxes')}</h2>
+    <div class="admin-mb-add">
+      <select id="mb-user">${users.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
+      <input id="mb-local" placeholder="${t('adminAlias')}">
+      <label class="admin-inline"><input type="checkbox" id="mb-primary"> ${t('adminPrimary')}</label>
+      <button class="btn btn-primary btn-sm" onclick="adminAddAlias()">${t('adminAdd')}</button>
+    </div>
+    <table class="admin-table"><thead><tr><th>${t('adminUser')}</th><th>${t('adminAlias')}</th><th>${t('adminPrimary')}</th><th></th></tr></thead>
+    <tbody>${aliases.map(a => `<tr>
+      <td>${esc(a.username)}</td><td>${esc(a.localpart)}</td>
+      <td>${a.is_primary ? '★' : `<button class="btn btn-ghost btn-sm" onclick="adminSetPrimaryAlias(${a.id})">${t('adminPrimary')}</button>`}</td>
+      <td><button class="btn-icon btn-sm admin-danger" onclick="adminDeleteAlias(${a.id})">&#10005;</button></td>
+    </tr>`).join('') || `<tr><td colspan="4"><div class="admin-note">${t('adminNoData')}</div></td></tr>`}</tbody></table>`;
+}
+
+async function adminAddAlias() {
+  const body = { user_id: Number(document.getElementById('mb-user').value), localpart: document.getElementById('mb-local').value.trim(), is_primary: document.getElementById('mb-primary').checked };
+  if (!body.localpart) return;
+  try { await api('/api/mail/aliases', 'POST', body); renderAdminMailboxes(document.getElementById('admin-panel-mailboxes')); }
+  catch (e) { alert(e.message); }
+}
+async function adminDeleteAlias(id) {
+  try { await api('/api/mail/aliases/' + id, 'DELETE'); renderAdminMailboxes(document.getElementById('admin-panel-mailboxes')); }
+  catch (e) { alert(e.message); }
+}
+async function adminSetPrimaryAlias(id) {
+  try { await api('/api/mail/aliases/' + id + '/primary', 'POST'); renderAdminMailboxes(document.getElementById('admin-panel-mailboxes')); }
+  catch (e) { alert(e.message); }
+}
 
 let adminBuilt = false;
 let adminTab = 'users';

@@ -164,6 +164,89 @@ func (s *Store) ResolveAlias(localpart string) int64 {
 	return uid
 }
 
+// PrimaryAlias returns the user's primary alias local-part, or "".
+func (s *Store) PrimaryAlias(userID int64) string {
+	var lp string
+	s.db.QueryRow(`SELECT localpart FROM mail_aliases WHERE user_id=? AND is_primary=1 LIMIT 1`, userID).Scan(&lp)
+	return lp
+}
+
+// MailAliasRow is an alias with its owner's username (for the admin list).
+type MailAliasRow struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	Username  string `json:"username"`
+	Localpart string `json:"localpart"`
+	IsPrimary bool   `json:"is_primary"`
+}
+
+func (s *Store) ListAliases() ([]MailAliasRow, error) {
+	rows, err := s.db.Query(`SELECT a.id, a.user_id, COALESCE(u.username,''), a.localpart, a.is_primary
+		FROM mail_aliases a LEFT JOIN users u ON u.id = a.user_id ORDER BY u.username COLLATE NOCASE, a.localpart`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MailAliasRow
+	for rows.Next() {
+		var a MailAliasRow
+		var prim int
+		if err := rows.Scan(&a.ID, &a.UserID, &a.Username, &a.Localpart, &prim); err != nil {
+			return nil, err
+		}
+		a.IsPrimary = prim == 1
+		out = append(out, a)
+	}
+	if out == nil {
+		out = []MailAliasRow{}
+	}
+	return out, rows.Err()
+}
+
+// CreateAlias adds an alias; when primary, it clears other primaries for the user.
+func (s *Store) CreateAlias(userID int64, localpart string, primary bool) (int64, error) {
+	localpart = strings.ToLower(strings.TrimSpace(localpart))
+	if localpart == "" || strings.ContainsAny(localpart, "@ \t") {
+		return 0, fmt.Errorf("invalid alias")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	p := 0
+	if primary {
+		p = 1
+		tx.Exec(`UPDATE mail_aliases SET is_primary=0 WHERE user_id=?`, userID)
+	}
+	res, err := tx.Exec(`INSERT INTO mail_aliases(user_id, localpart, is_primary) VALUES(?,?,?)`, userID, localpart, p)
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return id, tx.Commit()
+}
+
+func (s *Store) DeleteAlias(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM mail_aliases WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) SetPrimaryAlias(id int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var uid int64
+	if err := tx.QueryRow(`SELECT user_id FROM mail_aliases WHERE id=?`, id).Scan(&uid); err != nil {
+		return err
+	}
+	tx.Exec(`UPDATE mail_aliases SET is_primary=0 WHERE user_id=?`, uid)
+	tx.Exec(`UPDATE mail_aliases SET is_primary=1 WHERE id=?`, id)
+	return tx.Commit()
+}
+
 // === Audit ===
 
 // LogMailAudit records one mail security event (best-effort; ignores errors).

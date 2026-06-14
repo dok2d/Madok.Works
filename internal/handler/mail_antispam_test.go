@@ -63,6 +63,31 @@ Click here for free money, act now! viagra lottery you won bitcoin doubler
 	}
 }
 
+func TestInboundAliasResolution(t *testing.T) {
+	store, err := db.New(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	defer store.Close()
+	bob, _ := store.CreateUser("bob", "password123", "user")
+	store.CreateAlias(bob, "b.smith", true)
+	h := &Handler{store: store}
+
+	raw := strings.ReplaceAll(`From: x@ext.test
+To: b.smith@kanban.local
+Subject: hello alias
+Content-Type: text/plain; charset=utf-8
+
+hi
+`, "\n", "\r\n")
+	if err := h.ingestInbound("x@ext.test", []string{"b.smith@kanban.local"}, strings.NewReader(raw), "3.3.3.3"); err != nil {
+		t.Fatalf("ingestInbound: %v", err)
+	}
+	if in, _ := store.ListMailbox(bob, "inbox", 50, 0); len(in) != 1 {
+		t.Errorf("alias should deliver to bob inbox, got %d", len(in))
+	}
+}
+
 func TestInboundRuleApplied(t *testing.T) {
 	store, err := db.New(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {

@@ -121,6 +121,115 @@ func (h *Handler) resolveLocalRecipient(localpart string) *model.User {
 	return nil
 }
 
+// handleMailSettings reads/writes the mail server config (admin only).
+func (h *Handler) handleMailSettings(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil || !user.IsAdmin {
+		http.Error(w, "admin only", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		jsonResp(w, map[string]any{
+			"domain":           h.outboundDomain,
+			"dkim_selector":    h.dkimSelector,
+			"dkim_configured":  h.dkimKey != nil,
+			"dkim_txt":         h.dkimPublicTXT(),
+			"outbound_enabled": h.outboundEnabled(),
+		})
+	case http.MethodPost:
+		var req struct {
+			Domain       string `json:"domain"`
+			DkimSelector string `json:"dkim_selector"`
+			DkimKey      string `json:"dkim_key"` // "" keep, "__clear__" remove, else set PEM
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		h.store.SetSetting("mail_domain", strings.TrimSpace(req.Domain))
+		h.store.SetSetting("mail_dkim_selector", strings.TrimSpace(req.DkimSelector))
+		if req.DkimKey == "__clear__" {
+			h.store.SetSetting("mail_dkim_key", "")
+		} else if strings.TrimSpace(req.DkimKey) != "" {
+			if _, err := parseRSAKeyPEM([]byte(req.DkimKey)); err != nil {
+				http.Error(w, "invalid DKIM key (expect PEM RSA private key)", http.StatusBadRequest)
+				return
+			}
+			h.store.SetSetting("mail_dkim_key", req.DkimKey)
+		}
+		h.loadMailOutboundConfig()
+		jsonResp(w, map[string]string{"status": "ok"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMailAliases lists (GET) or creates (POST) mailbox aliases (admin only).
+func (h *Handler) handleMailAliases(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil || !user.IsAdmin {
+		http.Error(w, "admin only", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		rows, err := h.store.ListAliases()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, rows)
+	case http.MethodPost:
+		var req struct {
+			UserID    int64  `json:"user_id"`
+			Localpart string `json:"localpart"`
+			IsPrimary bool   `json:"is_primary"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		id, err := h.store.CreateAlias(req.UserID, req.Localpart, req.IsPrimary)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		jsonResp(w, map[string]int64{"id": id})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMailAlias deletes (DELETE) or sets primary (POST .../primary) an alias.
+func (h *Handler) handleMailAlias(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil || !user.IsAdmin {
+		http.Error(w, "admin only", http.StatusForbidden)
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/mail/aliases/")
+	parts := strings.SplitN(strings.TrimSuffix(rest, "/"), "/", 2)
+	id, _ := strconv.ParseInt(parts[0], 10, 64)
+	if len(parts) == 2 && parts[1] == "primary" {
+		if err := h.store.SetPrimaryAlias(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+		return
+	}
+	if r.Method == http.MethodDelete {
+		if err := h.store.DeleteAlias(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
 // handleMailAudit returns recent mail security events (admin only).
 func (h *Handler) handleMailAudit(w http.ResponseWriter, r *http.Request) {
 	user := h.mailUser(w, r)
