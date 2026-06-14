@@ -34,6 +34,42 @@ const MAIL_I18N = {
     mailFrom: 'От', mailReadonly: 'Только чтение', mailRecipientsRequired: 'Укажите хотя бы одного получателя',
     mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад',
   },
+  es: {
+    mailCompose: "Redactar", mailInbox: "Entrada", mailSent: "Enviados", mailDrafts: "Borradores", mailTrash: "Papelera",
+    mailTo: "Para", mailCc: "Cc", mailSubject: "Asunto", mailBody: "Mensaje", mailSend: "Enviar",
+    mailCancel: "Cancelar", mailReply: "Responder", mailDelete: "Eliminar", mailMove: "A la papelera",
+    mailSearchPh: "Buscar correo…", mailNoMessages: "Sin mensajes", mailNoSubject: "(sin asunto)",
+    mailAttach: "Adjuntar", mailAttachments: "Adjuntos", mailDeleteConfirm: "¿Eliminar este mensaje permanentemente?",
+    mailFrom: "De", mailReadonly: "Acceso de solo lectura", mailRecipientsRequired: "Añade al menos un destinatario",
+    mailToPlaceholder: "usuario, usuario…", mailFlag: "Destacar", mailUnflag: "Quitar marca", mailBack: "Atrás",
+  },
+  fr: {
+    mailCompose: "Nouveau", mailInbox: "Boîte de réception", mailSent: "Envoyés", mailDrafts: "Brouillons", mailTrash: "Corbeille",
+    mailTo: "À", mailCc: "Cc", mailSubject: "Objet", mailBody: "Message", mailSend: "Envoyer",
+    mailCancel: "Annuler", mailReply: "Répondre", mailDelete: "Supprimer", mailMove: "Vers la corbeille",
+    mailSearchPh: "Rechercher du courrier…", mailNoMessages: "Aucun message", mailNoSubject: "(sans objet)",
+    mailAttach: "Joindre", mailAttachments: "Pièces jointes", mailDeleteConfirm: "Supprimer définitivement ce message ?",
+    mailFrom: "De", mailReadonly: "Accès en lecture seule", mailRecipientsRequired: "Ajoutez au moins un destinataire",
+    mailToPlaceholder: "utilisateur, utilisateur…", mailFlag: "Marquer", mailUnflag: "Retirer la marque", mailBack: "Retour",
+  },
+  de: {
+    mailCompose: "Verfassen", mailInbox: "Posteingang", mailSent: "Gesendet", mailDrafts: "Entwürfe", mailTrash: "Papierkorb",
+    mailTo: "An", mailCc: "Cc", mailSubject: "Betreff", mailBody: "Nachricht", mailSend: "Senden",
+    mailCancel: "Abbrechen", mailReply: "Antworten", mailDelete: "Löschen", mailMove: "In den Papierkorb",
+    mailSearchPh: "E-Mail suchen…", mailNoMessages: "Keine Nachrichten", mailNoSubject: "(kein Betreff)",
+    mailAttach: "Anhängen", mailAttachments: "Anhänge", mailDeleteConfirm: "Diese Nachricht endgültig löschen?",
+    mailFrom: "Von", mailReadonly: "Nur-Lese-Zugriff", mailRecipientsRequired: "Mindestens einen Empfänger hinzufügen",
+    mailToPlaceholder: "Benutzer, Benutzer…", mailFlag: "Markieren", mailUnflag: "Markierung entfernen", mailBack: "Zurück",
+  },
+  pt: {
+    mailCompose: "Escrever", mailInbox: "Caixa de entrada", mailSent: "Enviados", mailDrafts: "Rascunhos", mailTrash: "Lixeira",
+    mailTo: "Para", mailCc: "Cc", mailSubject: "Assunto", mailBody: "Mensagem", mailSend: "Enviar",
+    mailCancel: "Cancelar", mailReply: "Responder", mailDelete: "Excluir", mailMove: "Para a lixeira",
+    mailSearchPh: "Buscar e-mail…", mailNoMessages: "Sem mensagens", mailNoSubject: "(sem assunto)",
+    mailAttach: "Anexar", mailAttachments: "Anexos", mailDeleteConfirm: "Excluir esta mensagem permanentemente?",
+    mailFrom: "De", mailReadonly: "Acesso somente leitura", mailRecipientsRequired: "Adicione pelo menos um destinatário",
+    mailToPlaceholder: "usuário, usuário…", mailFlag: "Marcar", mailUnflag: "Remover marca", mailBack: "Voltar",
+  },
 };
 let mailI18nMerged = false;
 function ensureMailI18n() {
