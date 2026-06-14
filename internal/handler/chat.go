@@ -9,8 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"kanban/internal/model"
 )
@@ -19,80 +17,18 @@ const (
 	chatMaxMessageLen = 8000
 	chatMaxNameLen    = 100
 	chatMaxTopicLen   = 300
-	sseHeartbeatSec   = 25
 )
 
 var chatMentionRe = regexp.MustCompile(`@([\p{L}\p{N}_.-]+)`)
 
-// === SSE hub ===
+// === Chat SSE events ===
 
-// sseEvent is what gets pushed to connected browsers.
+// sseEvent is the chat-specific payload pushed to connected browsers via the
+// shared sseHub (see events.go).
 type sseEvent struct {
 	Type      string             `json:"type"` // chat_message | chat_edit | chat_delete | chat_channels
 	ChannelID int64              `json:"channel_id,omitempty"`
 	Message   *model.ChatMessage `json:"message,omitempty"`
-}
-
-type sseHub struct {
-	mu      sync.Mutex
-	clients map[int64]map[chan []byte]bool // userID -> connections
-}
-
-func newSSEHub() *sseHub {
-	return &sseHub{clients: make(map[int64]map[chan []byte]bool)}
-}
-
-func (hub *sseHub) subscribe(userID int64) chan []byte {
-	ch := make(chan []byte, 32)
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	if hub.clients[userID] == nil {
-		hub.clients[userID] = make(map[chan []byte]bool)
-	}
-	hub.clients[userID][ch] = true
-	return ch
-}
-
-func (hub *sseHub) unsubscribe(userID int64, ch chan []byte) {
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	if conns := hub.clients[userID]; conns != nil {
-		delete(conns, ch)
-		if len(conns) == 0 {
-			delete(hub.clients, userID)
-		}
-	}
-	close(ch)
-}
-
-// sendTo pushes an event to all connections of the listed users
-// (or to everyone when userIDs is nil).
-func (hub *sseHub) sendTo(userIDs []int64, ev sseEvent) {
-	data, err := json.Marshal(ev)
-	if err != nil {
-		return
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	push := func(conns map[chan []byte]bool) {
-		for ch := range conns {
-			select {
-			case ch <- data:
-			default: // slow client: drop event, the client refetches on demand
-			}
-		}
-	}
-	if userIDs == nil {
-		for _, conns := range hub.clients {
-			push(conns)
-		}
-		return
-	}
-	for _, uid := range userIDs {
-		if conns := hub.clients[uid]; conns != nil {
-			push(conns)
-		}
-	}
 }
 
 // chatAudience resolves which user ids should receive events for a channel;
@@ -514,39 +450,7 @@ func (h *Handler) handleChatEvents(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // nginx: do not buffer
-
-	ch := h.sse.subscribe(user.ID)
-	defer h.sse.unsubscribe(user.ID, ch)
-
-	fmt.Fprintf(w, "event: hello\ndata: {}\n\n")
-	flusher.Flush()
-
-	heartbeat := time.NewTicker(sseHeartbeatSec * time.Second)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case data, open := <-ch:
-			if !open {
-				return
-			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
-		case <-heartbeat.C:
-			fmt.Fprintf(w, ": ping\n\n")
-			flusher.Flush()
-		}
-	}
+	h.serveSSE(w, r, user.ID)
 }
 
 // notifyChatMentions creates in-app + telegram notifications for @mentions.
