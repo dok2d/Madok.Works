@@ -12,6 +12,7 @@ var ecosystemTables = []string{
 	"wiki_spaces", "wiki_space_members", "wiki_pages", "wiki_revisions",
 	"chat_channels", "chat_members", "chat_messages",
 	"calendars", "calendar_events",
+	"mail_messages", "mail_box", "mail_attachments",
 }
 
 // dumpTable returns every row of a table as column->value maps. Used for lossless

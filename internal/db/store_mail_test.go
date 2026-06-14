@@ -1,0 +1,87 @@
+package db
+
+import (
+	"testing"
+)
+
+func TestInternalMailFlow(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	bob := mustUser(t, s, "bob")
+
+	mid, err := s.SendInternalMail(alice, "alice", []int64{bob}, "bob", "", "Hello", "plain body", "<p>hi</p>", "", 0, nil)
+	if err != nil {
+		t.Fatalf("SendInternalMail: %v", err)
+	}
+
+	// sender sees it in Sent (read), recipient in Inbox (unread)
+	sent, _ := s.ListMailbox(alice, "sent", 50, 0)
+	if len(sent) != 1 || sent[0].ID != mid {
+		t.Fatalf("sender Sent wrong: %+v", sent)
+	}
+	inbox, _ := s.ListMailbox(bob, "inbox", 50, 0)
+	if len(inbox) != 1 || inbox[0].Seen {
+		t.Fatalf("recipient inbox wrong: %+v", inbox)
+	}
+	if n := s.UnreadMailCount(bob); n != 1 {
+		t.Errorf("bob unread = %d, want 1", n)
+	}
+
+	// thread id is the root message id
+	if inbox[0].ThreadID != mid {
+		t.Errorf("thread id = %d, want %d", inbox[0].ThreadID, mid)
+	}
+
+	// open + mark seen
+	full, err := s.GetMailBox(bob, inbox[0].BoxID)
+	if err != nil || full.BodyHTML != "<p>hi</p>" {
+		t.Fatalf("GetMailBox: %v (%+v)", err, full)
+	}
+	s.SetMailSeen(inbox[0].BoxID, bob, true)
+	if n := s.UnreadMailCount(bob); n != 0 {
+		t.Errorf("bob unread after read = %d, want 0", n)
+	}
+
+	// bob replies into the same thread
+	if _, err := s.SendInternalMail(bob, "bob", []int64{alice}, "alice", "", "Re: Hello", "reply body", "", "", mid, nil); err != nil {
+		t.Fatalf("reply: %v", err)
+	}
+	thread, _ := s.ThreadForUser(alice, mid)
+	if len(thread) != 2 {
+		t.Errorf("alice thread should have 2 messages, got %d", len(thread))
+	}
+
+	// move bob's message to trash; folder counts reflect it
+	s.MoveMail(inbox[0].BoxID, bob, "trash")
+	if box, _ := s.ListMailbox(bob, "inbox", 50, 0); len(box) != 0 {
+		t.Errorf("inbox should be empty after trashing, got %d", len(box))
+	}
+	if box, _ := s.ListMailbox(bob, "trash", 50, 0); len(box) != 1 {
+		t.Errorf("trash should have 1, got %d", len(box))
+	}
+
+	// search by subject
+	hits, _ := s.SearchMail(alice, "Hello", 50)
+	if len(hits) == 0 {
+		t.Error("search should find the message for alice")
+	}
+}
+
+func TestMailFolderCounts(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	bob := mustUser(t, s, "bob")
+	s.SendInternalMail(alice, "alice", []int64{bob}, "bob", "", "A", "a", "", "", 0, nil)
+	s.SendInternalMail(alice, "alice", []int64{bob}, "bob", "", "B", "b", "", "", 0, nil)
+
+	counts, _ := s.MailFolderCounts(bob)
+	var inbox *struct{ u, total int }
+	for _, c := range counts {
+		if c.Folder == "inbox" {
+			inbox = &struct{ u, total int }{c.Unread, c.Total}
+		}
+	}
+	if inbox == nil || inbox.u != 2 || inbox.total != 2 {
+		t.Errorf("inbox counts wrong: %+v", counts)
+	}
+}

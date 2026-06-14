@@ -267,6 +267,47 @@ type CalendarEvent struct {
 	Occurrence string `json:"occurrence,omitempty"` // set on expanded recurring instances
 }
 
+// === Mail (ecosystem service) ===
+
+// MailAttachment links an uploaded file to a mail message.
+type MailAttachment struct {
+	ID       int64  `json:"id"`
+	FileID   int64  `json:"file_id"`
+	Filename string `json:"filename"`
+	URL      string `json:"url"`
+}
+
+// MailMessage is one email. When listed from a mailbox, the per-user box fields
+// (BoxID/Folder/Seen/Flagged) are populated.
+type MailMessage struct {
+	ID          int64            `json:"id"`
+	ThreadID    int64            `json:"thread_id"`
+	FromUserID  *int64           `json:"from_user_id"`
+	FromName    string           `json:"from_name"`
+	FromAddr    string           `json:"from_addr"`
+	ToAddrs     string           `json:"to_addrs"`
+	CcAddrs     string           `json:"cc_addrs"`
+	Subject     string           `json:"subject"`
+	BodyText    string           `json:"body_text,omitempty"`
+	BodyHTML    string           `json:"body_html,omitempty"`
+	InReplyTo   string           `json:"in_reply_to,omitempty"`
+	CreatedAt   string           `json:"created_at"`
+	Attachments []MailAttachment `json:"attachments,omitempty"`
+	// per-mailbox fields
+	BoxID   int64  `json:"box_id,omitempty"`
+	Folder  string `json:"folder,omitempty"`
+	Seen    bool   `json:"seen"`
+	Flagged bool   `json:"flagged"`
+	Snippet string `json:"snippet,omitempty"`
+}
+
+// MailFolderCount is unread/total per folder for the sidebar.
+type MailFolderCount struct {
+	Folder string `json:"folder"`
+	Unread int    `json:"unread"`
+	Total  int    `json:"total"`
+}
+
 // ExportUser contains user data for export (password hash omitted by default for security)
 type ExportUser struct {
 	ID           int64  `json:"id"`

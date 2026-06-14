@@ -276,6 +276,40 @@ func (s *Store) migrate() error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// === Mail (ecosystem service) ===
+		`CREATE TABLE IF NOT EXISTS mail_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			thread_id INTEGER NOT NULL DEFAULT 0,
+			from_user_id INTEGER REFERENCES users(id),
+			from_name TEXT NOT NULL DEFAULT '',
+			from_addr TEXT NOT NULL DEFAULT '',
+			to_addrs TEXT NOT NULL DEFAULT '',
+			cc_addrs TEXT NOT NULL DEFAULT '',
+			subject TEXT NOT NULL DEFAULT '',
+			body_text TEXT NOT NULL DEFAULT '',
+			body_html TEXT NOT NULL DEFAULT '',
+			in_reply_to TEXT NOT NULL DEFAULT '',
+			message_id TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS mail_box (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			message_id INTEGER NOT NULL REFERENCES mail_messages(id) ON DELETE CASCADE,
+			folder TEXT NOT NULL DEFAULT 'inbox',
+			seen INTEGER NOT NULL DEFAULT 0,
+			flagged INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS mail_attachments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id INTEGER NOT NULL REFERENCES mail_messages(id) ON DELETE CASCADE,
+			file_id INTEGER NOT NULL REFERENCES files(id),
+			filename TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_box_user ON mail_box(user_id, folder, id)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_messages_thread ON mail_messages(thread_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_attachments_msg ON mail_attachments(message_id)`,
 		// indexes for FK lookups
 		`CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id, start_utc)`,
 		`CREATE INDEX IF NOT EXISTS idx_calendars_owner_id ON calendars(owner_id)`,
@@ -1223,10 +1257,22 @@ func (s *Store) CleanupOrphanFiles() (int, error) {
 		"SELECT content FROM wiki_pages",
 		"SELECT content FROM wiki_revisions",
 		"SELECT text FROM chat_messages WHERE deleted = 0",
+		"SELECT body_html FROM mail_messages",
+		"SELECT body_text FROM mail_messages",
 	} {
 		if err := s.scanFileRefs(q, refImages, refFiles); err != nil {
 			return 0, err
 		}
+	}
+
+	// Mail attachments reference files directly (not via text), so mark them too.
+	if arows, err := s.db.Query("SELECT file_id FROM mail_attachments"); err == nil {
+		for arows.Next() {
+			var id int64
+			arows.Scan(&id)
+			refFiles[id] = true
+		}
+		arows.Close()
 	}
 
 	count := 0
