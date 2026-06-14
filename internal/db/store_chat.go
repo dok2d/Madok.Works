@@ -264,10 +264,76 @@ func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit
 		}
 		out = append(out, m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Batch-load attachments for the page (drain-then-query for the single conn).
+	ids := make([]int64, 0, len(out))
+	for i := range out {
+		if !out[i].Deleted {
+			ids = append(ids, out[i].ID)
+		}
+	}
+	atts, err := s.batchChatAttachments(ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Attachments = atts[out[i].ID]
+	}
 	if out == nil {
 		out = []model.ChatMessage{}
 	}
+	return out, nil
+}
+
+// chatAttachments returns attachments for one message.
+func (s *Store) chatAttachments(messageID int64) ([]model.ChatAttachment, error) {
+	rows, err := s.db.Query(`SELECT id, file_id, filename FROM chat_attachments WHERE message_id = ?`, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ChatAttachment
+	for rows.Next() {
+		var a model.ChatAttachment
+		if err := rows.Scan(&a.ID, &a.FileID, &a.Filename); err != nil {
+			return nil, err
+		}
+		a.URL = fmt.Sprintf("/api/files/%d", a.FileID)
+		out = append(out, a)
+	}
 	return out, rows.Err()
+}
+
+// batchChatAttachments loads attachments for many messages in one query.
+func (s *Store) batchChatAttachments(messageIDs []int64) (map[int64][]model.ChatAttachment, error) {
+	res := map[int64][]model.ChatAttachment{}
+	if len(messageIDs) == 0 {
+		return res, nil
+	}
+	ph := make([]string, len(messageIDs))
+	args := make([]any, len(messageIDs))
+	for i, id := range messageIDs {
+		ph[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.Query(`SELECT message_id, id, file_id, filename FROM chat_attachments
+		WHERE message_id IN (`+strings.Join(ph, ",")+`) ORDER BY id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mid int64
+		var a model.ChatAttachment
+		if err := rows.Scan(&mid, &a.ID, &a.FileID, &a.Filename); err != nil {
+			return nil, err
+		}
+		a.URL = fmt.Sprintf("/api/files/%d", a.FileID)
+		res[mid] = append(res[mid], a)
+	}
+	return res, rows.Err()
 }
 
 func (s *Store) GetChatMessage(id int64) (*model.ChatMessage, error) {
@@ -281,16 +347,35 @@ func (s *Store) GetChatMessage(id int64) (*model.ChatMessage, error) {
 		return nil, err
 	}
 	m.Deleted = deleted == 1
+	if !m.Deleted {
+		m.Attachments, _ = s.chatAttachments(m.ID)
+	}
 	return &m, nil
 }
 
-func (s *Store) CreateChatMessage(channelID, authorID int64, text string) (*model.ChatMessage, error) {
-	res, err := s.db.Exec(`INSERT INTO chat_messages(channel_id, author_id, text) VALUES(?,?,?)`,
+func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts []model.ChatAttachment) (*model.ChatMessage, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO chat_messages(channel_id, author_id, text) VALUES(?,?,?)`,
 		channelID, authorID, text)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
+	for _, a := range atts {
+		if a.FileID <= 0 {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT INTO chat_attachments(message_id, file_id, filename) VALUES(?,?,?)`, id, a.FileID, a.Filename); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	// author has obviously read their own message
 	s.MarkChatRead(channelID, authorID, id)
 	return s.GetChatMessage(id)

@@ -11,6 +11,7 @@ let chatState = {
   hasMore: false,
   loadingOlder: false,
   es: null, // EventSource for live updates
+  pending: [], // attachments staged for the next message
 };
 
 const CHAT_CHANNEL_KEY = 'kanban-chat-channel';
@@ -32,7 +33,7 @@ const CHAT_I18N = {
     chatNameRequired: 'Name is required', chatConfirmLeave: 'Leave this channel?',
     chatDeleteChannel: 'Delete channel', chatDeleteChannelConfirm: 'Delete this channel and all its messages?',
     chatNoUsers: 'No other users', chatDeleteMsgConfirm: 'Delete this message?',
-    chatEditPrompt: 'Edit message:',
+    chatEditPrompt: 'Edit message:', chatAttach: 'Attach file',
   },
   ru: {
     chatChannels: 'Каналы', chatGroups: 'Группы', chatDirect: 'Личные сообщения',
@@ -47,7 +48,7 @@ const CHAT_I18N = {
     chatNameRequired: 'Введите название', chatConfirmLeave: 'Покинуть канал?',
     chatDeleteChannel: 'Удалить канал', chatDeleteChannelConfirm: 'Удалить канал и все его сообщения?',
     chatNoUsers: 'Нет других пользователей', chatDeleteMsgConfirm: 'Удалить сообщение?',
-    chatEditPrompt: 'Изменить сообщение:',
+    chatEditPrompt: 'Изменить сообщение:', chatAttach: 'Прикрепить файл',
   },
   es: {
     chatChannels: "Canales", chatGroups: "Grupos", chatDirect: "Mensajes directos",
@@ -62,7 +63,7 @@ const CHAT_I18N = {
     chatNameRequired: "El nombre es obligatorio", chatConfirmLeave: "¿Salir de este canal?",
     chatDeleteChannel: "Eliminar canal", chatDeleteChannelConfirm: "¿Eliminar este canal y todos sus mensajes?",
     chatNoUsers: "No hay otros usuarios", chatDeleteMsgConfirm: "¿Eliminar este mensaje?",
-    chatEditPrompt: "Editar mensaje:",
+    chatEditPrompt: "Editar mensaje:", chatAttach: "Adjuntar archivo",
   },
   fr: {
     chatChannels: "Canaux", chatGroups: "Groupes", chatDirect: "Messages directs",
@@ -77,7 +78,7 @@ const CHAT_I18N = {
     chatNameRequired: "Le nom est obligatoire", chatConfirmLeave: "Quitter ce canal ?",
     chatDeleteChannel: "Supprimer le canal", chatDeleteChannelConfirm: "Supprimer ce canal et tous ses messages ?",
     chatNoUsers: "Aucun autre utilisateur", chatDeleteMsgConfirm: "Supprimer ce message ?",
-    chatEditPrompt: "Modifier le message :",
+    chatEditPrompt: "Modifier le message :", chatAttach: "Joindre un fichier",
   },
   de: {
     chatChannels: "Kanäle", chatGroups: "Gruppen", chatDirect: "Direktnachrichten",
@@ -92,7 +93,7 @@ const CHAT_I18N = {
     chatNameRequired: "Name ist erforderlich", chatConfirmLeave: "Diesen Kanal verlassen?",
     chatDeleteChannel: "Kanal löschen", chatDeleteChannelConfirm: "Diesen Kanal und alle Nachrichten löschen?",
     chatNoUsers: "Keine anderen Benutzer", chatDeleteMsgConfirm: "Diese Nachricht löschen?",
-    chatEditPrompt: "Nachricht bearbeiten:",
+    chatEditPrompt: "Nachricht bearbeiten:", chatAttach: "Datei anhängen",
   },
   pt: {
     chatChannels: "Canais", chatGroups: "Grupos", chatDirect: "Mensagens diretas",
@@ -107,7 +108,7 @@ const CHAT_I18N = {
     chatNameRequired: "O nome é obrigatório", chatConfirmLeave: "Sair deste canal?",
     chatDeleteChannel: "Excluir canal", chatDeleteChannelConfirm: "Excluir este canal e todas as mensagens?",
     chatNoUsers: "Nenhum outro usuário", chatDeleteMsgConfirm: "Excluir esta mensagem?",
-    chatEditPrompt: "Editar mensagem:",
+    chatEditPrompt: "Editar mensagem:", chatAttach: "Anexar arquivo",
   },
 };
 
@@ -254,10 +255,55 @@ function chatHeadActions(c) {
 
 function chatComposer() {
   if (currentUser && currentUser.role === 'readonly') return `<div class="chat-readonly">${t('chatReadonly')}</div>`;
-  return `<div class="chat-composer">
+  return `<div class="chat-pending" id="chat-pending"></div>
+  <div class="chat-composer">
+    <button class="btn btn-ghost btn-sm chat-attach-btn" title="${t('chatAttach')}" onclick="chatAttachFile()">&#128206;</button>
     <textarea id="chat-input" class="chat-input" rows="1" placeholder="${t('chatMessagePh')}"></textarea>
     <button class="btn btn-primary btn-sm" onclick="chatSend()">${t('chatSend')}</button>
   </div>`;
+}
+
+// chatAttachFile uploads a file to /api/files and stages it for the next message.
+function chatAttachFile() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.onchange = async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    if (typeof MAX_UPLOAD_SIZE !== 'undefined' && file.size > MAX_UPLOAD_SIZE) { alert(t('fileTooLarge')); return; }
+    try {
+      const upload = (typeof compressImage === 'function' && file.type.startsWith('image/') && file.type !== 'image/gif') ? await compressImage(file) : file;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await api('/api/files', 'POST', { data: reader.result.split(',')[1], filename: file.name, mime: upload.type || file.type || 'application/octet-stream' });
+          chatState.pending.push({ file_id: res.id, filename: file.name });
+          chatRenderPending();
+        } catch (e) { alert(e.message); }
+      };
+      reader.readAsDataURL(upload);
+    } catch (e) { alert(e.message); }
+  };
+  inp.click();
+}
+
+function chatRenderPending() {
+  const el = document.getElementById('chat-pending');
+  if (!el) return;
+  el.innerHTML = chatState.pending.map((a, i) =>
+    `<span class="chat-pending-chip">&#128206; ${esc(a.filename)} <a onclick="chatRemovePending(${i})">&#10005;</a></span>`).join('');
+}
+function chatRemovePending(i) { chatState.pending.splice(i, 1); chatRenderPending(); }
+
+// chatRenderAttachments renders a message's attachments (inline images + file chips).
+function chatRenderAttachments(msg) {
+  if (!msg.attachments || !msg.attachments.length) return '';
+  return `<div class="chat-atts">` + msg.attachments.map(a => {
+    if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(a.filename)) {
+      return `<a href="${escAttr(a.url)}" target="_blank" rel="noopener"><img class="chat-att-img" src="${escAttr(a.url)}" alt="${escAttr(a.filename)}"></a>`;
+    }
+    return `<a class="chat-att" href="${escAttr(a.url)}" target="_blank" rel="noopener" download>&#128206; ${esc(a.filename)}</a>`;
+  }).join('') + `</div>`;
 }
 
 // === Messages ===
@@ -287,6 +333,7 @@ function chatRenderMsg(msg, grouped) {
     <div class="chat-msg-body">
       <span class="chat-text">${chatFormatText(msg.text)}</span>
       ${msg.edited_at ? `<span class="chat-edited">(${t('chatEdited')})</span>` : ''}
+      ${chatRenderAttachments(msg)}
       ${canManage ? `<span class="chat-msg-actions">
         ${mine ? `<a onclick="chatEditMsg(${msg.id})">${t('chatEdit')}</a>` : ''}
         <a class="chat-danger" onclick="chatDeleteMsg(${msg.id})">${t('chatDelete')}</a>
@@ -331,14 +378,17 @@ async function chatSend() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
   const text = inp.value.trim();
-  if (!text) return;
+  const atts = chatState.pending.slice();
+  if (!text && !atts.length) return;
   inp.value = '';
   chatAutoGrow.call(inp);
+  chatState.pending = [];
+  chatRenderPending();
   try {
-    const msg = await api(`/api/chat/channels/${chatState.channelId}/messages`, 'POST', { text });
+    const msg = await api(`/api/chat/channels/${chatState.channelId}/messages`, 'POST', { text, attachments: atts });
     chatAppendMsg(msg);
     chatMarkRead();
-  } catch (e) { inp.value = text; alert(e.message); }
+  } catch (e) { inp.value = text; chatState.pending = atts; chatRenderPending(); alert(e.message); }
 }
 
 function chatAppendMsg(msg) {

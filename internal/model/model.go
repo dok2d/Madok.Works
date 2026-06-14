@@ -206,16 +206,25 @@ type ChatChannel struct {
 	PeerName string `json:"peer_name,omitempty"`
 }
 
+// ChatAttachment links an uploaded file to a chat message.
+type ChatAttachment struct {
+	ID       int64  `json:"id"`
+	FileID   int64  `json:"file_id"`
+	Filename string `json:"filename"`
+	URL      string `json:"url"`
+}
+
 // ChatMessage is one message in a channel.
 type ChatMessage struct {
-	ID         int64  `json:"id"`
-	ChannelID  int64  `json:"channel_id"`
-	AuthorID   *int64 `json:"author_id"`
-	AuthorName string `json:"author_name"`
-	Text       string `json:"text"`
-	CreatedAt  string `json:"created_at"`
-	EditedAt   string `json:"edited_at,omitempty"`
-	Deleted    bool   `json:"deleted"`
+	ID          int64            `json:"id"`
+	ChannelID   int64            `json:"channel_id"`
+	AuthorID    *int64           `json:"author_id"`
+	AuthorName  string           `json:"author_name"`
+	Text        string           `json:"text"`
+	CreatedAt   string           `json:"created_at"`
+	EditedAt    string           `json:"edited_at,omitempty"`
+	Deleted     bool             `json:"deleted"`
+	Attachments []ChatAttachment `json:"attachments,omitempty"`
 }
 
 // ChatSearchHit is one full-text search result across visible channels.

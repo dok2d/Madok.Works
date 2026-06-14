@@ -280,18 +280,27 @@ func (h *Handler) handleChatMessages(w http.ResponseWriter, r *http.Request, use
 		jsonResp(w, msgs)
 	case http.MethodPost:
 		var req struct {
-			Text string `json:"text"`
+			Text        string                 `json:"text"`
+			Attachments []model.ChatAttachment `json:"attachments"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 		req.Text = strings.TrimSpace(req.Text)
-		if req.Text == "" || len(req.Text) > chatMaxMessageLen {
-			http.Error(w, "empty or too long message", http.StatusBadRequest)
+		if len(req.Text) > chatMaxMessageLen {
+			http.Error(w, "message too long", http.StatusBadRequest)
 			return
 		}
-		msg, err := h.store.CreateChatMessage(ch.ID, user.ID, req.Text)
+		if req.Text == "" && len(req.Attachments) == 0 {
+			http.Error(w, "empty message", http.StatusBadRequest)
+			return
+		}
+		if len(req.Attachments) > 10 {
+			http.Error(w, "too many attachments", http.StatusBadRequest)
+			return
+		}
+		msg, err := h.store.CreateChatMessage(ch.ID, user.ID, req.Text, req.Attachments)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

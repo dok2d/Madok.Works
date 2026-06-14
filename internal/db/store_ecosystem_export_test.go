@@ -20,7 +20,7 @@ func TestEcosystemExportRoundTrip(t *testing.T) {
 		t.Fatalf("CreateWikiPage: %v", err)
 	}
 	ch, _ := a.CreateChatChannel("general", "", "channel", u, nil)
-	a.CreateChatMessage(ch, u, "hi there")
+	a.CreateChatMessage(ch, u, "hi there", nil)
 	cal, _ := a.CreateCalendar("Work", "#abc", u, "private")
 	a.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Launch", Start: "2026-01-01 10:00:00", End: "2026-01-01 11:00:00"}, u)
 

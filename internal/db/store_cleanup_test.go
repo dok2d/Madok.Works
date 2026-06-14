@@ -42,7 +42,7 @@ func TestCleanupOrphanFiles(t *testing.T) {
 	// File referenced only by a chat message.
 	chatFile, _ := s.SaveFile("doc.pdf", []byte("pdf"), "application/pdf")
 	ch, _ := s.CreateChatChannel("c", "", "channel", author, nil)
-	if _, err := s.CreateChatMessage(ch, author, "see "+fileRef(chatFile)); err != nil {
+	if _, err := s.CreateChatMessage(ch, author, "see "+fileRef(chatFile), nil); err != nil {
 		t.Fatalf("CreateChatMessage: %v", err)
 	}
 

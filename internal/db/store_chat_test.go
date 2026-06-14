@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -86,7 +87,7 @@ func TestChatMessagesPagination(t *testing.T) {
 	}
 	var ids []int64
 	for i := 0; i < 5; i++ {
-		m, err := s.CreateChatMessage(ch, alice, "msg")
+		m, err := s.CreateChatMessage(ch, alice, "msg", nil)
 		if err != nil {
 			t.Fatalf("CreateChatMessage: %v", err)
 		}
@@ -130,7 +131,7 @@ func TestDeleteChatMessageSoftDelete(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")
 	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
-	m, err := s.CreateChatMessage(ch, alice, "to be deleted")
+	m, err := s.CreateChatMessage(ch, alice, "to be deleted", nil)
 	if err != nil {
 		t.Fatalf("CreateChatMessage: %v", err)
 	}
@@ -163,7 +164,7 @@ func TestMarkChatReadUnread(t *testing.T) {
 	// alice posts two messages; her own messages must not count for her
 	var last int64
 	for i := 0; i < 2; i++ {
-		m, _ := s.CreateChatMessage(ch, alice, "hi")
+		m, _ := s.CreateChatMessage(ch, alice, "hi", nil)
 		last = m.ID
 	}
 	if n := s.TotalChatUnread(alice); n != 0 {
@@ -218,9 +219,9 @@ func TestSearchChatMessagesAccess(t *testing.T) {
 	bob := mustUser(t, s, "bob")
 
 	grp, _ := s.CreateChatChannel("secret", "", "group", alice, nil)
-	s.CreateChatMessage(grp, alice, "private treasure")
+	s.CreateChatMessage(grp, alice, "private treasure", nil)
 	pub, _ := s.CreateChatChannel("public", "", "channel", alice, nil)
-	s.CreateChatMessage(pub, alice, "public treasure")
+	s.CreateChatMessage(pub, alice, "public treasure", nil)
 
 	// bob cannot find the private message but can find the public one
 	bobHits, err := s.SearchChatMessages(bob, "treasure", 50)
@@ -236,6 +237,37 @@ func TestSearchChatMessagesAccess(t *testing.T) {
 	if len(aliceHits) != 2 {
 		t.Errorf("alice should find 2 hits, got %d", len(aliceHits))
 	}
+}
+
+func TestChatAttachments(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
+	fid, err := s.SaveFile("doc.pdf", []byte("pdf"), "application/pdf")
+	if err != nil {
+		t.Fatalf("SaveFile: %v", err)
+	}
+	m, err := s.CreateChatMessage(ch, alice, "see attached", []model.ChatAttachment{{FileID: fid, Filename: "doc.pdf"}})
+	if err != nil {
+		t.Fatalf("CreateChatMessage: %v", err)
+	}
+	if len(m.Attachments) != 1 || m.Attachments[0].FileID != fid || m.Attachments[0].URL != "/api/files/"+itoaTest(fid) {
+		t.Fatalf("attachment not returned on create: %+v", m.Attachments)
+	}
+	// batch-loaded via list
+	list, _ := s.ListChatMessages(ch, 0, 0, 0)
+	if len(list) != 1 || len(list[0].Attachments) != 1 || list[0].Attachments[0].Filename != "doc.pdf" {
+		t.Fatalf("attachment not batch-loaded in list: %+v", list)
+	}
+	// GC must keep a chat-referenced file
+	n, _ := s.CleanupOrphanFiles()
+	if _, _, _, err := s.GetFile(fid); err != nil {
+		t.Errorf("chat-referenced file deleted by GC (removed %d): %v", n, err)
+	}
+}
+
+func itoaTest(n int64) string {
+	return fmt.Sprintf("%d", n)
 }
 
 func msgIDs(msgs []model.ChatMessage) []int64 {
