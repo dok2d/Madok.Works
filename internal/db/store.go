@@ -307,6 +307,72 @@ func (s *Store) migrate() error {
 			file_id INTEGER NOT NULL REFERENCES files(id),
 			filename TEXT NOT NULL DEFAULT ''
 		)`,
+		// Per-user custom mail folders (system folders inbox/sent/drafts/trash/junk are implicit).
+		`CREATE TABLE IF NOT EXISTS mail_folders (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(user_id, name)
+		)`,
+		// Per-user inbound mail filters. conditions/actions are small JSON arrays.
+		`CREATE TABLE IF NOT EXISTS mail_rules (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			match_type TEXT NOT NULL DEFAULT 'all',
+			conditions TEXT NOT NULL DEFAULT '[]',
+			actions TEXT NOT NULL DEFAULT '[]',
+			position INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Security / attack-investigation audit (mail). user_id nullable (external events).
+		`CREATE TABLE IF NOT EXISTS mail_audit (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			event TEXT NOT NULL,
+			source_ip TEXT NOT NULL DEFAULT '',
+			mail_from TEXT NOT NULL DEFAULT '',
+			rcpt TEXT NOT NULL DEFAULT '',
+			subject TEXT NOT NULL DEFAULT '',
+			user_id INTEGER REFERENCES users(id),
+			score INTEGER NOT NULL DEFAULT 0,
+			detail TEXT NOT NULL DEFAULT ''
+		)`,
+		// Mailbox aliases: extra local-parts mapping to a user; is_primary picks the From address.
+		`CREATE TABLE IF NOT EXISTS mail_aliases (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			localpart TEXT NOT NULL UNIQUE,
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Chat message attachments (mirrors mail_attachments).
+		`CREATE TABLE IF NOT EXISTS chat_attachments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+			file_id INTEGER NOT NULL REFERENCES files(id),
+			filename TEXT NOT NULL DEFAULT ''
+		)`,
+		// Per-event calendar reminders. occurrence_start '' = definition template;
+		// non-empty rows are per-occurrence "sent" markers (idempotent via unique index).
+		`CREATE TABLE IF NOT EXISTS calendar_reminders (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+			lead_min INTEGER NOT NULL DEFAULT 15,
+			channel TEXT NOT NULL DEFAULT 'both',
+			occurrence_start TEXT NOT NULL DEFAULT '',
+			sent INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_folders_user ON mail_folders(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_rules_user ON mail_rules(user_id, position)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_audit_created ON mail_audit(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_mail_aliases_user ON mail_aliases(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_attachments_msg ON chat_attachments(message_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_cal_reminders_event ON calendar_reminders(event_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cal_reminders_dedup ON calendar_reminders(event_id, lead_min, occurrence_start)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_box_user ON mail_box(user_id, folder, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_messages_thread ON mail_messages(thread_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_attachments_msg ON mail_attachments(message_id)`,
@@ -354,6 +420,9 @@ func (s *Store) migrate() error {
 		"ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local'",
 		"ALTER TABLE users ADD COLUMN external_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE calendar_events ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE mail_messages ADD COLUMN spam_score INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE wiki_pages ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 	}
 	for _, q := range alters {
 		s.db.Exec(q) // ignore "duplicate column" errors
@@ -1265,14 +1334,16 @@ func (s *Store) CleanupOrphanFiles() (int, error) {
 		}
 	}
 
-	// Mail attachments reference files directly (not via text), so mark them too.
-	if arows, err := s.db.Query("SELECT file_id FROM mail_attachments"); err == nil {
-		for arows.Next() {
-			var id int64
-			arows.Scan(&id)
-			refFiles[id] = true
+	// Mail and chat attachments reference files directly (not via text), so mark them too.
+	for _, q := range []string{"SELECT file_id FROM mail_attachments", "SELECT file_id FROM chat_attachments"} {
+		if arows, err := s.db.Query(q); err == nil {
+			for arows.Next() {
+				var id int64
+				arows.Scan(&id)
+				refFiles[id] = true
+			}
+			arows.Close()
 		}
-		arows.Close()
 	}
 
 	count := 0
