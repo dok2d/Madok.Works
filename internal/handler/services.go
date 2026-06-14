@@ -20,7 +20,7 @@ var serviceAvailable = map[string]bool{
 	"wiki":     true,
 	"chat":     true,
 	"calendar": true,
-	"mail":     false,
+	"mail":     true,
 }
 
 // serviceDefaultOn marks services enabled by default once available.
@@ -28,7 +28,7 @@ var serviceDefaultOn = map[string]bool{
 	"wiki":     true,
 	"chat":     true,
 	"calendar": true,
-	"mail":     false, // mail needs SMTP configuration first
+	"mail":     true, // internal mail works out of the box; external SMTP is optional
 }
 
 func (h *Handler) serviceEnabled(name string) bool {
