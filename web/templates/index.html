@@ -252,6 +252,16 @@ body.has-rail #app{margin-left:52px}
   .cal-main{height:calc(100vh - 52px)}
   .cal-cell{min-height:64px}
 }
+/* === Global search palette === */
+.gsearch-modal{max-width:560px;width:92vw;padding:0;overflow:hidden}
+.gsearch-input{width:100%;border:none;border-bottom:1px solid var(--bg4);background:var(--bg2);color:var(--fg);font-size:1rem;padding:16px 18px;outline:none}
+.gsearch-results{max-height:60vh;overflow-y:auto}
+.gsearch-hit{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;border-bottom:1px solid var(--bg3)}
+.gsearch-hit:hover{background:var(--bg3)}
+.gsearch-svc{font-size:1rem;width:22px;text-align:center;flex-shrink:0}
+.gsearch-main{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem}
+.gsearch-snip{color:var(--fg3);font-size:.8rem}
+.gsearch-empty{padding:18px;text-align:center;color:var(--fg3);font-size:.85rem}
 /* === Mail service === */
 .mail-layout{display:flex;height:calc(100vh - 52px)}
 .mail-side{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--bg4);display:flex;flex-direction:column;padding:12px;gap:10px;overflow-y:auto}
@@ -689,6 +699,7 @@ body.has-rail #app{margin-left:52px}
   </h1>
   <div class="header-actions">
     <input class="search-input" id="search" autocomplete="off">
+    <button class="btn btn-ghost btn-sm" id="gsearch-btn" onclick="openGlobalSearch()" title="Search everything (Ctrl+K)" style="font-size:.9rem">&#128269;</button>
     <button class="btn btn-ghost btn-sm" onclick="navigateTo('/backlog')" data-i18n="sprintBacklog" style="font-size:.8rem"></button>
     <button class="btn btn-ghost btn-sm" id="notif-btn" onclick="toggleNotifications()" style="position:relative">&#128276;<span id="notif-count" class="notif-badge hidden">0</span></button>
     <button class="btn btn-ghost btn-sm" id="personal-toggle" onclick="togglePersonalView()" style="display:none"></button>
@@ -2481,8 +2492,8 @@ async function loadNotifications() {
       <button class="btn btn-ghost btn-sm" onclick="markAllRead()">${t('markAllRead')}</button>
     </div>`;
     for (const n of notifs) {
-      html += `<div class="notif-item ${n.is_read?'':'unread'}" onclick="readNotification(${n.id}, ${n.task_id || 'null'})">
-        <div>${esc(n.text)}</div>
+      html += `<div class="notif-item ${n.is_read?'':'unread'}" onclick="readNotification(${n.id}, ${n.task_id || 'null'}, '${esc(n.type||'')}')">
+        <div><span class="notif-icon">${notifIcon(n.type)}</span> ${esc(n.text)}</div>
         <div class="notif-time">${fmtDate(n.created_at)}</div>
       </div>`;
     }
@@ -2490,9 +2501,30 @@ async function loadNotifications() {
   } catch(e) { dd.innerHTML = `<p style="color:var(--red)">${t('error')}</p>`; }
 }
 
-async function readNotification(id, taskId) {
+// notifIcon picks an emoji per notification type so the feed scans by service.
+function notifIcon(type) {
+  type = type || '';
+  if (type.indexOf('chat') === 0) return '&#128172;';
+  if (type.indexOf('calendar') === 0) return '&#128197;';
+  if (type === 'mail') return '&#9993;';
+  return '&#9678;'; // kanban (mention/assigned/comment/subscribed)
+}
+
+// notifRoute maps a notification to the view it should open (service routes only
+// when that service is enabled), or null to just refresh the feed in place.
+function notifRoute(type, taskId) {
+  type = type || '';
+  if (type.indexOf('chat') === 0 && isServiceEnabled('chat')) return '/chat';
+  if (type.indexOf('calendar') === 0 && isServiceEnabled('calendar')) return '/calendar';
+  if (type === 'mail' && isServiceEnabled('mail')) return '/mail';
+  if (taskId) return '/task/' + taskId;
+  return null;
+}
+
+async function readNotification(id, taskId, type) {
   try { await api('/api/notifications/read', 'POST', { id }); } catch {}
-  if (taskId) { toggleNotifications(); navigateTo('/task/' + taskId); }
+  const route = notifRoute(type, taskId);
+  if (route) { toggleNotifications(); navigateTo(route); }
   else { loadNotifications(); }
   refreshNotifCount();
 }
@@ -2525,6 +2557,43 @@ document.addEventListener('click', function(e) {
     if (dd) dd.classList.add('hidden');
   }
 });
+
+// === Global cross-service search (command palette) ===
+function openGlobalSearch() {
+  if (document.getElementById('gsearch-ov')) return;
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'gsearch-ov';
+  ov.innerHTML = `<div class="modal gsearch-modal">
+    <input id="gsearch-input" class="gsearch-input" placeholder="${t('search')}" autocomplete="off">
+    <div id="gsearch-results" class="gsearch-results"></div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  const inp = ov.querySelector('#gsearch-input');
+  inp.focus();
+  let tmo = null;
+  inp.addEventListener('input', () => { clearTimeout(tmo); tmo = setTimeout(() => gsearchRun(inp.value), 250); });
+  inp.addEventListener('keydown', e => { if (e.key === 'Escape') ov.remove(); });
+}
+async function gsearchRun(q) {
+  const box = document.getElementById('gsearch-results');
+  if (!box) return;
+  q = q.trim();
+  if (!q) { box.innerHTML = ''; return; }
+  let hits = [];
+  try { hits = await api('/api/search/global?q=' + encodeURIComponent(q)); } catch (e) { box.innerHTML = ''; return; }
+  if (!hits.length) { box.innerHTML = `<div class="gsearch-empty">${t('notFound')}</div>`; return; }
+  box.innerHTML = hits.map(h => `<div class="gsearch-hit" onclick="gsearchGo('${escAttr(h.url)}')">
+    <span class="gsearch-svc">${SERVICE_ICONS[h.service] || ''}</span>
+    <span class="gsearch-main"><b>${esc(h.title)}</b>${h.snippet ? ` <span class="gsearch-snip">${esc(h.snippet)}</span>` : ''}</span>
+  </div>`).join('');
+}
+function gsearchGo(url) {
+  const ov = document.getElementById('gsearch-ov');
+  if (ov) ov.remove();
+  navigateTo(url);
+}
 
 // === Search ===
 async function doSearch(query) {
@@ -3288,6 +3357,12 @@ document.addEventListener('click', function(e) {
 // === Keyboard shortcuts ===
 let _preModalFocus = null;
 document.addEventListener('keydown', function(e) {
+  // Ctrl/Cmd+K opens the global search palette
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    openGlobalSearch();
+    return;
+  }
   if (e.key === 'Escape') {
     const modal = document.querySelector('.modal-overlay');
     if (modal) {

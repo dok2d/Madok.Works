@@ -273,6 +273,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/files", h.handleFileUpload)
 	h.mux.HandleFunc("/api/files/", h.handleFileServe)
 	h.mux.HandleFunc("/api/search", h.handleSearch)
+	h.mux.HandleFunc("/api/search/global", h.handleGlobalSearch)
 	h.mux.HandleFunc("/api/export", h.handleExport)
 	h.mux.HandleFunc("/api/import", h.handleImport)
 	h.mux.HandleFunc("/api/backups", h.handleBackups)
