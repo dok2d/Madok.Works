@@ -317,4 +317,7 @@ type ExportData struct {
 	Subscriptions []ExportSubscription `json:"subscriptions,omitempty"`
 	Files         []ExportFile         `json:"files,omitempty"`
 	Images        []ExportFile         `json:"images,omitempty"`
+	// Ecosystem holds generic per-table row dumps for the wiki/chat/calendar
+	// services (keyed by table name) so JSON export/import is lossless for them.
+	Ecosystem map[string][]map[string]any `json:"ecosystem,omitempty"`
 }

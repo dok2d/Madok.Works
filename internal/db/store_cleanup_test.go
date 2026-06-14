@@ -13,7 +13,7 @@ func TestCleanupOrphanFiles(t *testing.T) {
 	s := newTestStore(t)
 	author := mustUser(t, s, "alice")
 
-	imgRef := func(id int64) string  { return fmt.Sprintf(`<img src="/api/images/%d">`, id) }
+	imgRef := func(id int64) string { return fmt.Sprintf(`<img src="/api/images/%d">`, id) }
 	fileRef := func(id int64) string { return fmt.Sprintf(`<a href="/api/files/%d">f</a>`, id) }
 
 	// Image referenced only by a wiki page's current content.

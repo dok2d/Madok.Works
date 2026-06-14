@@ -1441,6 +1441,7 @@ func (s *Store) ExportAll() (*model.ExportData, error) {
 		Subscriptions: subs,
 		Files:         files,
 		Images:        images,
+		Ecosystem:     s.exportEcosystem(),
 	}, nil
 }
 
@@ -2262,6 +2263,11 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 		for _, f := range data.Images {
 			tx.Exec("INSERT INTO images(id,data,mime) VALUES(?,?,?)", f.ID, f.Data, f.Mime)
 		}
+	}
+
+	// Import ecosystem services (wiki/chat/calendar) if present
+	if err := importEcosystem(tx, data.Ecosystem); err != nil {
+		return err
 	}
 
 	// Reset SQLite auto-increment counters to avoid ID conflicts
