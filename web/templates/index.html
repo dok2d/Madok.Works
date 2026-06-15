@@ -191,10 +191,13 @@ body.has-rail #app{margin-left:52px}
 .chat-edited{font-size:.66rem;color:var(--fg3);margin-left:4px}
 .chat-del{color:var(--fg3)}
 .chat-mention{color:var(--accent);font-weight:600}
-.chat-msg-actions{display:none;margin-left:8px;font-size:.7rem}
-.chat-msg-body:hover .chat-msg-actions{display:inline}
-.chat-msg-actions a{color:var(--fg3);cursor:pointer;margin-left:6px}
-.chat-msg-actions a:hover{color:var(--accent)}
+.chat-side-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--fg3)}
+.chat-msg-menu-btn{display:none;position:absolute;top:0;right:0;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg3);cursor:pointer;font-size:.95rem;line-height:1;padding:2px 7px}
+.chat-msg-body:hover .chat-msg-menu-btn{display:inline-block}
+.chat-msg-menu-btn:hover{color:var(--accent)}
+.chat-msg-menu{position:fixed;z-index:320;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:4px 0;min-width:150px}
+.chat-msg-menu a{display:block;padding:7px 14px;font-size:.84rem;color:var(--fg);cursor:pointer}
+.chat-msg-menu a:hover{background:var(--bg3)}
 .chat-danger{color:var(--red) !important}
 .chat-loadmore{align-self:center;font-size:.78rem;color:var(--accent);cursor:pointer;padding:6px 12px}
 .chat-loadmore:hover{text-decoration:underline}

@@ -42,6 +42,7 @@ const CHAT_I18N = {
     chatEditPrompt: 'Edit message:', chatAttach: 'Attach file',
     chatReply: 'Reply', chatReact: 'React', chatPin: 'Pin', chatUnpin: 'Unpin',
     chatPinned: 'Pinned message', chatReplyingTo: 'Replying to', chatCancelReply: 'Cancel',
+    chatOptions: 'Options',
   },
   ru: {
     chatChannels: 'Каналы', chatGroups: 'Группы', chatDirect: 'Личные сообщения',
@@ -59,6 +60,7 @@ const CHAT_I18N = {
     chatEditPrompt: 'Изменить сообщение:', chatAttach: 'Прикрепить файл',
     chatReply: 'Ответить', chatReact: 'Реакция', chatPin: 'Закрепить', chatUnpin: 'Открепить',
     chatPinned: 'Закреплённое', chatReplyingTo: 'Ответ', chatCancelReply: 'Отмена',
+    chatOptions: 'Опции',
   },
   es: {
     chatChannels: "Canales", chatGroups: "Grupos", chatDirect: "Mensajes directos",
@@ -163,22 +165,15 @@ function chatRenderLayout() {
   <div class="chat-layout">
     <aside class="chat-side">
       <div class="chat-side-head">
-        <input class="chat-search" id="chat-search" placeholder="${t('chatSearchPh')}" autocomplete="off">
+        <span class="chat-side-title">${t('chatChannels')}</span>
         ${canWrite ? `<button class="btn-icon" title="${t('chatNewChannel')}" onclick="chatNewChannelDialog('channel')">+</button>` : ''}
       </div>
-      <div class="chat-search-results hidden" id="chat-search-results"></div>
       <div class="chat-channels" id="chat-channels"></div>
     </aside>
     <main class="chat-main" id="chat-main"></main>
   </div>`;
   chatRenderChannelList();
   chatRenderMain();
-  const se = document.getElementById('chat-search');
-  if (se) {
-    let tmo = null;
-    se.addEventListener('input', function () { clearTimeout(tmo); tmo = setTimeout(() => chatDoSearch(this.value), 300); });
-    se.addEventListener('keydown', function (e) { if (e.key === 'Escape') { this.value = ''; chatDoSearch(''); } });
-  }
 }
 
 function chatChannelLabel(c) {
@@ -353,15 +348,38 @@ function chatRenderMsg(msg, grouped) {
       ${msg.edited_at ? `<span class="chat-edited">(${t('chatEdited')})</span>` : ''}
       ${chatRenderAttachments(msg)}
       ${chatReactionChips(msg)}
-      <span class="chat-msg-actions">
-        ${canWrite ? `<a onclick="chatStartReply(${msg.id})">${t('chatReply')}</a>` : ''}
-        ${canWrite ? `<a onclick="chatReactPick(event, ${msg.id})">${t('chatReact')}</a>` : ''}
-        ${canPin ? `<a onclick="chatTogglePin(${msg.id}, ${msg.pinned ? 0 : 1})">${msg.pinned ? t('chatUnpin') : t('chatPin')}</a>` : ''}
-        ${mine ? `<a onclick="chatEditMsg(${msg.id})">${t('chatEdit')}</a>` : ''}
-        ${canManage ? `<a class="chat-danger" onclick="chatDeleteMsg(${msg.id})">${t('chatDelete')}</a>` : ''}
-      </span>
+      ${(canWrite || canManage) ? `<button class="chat-msg-menu-btn" title="${t('chatOptions')}" onclick="chatMsgMenu(event, ${msg.id})">&#8943;</button>` : ''}
     </div>
   </div>`;
+}
+
+// chatMsgMenu opens a dropdown with the message actions (reply/react/pin/edit/delete).
+function chatMsgMenu(ev, id) {
+  ev.stopPropagation();
+  document.querySelectorAll('.chat-msg-menu').forEach(m => m.remove());
+  const msg = chatState.messages.find(m => m.id === id);
+  if (!msg || msg.deleted) return;
+  const mine = currentUser && msg.author_id === currentUser.id;
+  const canManage = mine || (currentUser && currentUser.role === 'admin');
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  const items = [];
+  if (canWrite) items.push(`<a onclick="chatStartReply(${id})">${t('chatReply')}</a>`);
+  if (canWrite) items.push(`<a class="chat-menu-react" onclick="chatReactPick(event, ${id})">${t('chatReact')}</a>`);
+  if (chatCanPin()) items.push(`<a onclick="chatTogglePin(${id}, ${msg.pinned ? 0 : 1})">${msg.pinned ? t('chatUnpin') : t('chatPin')}</a>`);
+  if (mine) items.push(`<a onclick="chatEditMsg(${id})">${t('chatEdit')}</a>`);
+  if (canManage) items.push(`<a class="chat-danger" onclick="chatDeleteMsg(${id})">${t('chatDelete')}</a>`);
+  if (!items.length) return;
+  const menu = document.createElement('div');
+  menu.className = 'chat-msg-menu';
+  menu.innerHTML = items.join('');
+  document.body.appendChild(menu);
+  const r = ev.target.getBoundingClientRect();
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+  // Close the menu after an action (React keeps its own flow / opens the emoji pop).
+  menu.addEventListener('click', e => { const a = e.target.closest('a'); if (a && !a.classList.contains('chat-menu-react')) menu.remove(); });
+  const close = e => { if (!e.target.closest('.chat-msg-menu')) { menu.remove(); document.removeEventListener('mousedown', close, true); } };
+  setTimeout(() => document.addEventListener('mousedown', close, true), 0);
 }
 
 // chatCanPin: managers can pin in public channels; any member in groups/DMs.
@@ -464,7 +482,7 @@ function chatRenderReplyBar() {
 // === Reactions ===
 function chatReactPick(ev, id) {
   ev.stopPropagation();
-  document.querySelectorAll('.chat-react-pop').forEach(p => p.remove());
+  document.querySelectorAll('.chat-react-pop, .chat-msg-menu').forEach(p => p.remove());
   const pop = document.createElement('div');
   pop.className = 'chat-react-pop';
   pop.innerHTML = CHAT_EMOJI.map(e => `<button class="chat-react-opt" onclick="chatReact(${id}, '${escAttr(e)}')">${esc(e)}</button>`).join('');
@@ -706,21 +724,6 @@ function chatRefreshChannelsSoon() {
   }, 300);
 }
 
-// === Search ===
-async function chatDoSearch(q) {
-  const box = document.getElementById('chat-search-results');
-  if (!box) return;
-  q = q.trim();
-  if (!q) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-  try {
-    const hits = await api('/api/chat/search?q=' + encodeURIComponent(q));
-    box.classList.remove('hidden');
-    box.innerHTML = hits.length ? hits.map(h => `<div class="chat-hit" onclick="chatOpen(${h.channel_id})">
-      <div class="chat-hit-title">${esc(h.channel_name)} &middot; ${esc(h.author_name || '?')}</div>
-      <div class="chat-hit-snippet">${esc(h.text)}</div>
-    </div>`).join('') : `<div class="chat-empty">${t('chatNoResults')}</div>`;
-  } catch (e) { box.classList.add('hidden'); }
-}
 
 // === Dialogs ===
 function chatModal(title, bodyHtml, onSave) {
