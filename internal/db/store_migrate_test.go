@@ -48,3 +48,27 @@ func TestMigrateLegacyMailMessages(t *testing.T) {
 		t.Errorf("SMTP columns missing after migrate: %v", err)
 	}
 }
+
+// A very old DB whose calendar_events lacks calendar_id must not crash startup:
+// an index over a missing column is skipped rather than aborting migration.
+func TestMigrateLegacyCalendarEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy_cal.db")
+	raw, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE calendar_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+	raw.Close()
+
+	s, err := New(path)
+	if err != nil {
+		t.Fatalf("New() on legacy calendar db failed (migration regression): %v", err)
+	}
+	s.Close()
+}

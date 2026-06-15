@@ -8,6 +8,7 @@ import (
 	"log"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -426,6 +427,13 @@ func (s *Store) migrate() error {
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
+			// A legacy DB may have a table from an older schema that lacks a column
+			// a new index references. Skip such an index rather than aborting startup;
+			// the column itself is added via the alters pass below where applicable.
+			if strings.HasPrefix(q, "CREATE INDEX") {
+				log.Printf("migrate: skipping index (legacy schema?): %v", err)
+				continue
+			}
 			label := q
 			if len(label) > 60 {
 				label = label[:60]
