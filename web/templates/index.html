@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kanban</title>
+<title>__APP_NAME__</title>
+<script>window.APP_NAME = __APP_NAME_JS__;</script>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/css/fonts.css">
 <link rel="stylesheet" href="/static/css/atom-one-dark.min.css">
@@ -821,7 +822,7 @@ body.view-admin #admin-page{display:block}
 
 <div class="header">
   <h1>
-    <a href="/" onclick="resetBoardFilters();navigateTo('/');return false;">&#x2B21; kanban</a>
+    <a href="/" onclick="resetBoardFilters();navigateTo('/');return false;">&#x2B21; __APP_NAME__</a>
     <span class="hdr-sep">/</span>
     <span class="hdr-filter">
       <span class="hdr-filter-name" id="sprint-filter-label" onclick="toggleSprintFilter(event)">ALL</span>
@@ -1397,6 +1398,16 @@ const SERVICE_ICONS = { kanban: '&#x2B21;', wiki: '&#128214;', chat: '&#128172;'
 
 function isServiceEnabled(name) { return services.some(s => s.name === name && s.enabled); }
 
+// applyAppName updates the live branding (title, header link, rail tooltip) after
+// an admin changes the application name, without a page reload.
+function applyAppName(name) {
+  window.APP_NAME = name || 'Kanban';
+  document.title = window.APP_NAME;
+  const a = document.querySelector('.header h1 a');
+  if (a) a.textContent = '⬡ ' + window.APP_NAME;
+  renderAppRail();
+}
+
 function renderAppRail() {
   const rail = document.getElementById('app-rail');
   if (!rail) return;
@@ -1405,7 +1416,7 @@ function renderAppRail() {
   // Rail is always shown now: it carries the universal Settings button.
   document.body.classList.toggle('has-rail', true);
   const kanbanViews = ['board','task','epic','sprint','backlog','user'];
-  const items = [`<a class="rail-btn ${kanbanViews.includes(currentView) ? 'active' : ''}" href="/" title="${t('svc_kanban')}"
+  const items = [`<a class="rail-btn ${kanbanViews.includes(currentView) ? 'active' : ''}" href="/" title="${escAttr(window.APP_NAME || t('svc_kanban'))}"
     onclick="resetBoardFilters();navigateTo('/');return false;">${SERVICE_ICONS.kanban}</a>`, `<div class="rail-sep"></div>`];
   for (const s of enabled) {
     items.push(`<a class="rail-btn ${currentView === s.name ? 'active' : ''}" href="/${s.name}" title="${t('svc_' + s.name)}"

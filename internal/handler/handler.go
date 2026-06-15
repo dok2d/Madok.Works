@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"kanban/internal/auth"
 	"kanban/internal/db"
 	"kanban/internal/model"
@@ -387,6 +388,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/settings/telegram", h.handleTelegramSettings)
 	h.mux.HandleFunc("/api/settings/telegram/status", h.handleTelegramStatus)
 	h.mux.HandleFunc("/api/settings/timezone", h.handleTimezoneSettings)
+	h.mux.HandleFunc("/api/settings/app", h.handleAppSettings)
 	h.mux.HandleFunc("/api/settings/sso", h.handleSSOSettings)
 
 	h.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
@@ -402,16 +404,62 @@ func (h *Handler) routes() {
 }
 
 func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/" || r.URL.Path == "/backlog" || strings.HasPrefix(r.URL.Path, "/task/") || strings.HasPrefix(r.URL.Path, "/epic/") || strings.HasPrefix(r.URL.Path, "/sprint/") || strings.HasPrefix(r.URL.Path, "/user/") ||
+	if r.URL.Path == "/" || r.URL.Path == "/backlog" || r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/task/") || strings.HasPrefix(r.URL.Path, "/epic/") || strings.HasPrefix(r.URL.Path, "/sprint/") || strings.HasPrefix(r.URL.Path, "/user/") ||
 		r.URL.Path == "/wiki" || strings.HasPrefix(r.URL.Path, "/wiki/") ||
 		r.URL.Path == "/chat" || strings.HasPrefix(r.URL.Path, "/chat/") ||
 		r.URL.Path == "/calendar" || strings.HasPrefix(r.URL.Path, "/calendar/") ||
 		r.URL.Path == "/mail" || strings.HasPrefix(r.URL.Path, "/mail/") {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
-		http.ServeFile(w, r, "web/templates/index.html")
+		h.serveBrandedHTML(w, "web/templates/index.html")
 		return
 	}
 	http.NotFound(w, r)
+}
+
+// appName is the configurable display name used in the title, header, backups, etc.
+func (h *Handler) appName() string {
+	if n := strings.TrimSpace(h.store.GetSetting("app_name")); n != "" {
+		return n
+	}
+	return "Kanban"
+}
+
+// appSlug is a filesystem/URL-safe form of the app name (for backup filenames).
+func (h *Handler) appSlug() string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(h.appName()) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ' || r == '-' || r == '_':
+			b.WriteByte('-')
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	if s == "" {
+		return "kanban"
+	}
+	return s
+}
+
+// serveBrandedHTML serves an HTML file, substituting the configurable app name into
+// __APP_NAME__ (HTML-escaped) and __APP_NAME_JS__ (JSON string) placeholders.
+func (h *Handler) serveBrandedHTML(w http.ResponseWriter, path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	name := h.appName()
+	jsName, _ := json.Marshal(name)
+	s := string(data)
+	s = strings.ReplaceAll(s, "__APP_NAME_JS__", string(jsName))
+	s = strings.ReplaceAll(s, "__APP_NAME__", html.EscapeString(name))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(s))
 }
 
 func (h *Handler) handleBoard(w http.ResponseWriter, r *http.Request) {
@@ -1447,7 +1495,7 @@ func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment; filename=kanban-export.json")
+	w.Header().Set("Content-Disposition", "attachment; filename="+h.appSlug()+"-export.json")
 	json.NewEncoder(w).Encode(data)
 }
 
@@ -1541,7 +1589,7 @@ func (h *Handler) handleBackups(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "marshal error", http.StatusInternalServerError)
 			return
 		}
-		filename := fmt.Sprintf("backup-%s.json", time.Now().Format("2006-01-02_150405"))
+		filename := fmt.Sprintf("%s-backup-%s.json", h.appSlug(), time.Now().Format("2006-01-02_150405"))
 		path := filepath.Join(dir, filename)
 		if err := os.WriteFile(path, jsonData, 0640); err != nil {
 			http.Error(w, "write error: "+err.Error(), http.StatusInternalServerError)
@@ -1771,7 +1819,7 @@ func (h *Handler) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "web/templates/login.html")
+	h.serveBrandedHTML(w, "web/templates/login.html")
 }
 
 func (h *Handler) handleResetRequest(w http.ResponseWriter, r *http.Request) {
@@ -2364,6 +2412,44 @@ func (h *Handler) handleTimezoneSettings(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// handleAppSettings reads/writes the configurable application name (title, header,
+// backups). GET is open to any authenticated user; POST is admin-only.
+func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		jsonResp(w, map[string]string{"name": h.appName()})
+	case http.MethodPost:
+		if !user.IsAdmin {
+			http.Error(w, "admin only", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if utf8.RuneCountInString(req.Name) > 60 {
+			http.Error(w, "name too long", http.StatusBadRequest)
+			return
+		}
+		if err := h.store.SetSetting("app_name", req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok", "name": h.appName()})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // runBackupScheduler sends daily backup dump to admin via Telegram at 18:00 admin's timezone
 func (h *Handler) runBackupScheduler() {
 	var lastChecksum string
@@ -2439,9 +2525,9 @@ func (h *Handler) sendDailyBackup(lastChecksum string) string {
 		return lastChecksum
 	}
 
-	filename := fmt.Sprintf("kanban-backup-%s.json", time.Now().Format("2006-01-02"))
+	filename := fmt.Sprintf("%s-backup-%s.json", h.appSlug(), time.Now().Format("2006-01-02"))
 	for _, chatID := range adminChatIDs {
-		h.sendTelegramDocument(token, chatID, filename, jsonData, "📦 Ежедневный бэкап Kanban")
+		h.sendTelegramDocument(token, chatID, filename, jsonData, "📦 Ежедневный бэкап "+h.appName())
 	}
 	log.Printf("[backup] sent daily backup to %d admin(s)", len(adminChatIDs))
 	return checksum
