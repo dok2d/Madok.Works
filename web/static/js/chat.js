@@ -189,7 +189,7 @@ function chatCanManage(c) {
 
 function chatGrpAddBtn(type) {
   if (!currentUser || currentUser.role === 'readonly') return '';
-  if (type === 'dm') return `<button class="chat-grp-add" title="${t('chatStartDM')}" onclick="chatStartDMDialog()">+</button>`;
+  if (type === 'dm') return ''; // all contacts are listed directly now
   if (type === 'group') return `<button class="chat-grp-add" title="${t('chatNewGroup')}" onclick="chatNewChannelDialog('group')">+</button>`;
   return `<button class="chat-grp-add" title="${t('chatNewChannel')}" onclick="chatNewChannelDialog('channel')">+</button>`;
 }
@@ -204,6 +204,7 @@ function chatRenderChannelList() {
   ];
   let html = '';
   for (const g of groups) {
+    if (g.key === 'dm') { html += chatRenderDMGroup(g.label); continue; }
     const items = chatState.channels.filter(c => c.type === g.key);
     if (!items.length && g.key === 'group') continue;
     html += `<div class="chat-grp">
@@ -217,6 +218,44 @@ function chatRenderChannelList() {
     html += `</div>`;
   }
   el.innerHTML = html || `<div class="chat-empty">${t('chatNoChannels')}</div>`;
+}
+
+// chatRenderDMGroup lists every other user as a contact: an existing DM opens it,
+// a contact without a DM yet creates one on click.
+function chatRenderDMGroup(label) {
+  const meId = currentUser && currentUser.id;
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  const byPeer = {};
+  for (const c of chatState.channels) if (c.type === 'dm' && c.peer_id != null) byPeer[c.peer_id] = c;
+  const users = (state.users || []).filter(u => u.id !== meId)
+    .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+  let h = `<div class="chat-grp"><div class="chat-grp-head"><span>${esc(label)}</span></div>`;
+  let rows = '';
+  for (const u of users) {
+    const c = byPeer[u.id];
+    if (c) {
+      rows += `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''}" onclick="chatOpen(${c.id})">
+        <span class="chat-ch-name">@ ${esc(u.username)}</span>
+        ${c.unread > 0 ? `<span class="chat-ch-badge">${c.unread > 99 ? '99+' : c.unread}</span>` : ''}
+      </div>`;
+    } else if (canWrite) {
+      rows += `<div class="chat-ch-row chat-contact" onclick="chatStartDM(${u.id})">
+        <span class="chat-ch-name">@ ${esc(u.username)}</span>
+      </div>`;
+    }
+  }
+  h += rows || `<div class="chat-empty">${t('chatNoUsers')}</div>`;
+  h += `</div>`;
+  return h;
+}
+
+// chatStartDM opens (or creates) the direct-message channel with a user.
+async function chatStartDM(userId) {
+  try {
+    const res = await api('/api/chat/dm', 'POST', { user_id: userId });
+    chatState.channels = await api('/api/chat/channels');
+    navigateTo('/chat/channel/' + res.id);
+  } catch (e) { alert(e.message); }
 }
 
 function chatRenderMain() {
