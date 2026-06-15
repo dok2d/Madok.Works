@@ -354,6 +354,7 @@ function wikiSetEditorMode(m) {
 }
 
 function wikiRenderEditor(el) {
+  wikiClearImageSel();
   const p = wikiState.page;
   // Choose default mode once per page-edit: markdown if the page has md source.
   if (wikiState.editorPageId !== p.id) {
@@ -408,7 +409,7 @@ function wikiRenderEditor(el) {
     editor.focus();
   });
   editor.addEventListener('paste', wikiHandlePaste);
-  editor.addEventListener('click', e => { if (e.target.tagName === 'IMG') wikiImageResizePopover(e.target); });
+  editor.addEventListener('click', e => { if (e.target.tagName === 'IMG') { wikiSelectImage(e.target); wikiImageResizePopover(e.target); } });
   editor.addEventListener('keydown', e => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -478,7 +479,70 @@ function wikiImageResizePopover(img) {
     <div class="wiki-pop-row"><button class="btn btn-ghost btn-sm" id="wiki-img-reset">100%</button></div>`);
   pop.querySelectorAll('[data-px]').forEach(b => b.onclick = () => { img.setAttribute('width', b.dataset.px); wikiState.dirty = true; wikiClosePopover(); });
   pop.querySelector('#wiki-img-set').onclick = () => { const v = parseInt(pop.querySelector('#wiki-img-px').value, 10); if (v > 0) { img.setAttribute('width', String(v)); wikiState.dirty = true; } wikiClosePopover(); };
-  pop.querySelector('#wiki-img-reset').onclick = () => { img.removeAttribute('width'); wikiState.dirty = true; wikiClosePopover(); };
+  pop.querySelector('#wiki-img-reset').onclick = () => { img.removeAttribute('width'); wikiState.dirty = true; wikiClearImageSel(); wikiClosePopover(); };
+}
+
+// === Drag-to-resize selected image ===
+let wikiImgSel = null;       // { img, wrap, place }
+let wikiImgSelOutside = null; // active document mousedown handler
+
+// wikiSelectImage draws a selection box with a bottom-right drag handle over an
+// image so it can be resized with the mouse. Width is stored as a numeric attr,
+// which the sanitizer preserves.
+function wikiSelectImage(img) {
+  wikiClearImageSel();
+  const ed = document.getElementById('wiki-editor');
+  if (!ed) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'wiki-img-overlay';
+  const handle = document.createElement('span');
+  handle.className = 'wiki-img-handle';
+  wrap.appendChild(handle);
+  ed.appendChild(wrap);
+  const place = () => {
+    const er = ed.getBoundingClientRect(), ir = img.getBoundingClientRect();
+    wrap.style.left = (ir.left - er.left + ed.scrollLeft) + 'px';
+    wrap.style.top = (ir.top - er.top + ed.scrollTop) + 'px';
+    wrap.style.width = ir.width + 'px';
+    wrap.style.height = ir.height + 'px';
+  };
+  place();
+  wikiImgSel = { img, wrap, place };
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX, startW = img.getBoundingClientRect().width;
+    const maxW = ed.clientWidth - 40;
+    const move = ev => {
+      let w = Math.round(startW + (ev.clientX - startX));
+      if (w < 32) w = 32;
+      if (w > maxW) w = maxW;
+      img.setAttribute('width', String(w));
+      img.removeAttribute('height'); // keep aspect ratio
+      wikiState.dirty = true;
+      place();
+    };
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+  wikiImgSelOutside = e => {
+    if (e.target === img || e.target === handle || e.target.closest('#wiki-popover')) return;
+    wikiClearImageSel();
+  };
+  document.addEventListener('mousedown', wikiImgSelOutside, true);
+  ed.addEventListener('scroll', place);
+  window.addEventListener('resize', place);
+}
+
+function wikiClearImageSel() {
+  if (wikiImgSelOutside) { document.removeEventListener('mousedown', wikiImgSelOutside, true); wikiImgSelOutside = null; }
+  if (wikiImgSel) {
+    const ed = document.getElementById('wiki-editor');
+    if (ed) ed.removeEventListener('scroll', wikiImgSel.place);
+    window.removeEventListener('resize', wikiImgSel.place);
+    if (wikiImgSel.wrap) wikiImgSel.wrap.remove();
+    wikiImgSel = null;
+  }
 }
 
 function wikiCustomCommand(name, anchor) {
