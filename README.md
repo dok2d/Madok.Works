@@ -6,12 +6,12 @@ Self-hosted team workspace built around a Kanban board, now a small **ecosystem*
 
 ## Ecosystem services
 
-Beyond the Kanban board, optional services share the same auth, roles, notifications, search, themes and i18n. Each can be toggled per-instance by an admin (app rail + admin settings):
+Beyond the Kanban board, optional services share the same auth, roles, notifications, search, themes and i18n. From the **Services** tab, an admin can enable/disable each service (the board included) and reorder them in the service rail; a disabled service is blocked server-side, not just hidden. Each service adds its own contextual selectors to the header (kanban-style), and a single global search lets you pick which service to search, defaulting to the current one.
 
-- **Wiki** — Confluence-style spaces with a page tree, WYSIWYG editor, revision history and per-space roles (admin/editor/viewer).
-- **Chat** — public channels, private groups and direct messages with live updates (SSE), @-mentions, search and unread badges.
-- **Calendar** — private/shared calendars, recurring events (RRULE), month/week/day/agenda views, reminders, and an overlay of task deadlines & sprints.
-- **Mail** — internal mail between users (folders, threads, attachments, search) out of the box; optional inbound SMTP receiving via `-smtp-addr` (external send/DKIM/IMAP are deploy-time, see docs).
+- **Wiki** — Confluence-style spaces with a page tree, a Markdown editor with a formatting toolbar, revision history and per-space roles (admin/editor/viewer).
+- **Chat** — Telegram-style messaging: bubbles, avatars, reactions, replies, pins, a typing indicator and read receipts (ticks) in DMs, plus a contacts list. Public channels, private groups and direct messages with live updates (SSE), @-mentions, search and unread badges.
+- **Calendar** — private/shared calendars, recurring events (RRULE), month/week/day/agenda views, reminders, an overlay of task deadlines & sprints, and read-only subscriptions to external ICS/iCal feeds (e.g. Google Calendar).
+- **Mail** — internal mail between users out of the box: folders in the header, two-pane view, threads, attachments, search, distribution rules, anti-spam and aliases. Optional inbound SMTP receiving via `-smtp-addr`, plus external send/DKIM configured in the Mail server settings (see docs).
 
 ## Why this project
 
@@ -50,9 +50,10 @@ To deploy on a server with TLS behind nginx:
 | Files | Attachments, image paste (Ctrl+V), Markdown with syntax highlighting |
 | Notifications | In-app + Telegram bot (assignments, mentions, updates) |
 | Access control | Three roles: Admin, User, Read-only; per-space wiki roles |
-| Ecosystem | Wiki, Chat, Calendar, Mail — toggleable services in one UI |
+| Ecosystem | Wiki, Chat, Calendar, Mail — toggleable and reorderable services in one UI |
+| Settings | Single settings page with role-based tabs, opened from the service rail |
 | Data | JSON export/import (incl. ecosystem services), scheduled backups via `./kanban.sh backup` |
-| Customization | 8 themes, 10 languages, adjustable font size, timezone selector |
+| Customization | App name / branding, 8 themes, 10 languages, adjustable font size, timezone selector |
 
 ## Comparison
 

@@ -115,10 +115,22 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 
 ## Settings
 
-| Method | Path                     | Description            |
-|--------|--------------------------|------------------------|
-| GET    | `/api/settings/timezone` | Current timezone       |
-| POST   | `/api/settings/timezone` | Set timezone           |
+| Method | Path                     | Description                                  |
+|--------|--------------------------|----------------------------------------------|
+| GET    | `/api/settings/timezone` | Current timezone                             |
+| POST   | `/api/settings/timezone` | Set timezone                                 |
+| GET    | `/api/settings/app`      | App name / branding (`{name}`)               |
+| POST   | `/api/settings/app`      | Set app name (admin)                         |
+| GET    | `/api/settings/sso`      | LDAP/OIDC settings (admin)                   |
+| POST   | `/api/settings/sso`      | Save LDAP/OIDC settings (admin)              |
+
+## Ecosystem Services
+
+| Method | Path                     | Description                                              |
+|--------|--------------------------|---------------------------------------------------------|
+| GET    | `/api/services`          | List services and their state (enabled/disabled)        |
+| POST   | `/api/services`          | Toggle a service: `{name, enabled}` (admin)             |
+| POST   | `/api/services/reorder`  | Service order in the app rail: `{order: [...]}` (admin) |
 
 ## Backups (admin)
 
@@ -135,6 +147,7 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 | Method | Path                 | Description                           |
 |--------|----------------------|---------------------------------------|
 | GET    | `/api/search?q=...`  | Search tasks (text / regex)           |
+| GET    | `/api/search/global` | Cross-service search. Params: `q`, `scope` (`all`/`kanban`/`wiki`/`chat`/`mail`) |
 
 ## Other
 
@@ -144,6 +157,104 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 | POST   | `/api/import`             | Import board from JSON    |
 | GET    | `/api/user/activity/:id`  | Activity feed             |
 | POST   | `/api/user/password`      | Change own password       |
+
+## Wiki
+
+| Method | Path                              | Description                               |
+|--------|-----------------------------------|-------------------------------------------|
+| GET    | `/api/wiki/spaces`                | List spaces                               |
+| POST   | `/api/wiki/spaces`                | Create space                              |
+| GET    | `/api/wiki/spaces/:id`            | Space with page tree                      |
+| PUT    | `/api/wiki/spaces/:id`            | Update space                              |
+| DELETE | `/api/wiki/spaces/:id`            | Delete space                             |
+| GET    | `/api/wiki/spaces/:id/members`    | Space members (ACL)                       |
+| POST   | `/api/wiki/spaces/:id/members`    | Add member                               |
+| DELETE | `/api/wiki/spaces/:id/members`    | Remove member (`?user_id=`)              |
+| POST   | `/api/wiki/pages`                 | Create page                              |
+| GET    | `/api/wiki/pages/:id`             | Page                                     |
+| PUT    | `/api/wiki/pages/:id`             | Update page (new revision)               |
+| DELETE | `/api/wiki/pages/:id`             | Delete page                             |
+| POST   | `/api/wiki/pages/:id/move`        | Move page in the tree                    |
+| GET    | `/api/wiki/pages/:id/revisions`   | Page revision history                    |
+| POST   | `/api/wiki/pages/:id/restore`     | Restore a revision                       |
+| GET    | `/api/wiki/revisions/:id`         | Content of a specific revision           |
+| GET    | `/api/wiki/search?q=...`          | Search pages                             |
+
+## Chat
+
+| Method | Path                                    | Description                                       |
+|--------|-----------------------------------------|---------------------------------------------------|
+| GET    | `/api/chat/channels`                    | List user's channels/groups/DMs                   |
+| POST   | `/api/chat/channels`                    | Create channel/group: `{name, topic, type, members}` |
+| GET    | `/api/chat/channels/:id`                | Channel info                                      |
+| PUT    | `/api/chat/channels/:id`                | Rename / set topic                                |
+| DELETE | `/api/chat/channels/:id`                | Delete channel                                    |
+| GET    | `/api/chat/channels/:id/members`        | Channel members                                   |
+| POST   | `/api/chat/channels/:id/members`        | Add member: `{user_id}`                           |
+| DELETE | `/api/chat/channels/:id/members`        | Remove member (`?user_id=`)                       |
+| GET    | `/api/chat/channels/:id/messages`       | Messages (`before`, `after`, `limit`)             |
+| POST   | `/api/chat/channels/:id/messages`       | Post message: `{text, attachments, reply_to}`     |
+| GET    | `/api/chat/channels/:id/pins`           | Pinned messages                                   |
+| POST   | `/api/chat/channels/:id/read`           | Mark read: `{last_id}`                            |
+| POST   | `/api/chat/channels/:id/typing`         | Typing indicator                                  |
+| GET    | `/api/chat/messages/:id`                | Message                                           |
+| PUT    | `/api/chat/messages/:id`                | Edit (author only)                                |
+| DELETE | `/api/chat/messages/:id`                | Delete message                                    |
+| POST   | `/api/chat/messages/:id/pin`            | Pin/unpin: `{pinned}`                             |
+| POST   | `/api/chat/messages/:id/react`          | Toggle emoji reaction: `{emoji}`                  |
+| POST   | `/api/chat/dm`                          | Open/create a direct message: `{user_id}`         |
+| GET    | `/api/chat/search?q=...`                | Search messages                                   |
+| GET    | `/api/chat/unread`                      | Unread counter                                    |
+| GET    | `/api/chat/events`                      | Event stream (SSE)                                |
+
+## Calendar
+
+| Method | Path                                       | Description                                    |
+|--------|--------------------------------------------|------------------------------------------------|
+| GET    | `/api/calendar/calendars`                  | List calendars                                 |
+| POST   | `/api/calendar/calendars`                  | Create calendar                                |
+| PUT    | `/api/calendar/calendars/:id`              | Update calendar                                |
+| DELETE | `/api/calendar/calendars/:id`              | Delete calendar                                |
+| GET    | `/api/calendar/events`                     | Events (`from`, `to`)                          |
+| POST   | `/api/calendar/events`                     | Create event                                   |
+| GET    | `/api/calendar/events/:id`                 | Event                                          |
+| PUT    | `/api/calendar/events/:id`                 | Update event                                   |
+| DELETE | `/api/calendar/events/:id`                 | Delete event                                   |
+| GET    | `/api/calendar/upcoming`                   | Upcoming events                                |
+| GET    | `/api/calendar/stream`                     | Event stream (SSE)                             |
+| GET    | `/api/calendar/subscriptions`              | External ICS subscriptions (per-user)          |
+| POST   | `/api/calendar/subscriptions`              | Add ICS subscription: `{name, url, color}`     |
+| DELETE | `/api/calendar/subscriptions/:id`          | Remove subscription                            |
+| POST   | `/api/calendar/subscriptions/:id/sync`     | Force-sync a subscription                       |
+
+## Mail
+
+| Method | Path                              | Description                               |
+|--------|-----------------------------------|-------------------------------------------|
+| GET    | `/api/mail/folders`               | System folders and counters               |
+| GET    | `/api/mail/folders/custom`        | Custom folders                            |
+| POST   | `/api/mail/folders/custom`        | Create folder                            |
+| PUT    | `/api/mail/folders/custom/:id`    | Rename folder                            |
+| DELETE | `/api/mail/folders/custom/:id`    | Delete folder                           |
+| GET    | `/api/mail/unread`                | Unread counter                           |
+| GET    | `/api/mail/audit`                 | Send audit log (admin)                    |
+| GET    | `/api/mail/rules`                 | Filter rules                            |
+| POST   | `/api/mail/rules`                 | Create rule                            |
+| PUT    | `/api/mail/rules/:id`             | Update rule                            |
+| DELETE | `/api/mail/rules/:id`             | Delete rule                            |
+| GET    | `/api/mail/settings`              | Mail settings (admin)                     |
+| POST   | `/api/mail/settings`              | Save mail settings (admin)                |
+| GET    | `/api/mail/aliases`               | Aliases (admin)                          |
+| POST   | `/api/mail/aliases`               | Create alias (admin)                      |
+| DELETE | `/api/mail/aliases/:id`           | Delete alias (admin)                      |
+| GET    | `/api/mail/messages`              | List messages in a folder                 |
+| GET    | `/api/mail/messages/:id`          | Message (opening marks it read)           |
+| DELETE | `/api/mail/messages/:id`          | Delete message                          |
+| POST   | `/api/mail/messages/:id/flag`     | Message flags (read/star, etc.)           |
+| POST   | `/api/mail/messages/:id/move`     | Move message to a folder                  |
+| GET    | `/api/mail/thread/:id`            | Conversation thread                      |
+| POST   | `/api/mail/send`                  | Send message                            |
+| GET    | `/api/mail/stream`                | Event stream (SSE)                       |
 
 ## WAP
 
