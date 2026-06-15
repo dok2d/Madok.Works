@@ -284,6 +284,29 @@ func (s *Store) migrate() error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// Per-user read-only external calendar subscriptions (ICS/iCal, e.g. Google).
+		`CREATE TABLE IF NOT EXISTS calendar_subscriptions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name TEXT NOT NULL DEFAULT '',
+			url TEXT NOT NULL,
+			color TEXT NOT NULL DEFAULT '#0ea5e9',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_synced TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS calendar_sub_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			sub_id INTEGER NOT NULL REFERENCES calendar_subscriptions(id) ON DELETE CASCADE,
+			uid TEXT NOT NULL DEFAULT '',
+			title TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT '',
+			location TEXT NOT NULL DEFAULT '',
+			start_utc TEXT NOT NULL,
+			end_utc TEXT NOT NULL,
+			all_day INTEGER NOT NULL DEFAULT 0,
+			rrule TEXT NOT NULL DEFAULT ''
+		)`,
 		// === Mail (ecosystem service) ===
 		`CREATE TABLE IF NOT EXISTS mail_messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -380,6 +403,8 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_mail_aliases_user ON mail_aliases(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_attachments_msg ON chat_attachments(message_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_reactions_msg ON chat_reactions(message_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_calendar_subscriptions_user ON calendar_subscriptions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_calendar_sub_events_sub ON calendar_sub_events(sub_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_cal_reminders_event ON calendar_reminders(event_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cal_reminders_dedup ON calendar_reminders(event_id, lead_min, occurrence_start)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_box_user ON mail_box(user_id, folder, id)`,

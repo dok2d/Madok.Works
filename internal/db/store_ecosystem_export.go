@@ -12,6 +12,7 @@ var ecosystemTables = []string{
 	"wiki_spaces", "wiki_space_members", "wiki_pages", "wiki_revisions",
 	"chat_channels", "chat_members", "chat_messages", "chat_attachments", "chat_reactions",
 	"calendars", "calendar_events", "calendar_reminders",
+	"calendar_subscriptions", "calendar_sub_events",
 	"mail_messages", "mail_box", "mail_attachments",
 	"mail_folders", "mail_rules", "mail_audit", "mail_aliases",
 }

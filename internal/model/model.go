@@ -299,6 +299,18 @@ type CalendarEvent struct {
 	Reminders  []CalendarReminder `json:"reminders,omitempty"`
 }
 
+// CalendarSubscription is a per-user read-only external iCal/ICS feed (e.g. a
+// Google Calendar "secret address in iCal format").
+type CalendarSubscription struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	URL        string `json:"url,omitempty"`
+	Color      string `json:"color"`
+	CreatedAt  string `json:"created_at"`
+	LastSynced string `json:"last_synced,omitempty"`
+	LastError  string `json:"last_error,omitempty"`
+}
+
 // CalendarReminder is one reminder definition for an event.
 type CalendarReminder struct {
 	LeadMin int    `json:"lead_min"`
