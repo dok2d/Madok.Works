@@ -328,9 +328,11 @@ function chatRenderMain() {
   }
   el.innerHTML = `
     <div class="chat-head">
+      ${chatAvatar(chatChannelLabel(c), 'chat-av-sm')}
       <div class="chat-head-info">
-        <h2 class="chat-head-title">${chatChannelIcon(c)} ${esc(chatChannelLabel(c))}</h2>
+        <h2 class="chat-head-title">${esc(chatChannelLabel(c))}</h2>
         ${c.topic ? `<div class="chat-head-topic">${esc(c.topic)}</div>` : ''}
+        <div class="chat-head-typing" id="chat-typing"></div>
       </div>
       <div class="chat-head-actions">${chatHeadActions(c)}</div>
     </div>
@@ -421,29 +423,42 @@ function chatRenderMessages() {
   for (const msg of chatState.messages) {
     const day = (msg.created_at || '').slice(0, 10);
     if (day !== lastDay) { html += `<div class="chat-day">${esc(chatFmtDay(msg.created_at))}</div>`; lastDay = day; lastAuthor = null; }
-    const grouped = !msg.deleted && msg.author_id === lastAuthor;
+    if (msg.kind === 'system') { html += `<div class="chat-sys" id="chat-msg-${msg.id}"><span>${esc(chatSysText(msg.text || ''))}</span></div>`; lastAuthor = null; continue; }
+    if (msg.deleted) { html += `<div class="chat-sys chat-del-row" id="chat-msg-${msg.id}"><span>${t('chatDeleted')}</span></div>`; lastAuthor = null; continue; }
+    const grouped = msg.author_id === lastAuthor;
     html += chatRenderMsg(msg, grouped);
-    lastAuthor = msg.deleted ? null : msg.author_id;
+    lastAuthor = msg.author_id;
   }
   box.innerHTML = html;
 }
 
+// chatChecks renders sent/read ticks for own DM messages.
+function chatChecks(msg) {
+  const peer = (chatState.channel && chatState.channel.peer_last_read) || 0;
+  const read = peer >= msg.id;
+  return `<span class="chat-checks ${read ? 'read' : ''}">${read ? '&#10003;&#10003;' : '&#10003;'}</span>`;
+}
+
 function chatRenderMsg(msg, grouped) {
-  if (msg.deleted) {
-    return `<div class="chat-msg deleted" id="chat-msg-${msg.id}"><div class="chat-msg-body"><i class="chat-del">${t('chatDeleted')}</i></div></div>`;
-  }
   const mine = currentUser && msg.author_id === currentUser.id;
+  const c = chatState.channel;
+  const isDM = c && c.type === 'dm';
+  const showName = !mine && !grouped && c && c.type !== 'dm';
   const canManage = mine || (currentUser && currentUser.role === 'admin');
   const canWrite = currentUser && currentUser.role !== 'readonly';
-  const canPin = chatCanPin();
-  return `<div class="chat-msg ${grouped ? 'grouped' : ''} ${msg.pinned ? 'pinned' : ''}" id="chat-msg-${msg.id}">
-    ${grouped ? '' : `<div class="chat-msg-head"><b class="chat-author">${esc(msg.author_name || '?')}</b> <span class="chat-time">${esc(chatFmtTime(msg.created_at))}</span></div>`}
-    <div class="chat-msg-body">
-      ${msg.reply_to ? chatReplyQuote(msg) : ''}
-      <span class="chat-text">${chatFormatText(msg.text)}</span>
-      ${msg.pinned ? `<span class="chat-pin-mark" title="${t('chatPinned')}">&#128204;</span>` : ''}
-      ${msg.edited_at ? `<span class="chat-edited">(${t('chatEdited')})</span>` : ''}
-      ${chatRenderAttachments(msg)}
+  const avatar = mine ? '' : (grouped ? '<span class="chat-av-spacer"></span>' : chatAvatar(msg.author_name || '?', 'chat-av-sm'));
+  const checks = (mine && isDM) ? chatChecks(msg) : '';
+  const meta = `<span class="chat-meta">${msg.pinned ? `<span class="chat-pin-mark" title="${t('chatPinned')}">&#128204;</span>` : ''}${msg.edited_at ? `<span class="chat-edited">${t('chatEdited')}</span>` : ''}<span class="chat-time">${esc(chatFmtTime(msg.created_at))}</span>${checks}</span>`;
+  return `<div class="chat-msg ${mine ? 'mine' : 'their'} ${grouped ? 'grouped' : ''} ${msg.pinned ? 'pinned' : ''}" id="chat-msg-${msg.id}">
+    ${avatar}
+    <div class="chat-bubble-wrap">
+      <div class="chat-bubble">
+        ${showName ? `<div class="chat-bubble-author" style="color:${chatAvatarColor(msg.author_name || '?')}">${esc(msg.author_name || '?')}</div>` : ''}
+        ${msg.reply_to ? chatReplyQuote(msg) : ''}
+        <span class="chat-text">${chatFormatText(msg.text)}</span>
+        ${chatRenderAttachments(msg)}
+        ${meta}
+      </div>
       ${chatReactionChips(msg)}
       ${(canWrite || canManage) ? `<button class="chat-msg-menu-btn" title="${t('chatOptions')}" onclick="chatMsgMenu(event, ${msg.id})">&#8943;</button>` : ''}
     </div>
