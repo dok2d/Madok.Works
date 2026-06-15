@@ -236,6 +236,7 @@ type ChatMessage struct {
 	CreatedAt   string           `json:"created_at"`
 	EditedAt    string           `json:"edited_at,omitempty"`
 	Deleted     bool             `json:"deleted"`
+	Kind        string           `json:"kind,omitempty"` // "" normal, "system" for join/leave/etc.
 	Attachments []ChatAttachment `json:"attachments,omitempty"`
 	// Reply (Telegram-style quoted reply)
 	ReplyTo       *int64 `json:"reply_to,omitempty"`

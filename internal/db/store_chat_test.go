@@ -417,6 +417,32 @@ func TestChatChannelListPreviewAndPeerRead(t *testing.T) {
 	}
 }
 
+func TestChatSystemMessage(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
+	m, err := s.CreateSystemMessage(ch, "join|bob")
+	if err != nil {
+		t.Fatalf("CreateSystemMessage: %v", err)
+	}
+	if m.Kind != "system" || m.Text != "join|bob" || m.AuthorID != nil {
+		t.Fatalf("bad system message: %+v", m)
+	}
+	list, _ := s.ListChatMessages(ch, 0, 0, 0, alice)
+	var found bool
+	for _, x := range list {
+		if x.ID == m.ID {
+			found = true
+			if x.Kind != "system" {
+				t.Errorf("kind not returned in list: %q", x.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Error("system message not in list")
+	}
+}
+
 func reactionFor(rs []model.ChatReaction, emoji string) *model.ChatReaction {
 	for i := range rs {
 		if rs[i].Emoji == emoji {

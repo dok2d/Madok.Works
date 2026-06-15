@@ -245,7 +245,7 @@ func (s *Store) MarkChatRead(channelID, userID, lastID int64) error {
 // catch-up). Results are always in ascending id order.
 // chatMsgCols is the shared projection for message rows (incl. reply/pin state).
 const chatMsgCols = `m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
-	COALESCE(m.edited_at,''), m.deleted, COALESCE(m.reply_to,0), m.pinned, COALESCE(m.pinned_at,'')`
+	COALESCE(m.edited_at,''), m.deleted, COALESCE(m.reply_to,0), m.pinned, COALESCE(m.pinned_at,''), COALESCE(m.kind,'')`
 
 // scanChatMsg scans a row produced by chatMsgCols.
 func scanChatMsg(sc interface{ Scan(...any) error }) (model.ChatMessage, error) {
@@ -253,7 +253,7 @@ func scanChatMsg(sc interface{ Scan(...any) error }) (model.ChatMessage, error) 
 	var deleted, pinned int
 	var replyTo int64
 	if err := sc.Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.AuthorName, &m.Text, &m.CreatedAt,
-		&m.EditedAt, &deleted, &replyTo, &pinned, &m.PinnedAt); err != nil {
+		&m.EditedAt, &deleted, &replyTo, &pinned, &m.PinnedAt, &m.Kind); err != nil {
 		return m, err
 	}
 	m.Deleted = deleted == 1
@@ -531,6 +531,17 @@ func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts [
 	// author has obviously read their own message
 	s.MarkChatRead(channelID, authorID, id)
 	return s.GetChatMessageFor(id, authorID)
+}
+
+// CreateSystemMessage inserts a system message (no author). `text` is a machine
+// code the frontend localizes, e.g. "join|alice", "rename|New name".
+func (s *Store) CreateSystemMessage(channelID int64, text string) (*model.ChatMessage, error) {
+	res, err := s.db.Exec(`INSERT INTO chat_messages(channel_id, author_id, text, kind) VALUES(?, NULL, ?, 'system')`, channelID, text)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetChatMessage(id)
 }
 
 // SetChatPinned pins or unpins a message.

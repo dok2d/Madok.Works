@@ -114,6 +114,9 @@ func (h *Handler) handleChatChannels(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if newCh, e := h.store.GetChatChannel(id); e == nil {
+			h.chatSystemMessage(newCh, "create|"+user.Username)
+		}
 		h.sse.sendTo(nil, sseEvent{Type: "chat_channels"})
 		jsonResp(w, map[string]int64{"id": id})
 	default:
@@ -208,9 +211,13 @@ func (h *Handler) handleChatChannel(w http.ResponseWriter, r *http.Request, user
 			http.Error(w, "bad name or topic", http.StatusBadRequest)
 			return
 		}
+		renamed := req.Name != ch.Name
 		if err := h.store.UpdateChatChannel(ch.ID, req.Name, req.Topic); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if renamed {
+			h.chatSystemMessage(ch, "rename|"+req.Name)
 		}
 		h.sse.sendTo(h.chatAudience(ch), sseEvent{Type: "chat_channels"})
 		jsonResp(w, map[string]string{"status": "ok"})
@@ -229,6 +236,23 @@ func (h *Handler) handleChatChannel(w http.ResponseWriter, r *http.Request, user
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// chatSystemMessage posts a system message (join/leave/create/rename) and pushes
+// it live. `code` is "kind|name" the frontend localizes.
+func (h *Handler) chatSystemMessage(ch *model.ChatChannel, code string) {
+	msg, err := h.store.CreateSystemMessage(ch.ID, code)
+	if err != nil || msg == nil {
+		return
+	}
+	h.sse.sendTo(h.chatAudience(ch), sseEvent{Type: "chat_message", ChannelID: ch.ID, Message: msg})
+}
+
+func (h *Handler) userName(id int64) string {
+	if u, err := h.store.GetUser(id); err == nil && u != nil {
+		return u.Username
+	}
+	return "?"
 }
 
 func (h *Handler) handleChatChannelMembers(w http.ResponseWriter, r *http.Request, user *model.User, ch *model.ChatChannel) {
@@ -265,6 +289,7 @@ func (h *Handler) handleChatChannelMembers(w http.ResponseWriter, r *http.Reques
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		h.chatSystemMessage(ch, "join|"+h.userName(req.UserID))
 		h.sse.sendTo([]int64{req.UserID}, sseEvent{Type: "chat_channels"})
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodDelete:
@@ -277,10 +302,12 @@ func (h *Handler) handleChatChannelMembers(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		leaverName := h.userName(uid)
 		if err := h.store.RemoveChatMember(ch.ID, uid); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		h.chatSystemMessage(ch, "leave|"+leaverName)
 		h.sse.sendTo([]int64{uid}, sseEvent{Type: "chat_channels"})
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
