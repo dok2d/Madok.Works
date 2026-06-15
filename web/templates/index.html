@@ -2887,7 +2887,8 @@ function updateSearchScope() {
   const sel = document.getElementById('search-scope');
   if (!sel) return;
   const allLabel = (currentLang === 'ru') ? 'Везде' : 'All';
-  const opts = [['', allLabel], ['kanban', t('svc_kanban')]];
+  // kanban is part of `services` now, so don't add it separately (avoids a duplicate).
+  const opts = [['', allLabel]];
   for (const s of services.filter(s => s.enabled)) opts.push([s.name, t('svc_' + s.name)]);
   const cur = serviceForView(currentView);
   sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
