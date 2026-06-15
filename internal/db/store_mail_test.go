@@ -105,7 +105,7 @@ func TestMailCustomFolders(t *testing.T) {
 	}
 }
 
-func TestExportExcludesSecretsImportPreserves(t *testing.T) {
+func TestSettingsExportImportRoundTrip(t *testing.T) {
 	s := newTestStore(t)
 	s.SetSetting("mail_dkim_key", "PRIVATE-KEY-PEM")
 	s.SetSetting("telegram_bot_token", "123:ABC")
@@ -115,23 +115,23 @@ func TestExportExcludesSecretsImportPreserves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportAll: %v", err)
 	}
+	got := map[string]string{}
 	for _, st := range exp.Settings {
-		if st.Key == "mail_dkim_key" || st.Key == "telegram_bot_token" {
-			t.Fatalf("secret %q leaked into JSON export", st.Key)
-		}
+		got[st.Key] = st.Value
 	}
-	// Restore on the same instance must keep the live secrets and other settings.
-	if err := s.ImportAll(exp); err != nil {
+	// Export is a complete backup: secrets are included (migratable).
+	if got["mail_dkim_key"] != "PRIVATE-KEY-PEM" || got["telegram_bot_token"] != "123:ABC" {
+		t.Fatalf("secrets missing from export: %+v", got)
+	}
+	// Restore into a fresh instance reproduces every setting.
+	b := newTestStore(t)
+	if err := b.ImportAll(exp); err != nil {
 		t.Fatalf("ImportAll: %v", err)
 	}
-	if s.GetSetting("mail_dkim_key") != "PRIVATE-KEY-PEM" {
-		t.Error("import wiped the live DKIM key")
-	}
-	if s.GetSetting("telegram_bot_token") != "123:ABC" {
-		t.Error("import wiped the live bot token")
-	}
-	if s.GetSetting("mail_domain") != "example.com" {
-		t.Error("non-secret setting lost on import")
+	for _, k := range []string{"mail_dkim_key", "telegram_bot_token", "mail_domain"} {
+		if b.GetSetting(k) != got[k] {
+			t.Errorf("setting %q not restored: got %q want %q", k, b.GetSetting(k), got[k])
+		}
 	}
 }
 

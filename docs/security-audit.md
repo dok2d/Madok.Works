@@ -14,7 +14,7 @@ prioritized plan below.
 ## Severity summary
 | # | Severity | Area | Status |
 |---|----------|------|--------|
-| S1 | High | Secrets (DKIM key, TG token) leaked in JSON export | ✅ Fixed |
+| S1 | High | Secrets (DKIM key, TG token) present in JSON export | ⚠️ Accepted (owner decision) — see note |
 | A1 | Medium | No CSRF tokens (relies on SameSite=Lax) | Planned P1 |
 | A2 | Medium | Outbound SMTP SSRF / open-relay-ish surface | Planned P1 |
 | A3 | Medium | Inbound SMTP: no rate-limiting / mail-bomb DoS | Planned P1 |
@@ -29,12 +29,26 @@ prioritized plan below.
 
 ## Findings
 
-### S1 — Secrets exported in JSON backup (High) — FIXED
-`exportSettings()` dumped the entire `app_settings` table, so JSON export
-(`/api/export`, downloadable by admins) contained `mail_dkim_key` (DKIM **private
-key**) and `telegram_bot_token` in cleartext. A leaked JSON export would expose them.
-**Fix:** `secretSettingKeys` denylist excludes those keys from JSON export; they remain
-only in the live DB and the operator-controlled full `.db` backup. (`internal/db/store.go`.)
+### S1 — Secrets in JSON backup (High) — ACCEPTED (owner decision)
+`exportSettings()` dumps the entire `app_settings` table, so the JSON export
+(`/api/export`, the in-app JSON backups, and the daily Telegram backup) contains
+`mail_dkim_key` (DKIM **private key**) and `telegram_bot_token` in cleartext (the export
+also already contains user password **hashes**).
+
+Decision: keep secrets **in** the export so it stays a complete, one-file migratable
+backup (a restore onto a fresh instance reproduces DKIM signing and the bot without
+manual re-entry). The trade-off accepted is that the JSON export is a top-secret artifact.
+(An earlier exclusion was reverted because it also made `ImportAll` — which wipes and
+re-inserts `app_settings` — silently destroy the live DKIM key/token on restore.)
+
+**Required mitigations (handle the export as a secret):**
+- Restrict who can download `/api/export`; transport/store it encrypted; never commit it.
+- The **daily Telegram backup** ships this file through the bot — review whether that
+  channel is acceptable for a private key; consider disabling the auto-backup or routing
+  it to a trusted destination.
+- Recommend volume/disk encryption at rest.
+- Optional future hardening: an "include secrets" toggle (default off) for exports used
+  for data sharing vs. full migration.
 
 ### A1 — CSRF (Medium)
 Sessions are cookie-based (`SameSite=Lax`, `HttpOnly`). Mutations are POST/PUT/DELETE
@@ -105,7 +119,8 @@ table-name list (`ecosystemTables`); LIKE uses `escapeLike` + bound parameters. 
   *public* DKIM TXT, never the private key.
 
 ## Remediation plan (prioritized)
-- **P0 (done):** S1 secret export leak — fixed and committed.
+- **P0:** S1 — owner chose to keep secrets in the export (complete one-file backup);
+  treat the export as secret (see S1 mitigations); optional "include secrets" toggle later.
 - **P1 (next):** A1 Origin/CSRF check on mutations; A2 outbound MX private-IP guard +
   rate cap; A3 inbound per-IP rate limit + RCPT cap. All three are localized, testable
   (unit tests for the guards), and do not change default behavior (SMTP off by default).

@@ -1583,13 +1583,9 @@ func (s *Store) exportUsers() []model.ExportUser {
 	return users
 }
 
-// secretSettingKeys are never written to JSON exports (they stay only in the live
-// DB / full .db backup). Prevents leaking the DKIM private key and bot token.
-var secretSettingKeys = map[string]bool{
-	"mail_dkim_key":      true,
-	"telegram_bot_token": true,
-}
-
+// exportSettings dumps all app_settings, including secrets (DKIM private key,
+// bot token), so a JSON export is a complete, migratable backup. The export is
+// therefore sensitive — see docs/security-audit.md (handle/transport securely).
 func (s *Store) exportSettings() []model.ExportSetting {
 	rows, err := s.db.Query("SELECT key,value FROM app_settings")
 	if err != nil {
@@ -1600,9 +1596,6 @@ func (s *Store) exportSettings() []model.ExportSetting {
 	for rows.Next() {
 		var st model.ExportSetting
 		if err := rows.Scan(&st.Key, &st.Value); err != nil {
-			continue
-		}
-		if secretSettingKeys[st.Key] {
 			continue
 		}
 		settings = append(settings, st)
@@ -2313,15 +2306,10 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 		}
 	}
 
-	// Import settings if present. Secret keys are excluded from exports
-	// (secretSettingKeys), so preserve any existing live values instead of
-	// wiping them — a JSON restore must not destroy the DKIM key / bot token.
+	// Import settings if present (full replace; exports include all keys incl. secrets).
 	if len(data.Settings) > 0 {
-		tx.Exec("DELETE FROM app_settings WHERE key NOT IN ('mail_dkim_key','telegram_bot_token')")
+		tx.Exec("DELETE FROM app_settings")
 		for _, st := range data.Settings {
-			if secretSettingKeys[st.Key] {
-				continue
-			}
 			tx.Exec("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)", st.Key, st.Value)
 		}
 	}
