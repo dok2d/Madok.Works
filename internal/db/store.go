@@ -2313,10 +2313,15 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 		}
 	}
 
-	// Import settings if present
+	// Import settings if present. Secret keys are excluded from exports
+	// (secretSettingKeys), so preserve any existing live values instead of
+	// wiping them — a JSON restore must not destroy the DKIM key / bot token.
 	if len(data.Settings) > 0 {
-		tx.Exec("DELETE FROM app_settings")
+		tx.Exec("DELETE FROM app_settings WHERE key NOT IN ('mail_dkim_key','telegram_bot_token')")
 		for _, st := range data.Settings {
+			if secretSettingKeys[st.Key] {
+				continue
+			}
 			tx.Exec("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)", st.Key, st.Value)
 		}
 	}

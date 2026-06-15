@@ -105,6 +105,36 @@ func TestMailCustomFolders(t *testing.T) {
 	}
 }
 
+func TestExportExcludesSecretsImportPreserves(t *testing.T) {
+	s := newTestStore(t)
+	s.SetSetting("mail_dkim_key", "PRIVATE-KEY-PEM")
+	s.SetSetting("telegram_bot_token", "123:ABC")
+	s.SetSetting("mail_domain", "example.com")
+
+	exp, err := s.ExportAll()
+	if err != nil {
+		t.Fatalf("ExportAll: %v", err)
+	}
+	for _, st := range exp.Settings {
+		if st.Key == "mail_dkim_key" || st.Key == "telegram_bot_token" {
+			t.Fatalf("secret %q leaked into JSON export", st.Key)
+		}
+	}
+	// Restore on the same instance must keep the live secrets and other settings.
+	if err := s.ImportAll(exp); err != nil {
+		t.Fatalf("ImportAll: %v", err)
+	}
+	if s.GetSetting("mail_dkim_key") != "PRIVATE-KEY-PEM" {
+		t.Error("import wiped the live DKIM key")
+	}
+	if s.GetSetting("telegram_bot_token") != "123:ABC" {
+		t.Error("import wiped the live bot token")
+	}
+	if s.GetSetting("mail_domain") != "example.com" {
+		t.Error("non-secret setting lost on import")
+	}
+}
+
 func TestEvaluateRules(t *testing.T) {
 	rules := []model.MailRule{
 		{Enabled: true, MatchType: "all",
