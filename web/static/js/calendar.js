@@ -209,15 +209,9 @@ async function calUpdateBadge() {
 
 function calRenderLayout() {
   const canWrite = currentUser && currentUser.role !== 'readonly';
+  calRenderHeader();
   document.getElementById('app').innerHTML = `
-  <div class="cal-layout">
-    <aside class="cal-side">
-      <div class="cal-side-head"><span>${t('calCalendars')}</span>
-        ${canWrite ? `<button class="btn-icon" title="${t('calNewCalendar')}" onclick="calNewCalendarDialog()">+</button>` : ''}
-      </div>
-      <div class="cal-callist" id="cal-callist"></div>
-    </aside>
-    <main class="cal-main">
+    <main class="cal-main cal-main-full">
       <div class="cal-toolbar">
         <div class="cal-nav">
           <button class="btn btn-ghost btn-sm" onclick="calMove(-1)">&#8249;</button>
@@ -225,36 +219,47 @@ function calRenderLayout() {
           <button class="btn btn-ghost btn-sm" onclick="calMove(1)">&#8250;</button>
           <span class="cal-period" id="cal-period"></span>
         </div>
-        <div class="cal-views">
-          ${['month', 'week', 'day', 'agenda'].map(v => `<button class="cal-vbtn ${calState.view === v ? 'active' : ''}" onclick="calSetView('${v}')">${t('cal' + v[0].toUpperCase() + v.slice(1))}</button>`).join('')}
-          ${canWrite ? `<button class="btn btn-primary btn-sm" onclick="calNewEventDialog()">+ ${t('calNewEvent')}</button>` : ''}
-        </div>
+        ${canWrite ? `<button class="btn btn-primary btn-sm" onclick="calNewEventDialog()">+ ${t('calNewEvent')}</button>` : ''}
       </div>
       <div class="cal-body" id="cal-body"></div>
-    </main>
-  </div>`;
-  calRenderCalList();
+    </main>`;
 }
 
-function calRenderCalList() {
-  const el = document.getElementById('cal-callist');
+// calRenderHeader injects the view switcher + calendars visibility selector into
+// the app header (#cal-hdr) as kanban-style dropdowns, shown only in calendar view.
+function calRenderHeader() {
+  const el = document.getElementById('cal-hdr');
   if (!el) return;
-  if (!calState.calendars.length) { el.innerHTML = `<div class="cal-empty">${t('calNoCalendars')}</div>`; return; }
-  el.innerHTML = calState.calendars.map(c => `<div class="cal-clrow">
-    <label class="cal-cl-label">
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  const views = ['month', 'week', 'day', 'agenda'];
+  const vlabel = v => t('cal' + v[0].toUpperCase() + v.slice(1));
+  const viewItems = views.map(v => `<div class="sfd-item ${calState.view === v ? 'active' : ''}" onclick="calSetView('${v}')">${esc(vlabel(v))}</div>`).join('');
+  let calItems = calState.calendars.map(c => `<label class="sfd-item cal-dd-row">
       <input type="checkbox" ${calState.hidden[c.id] ? '' : 'checked'} onchange="calToggleCal(${c.id}, this.checked)">
       <span class="cal-dot" style="background:${escAttr(c.color)}"></span>
       <span class="cal-cl-name">${esc(c.name)}</span>
-    </label>
-    ${c.can_edit ? `<button class="cal-cl-edit" title="${t('calEditCalendar')}" onclick="calEditCalendarDialog(${c.id})">&#9881;</button>` : ''}
-  </div>`).join('') + `<div class="cal-clrow cal-clrow-kanban">
-    <label class="cal-cl-label">
+      ${c.can_edit ? `<button class="cal-cl-edit" title="${escAttr(t('calEditCalendar'))}" onclick="event.preventDefault();event.stopPropagation();calEditCalendarDialog(${c.id})">&#9881;</button>` : ''}
+    </label>`).join('');
+  calItems += `<label class="sfd-item cal-dd-row">
       <input type="checkbox" ${calState.hideKanban ? '' : 'checked'} onchange="calToggleKanban(this.checked)">
       <span class="cal-dot" style="background:#ef4444"></span>
-      <span class="cal-cl-name">${t('calKanban')}</span>
-    </label>
-  </div>`;
+      <span class="cal-cl-name">${esc(t('calKanban'))}</span>
+    </label>`;
+  if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calNewCalendarDialog()">+ ${esc(t('calNewCalendar'))}</div>`;
+  el.innerHTML = `<span class="hdr-sep">/</span>
+    <span class="hdr-filter">
+      <span class="hdr-filter-name" id="cal-view-label" onclick="hdrDropToggle(event,'cal-view-dd')">${esc(vlabel(calState.view))}</span>
+      <div class="hdr-filter-dropdown hidden" id="cal-view-dd">${viewItems}</div>
+    </span>
+    <span class="hdr-sep">/</span>
+    <span class="hdr-filter">
+      <span class="hdr-filter-name" id="cal-cals-label" onclick="hdrDropToggle(event,'cal-cals-dd')">${esc(t('calCalendars'))}</span>
+      <div class="hdr-filter-dropdown hidden" id="cal-cals-dd" onclick="event.stopPropagation()">${calItems}</div>
+    </span>`;
 }
+
+// Back-compat alias: callers that refreshed the calendar list now refresh the header.
+function calRenderCalList() { calRenderHeader(); }
 
 function calToggleKanban(checked) { calState.hideKanban = !checked; calRenderBody(); }
 
