@@ -105,6 +105,7 @@ body.has-rail #app{margin-left:52px}
 .wiki-layout{display:flex;height:calc(100vh - 52px)}
 .wiki-side{width:270px;min-width:270px;background:var(--bg2);border-right:1px solid var(--bg4);display:flex;flex-direction:column;padding:12px;gap:8px;overflow-y:auto}
 [dir="rtl"] .wiki-side{border-right:none;border-left:1px solid var(--bg4)}
+.wiki-hdr-btn{margin-left:4px}
 .wiki-space-bar{display:flex;gap:4px;align-items:center}
 .wiki-space-select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:7px 8px;color:var(--fg);font-size:.85rem}
 .wiki-search{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:7px 10px;color:var(--fg);font-size:.82rem;width:100%}
@@ -605,6 +606,8 @@ body:not(.kanban-view) .hdr-filter,
 body:not(.kanban-view) .hdr-sep,
 body:not(.kanban-view) .hdr-kanban-only{display:none !important}
 body:not(.view-mail) .hdr-mail-only{display:none !important}
+body:not(.view-wiki) .hdr-wiki-only{display:none !important}
+body:not(.view-calendar) .hdr-cal-only{display:none !important}
 /* === Admin page === */
 #admin-page{display:none;position:fixed;top:52px;left:0;right:0;bottom:0;overflow-y:auto;background:var(--bg);z-index:90}
 body.has-rail #admin-page{left:52px}
@@ -822,6 +825,8 @@ body.view-admin #admin-page{display:block}
       <div class="hdr-filter-dropdown hidden" id="epic-filter-dropdown"></div>
     </span>
     <span class="hdr-mail-only" id="mail-hdr"></span>
+    <span class="hdr-wiki-only" id="wiki-hdr"></span>
+    <span class="hdr-cal-only" id="cal-hdr"></span>
   </h1>
   <div class="header-actions">
     <span class="search-wrap">
@@ -1362,6 +1367,8 @@ function renderCurrentView() {
   document.body.classList.toggle('kanban-view', kanbanViews.includes(currentView));
   document.body.classList.toggle('view-admin', currentView === 'admin');
   document.body.classList.toggle('view-mail', currentView === 'mail');
+  document.body.classList.toggle('view-wiki', currentView === 'wiki');
+  document.body.classList.toggle('view-calendar', currentView === 'calendar');
   if (currentView === 'admin') { if (typeof renderAdminView === 'function') renderAdminView(); }
   else if (currentView === 'task' && currentTaskId) { renderTaskPage(currentTaskId).then(() => highlightCode()); }
   else if (currentView === 'epic' && currentEpicId) { renderEpicPage(currentEpicId).then(() => highlightCode()); }

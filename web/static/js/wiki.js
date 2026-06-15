@@ -101,19 +101,10 @@ function wikiIsSpaceAdmin() {
 
 // === Layout ===
 function wikiRenderLayout() {
-  const sp = wikiSpace();
+  wikiRenderHeader();
   document.getElementById('app').innerHTML = `
   <div class="wiki-layout">
     <aside class="wiki-side">
-      <div class="wiki-space-bar">
-        <select class="wiki-space-select" id="wiki-space-select" onchange="wikiSwitchSpace(this.value)">
-          ${wikiState.spaces.map(s => `<option value="${s.id}" ${s.id === wikiState.spaceId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
-        </select>
-        ${currentUser && currentUser.role !== 'readonly' ? `<button class="btn-icon" onclick="wikiNewSpaceDialog()" title="${t('wikiNewSpace')}">+</button>` : ''}
-        ${wikiIsSpaceAdmin() ? `<button class="btn-icon" onclick="wikiOpenSpaceSettings()" title="${t('wikiSpaceSettings')}">&#9881;</button>` : ''}
-      </div>
-      <input class="wiki-search" id="wiki-search" placeholder="${t('wikiSearchPh')}" autocomplete="off">
-      <div class="wiki-search-results hidden" id="wiki-search-results"></div>
       <div class="wiki-tree" id="wiki-tree"></div>
       ${wikiCanEdit() ? `<button class="btn btn-ghost btn-sm wiki-add-root" onclick="wikiNewPage(null)">+ ${t('wikiNewPage')}</button>` : ''}
     </aside>
@@ -121,15 +112,25 @@ function wikiRenderLayout() {
   </div>`;
   wikiRenderTree();
   wikiRenderMain();
-  const se = document.getElementById('wiki-search');
-  if (se) {
-    let tmo = null;
-    se.addEventListener('input', function () {
-      clearTimeout(tmo);
-      tmo = setTimeout(() => wikiDoSearch(this.value), 300);
-    });
-    se.addEventListener('keydown', function (e) { if (e.key === 'Escape') { this.value = ''; wikiDoSearch(''); } });
-  }
+}
+
+// wikiRenderHeader injects the space selector (kanban-style header dropdown) plus
+// new-space / space-settings actions into #wiki-hdr (shown only in wiki view).
+function wikiRenderHeader() {
+  const el = document.getElementById('wiki-hdr');
+  if (!el) return;
+  const sp = wikiSpace();
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  const items = wikiState.spaces.map(s =>
+    `<div class="sfd-item ${s.id === wikiState.spaceId ? 'active' : ''}" onclick="wikiSwitchSpace(${s.id})">${esc(s.name)}</div>`).join('')
+    || `<div class="sfd-item" style="cursor:default">${esc(t('wikiNoSpaces'))}</div>`;
+  const newSpace = canWrite ? `<button class="btn-icon wiki-hdr-btn" onclick="wikiNewSpaceDialog()" title="${escAttr(t('wikiNewSpace'))}">+</button>` : '';
+  const settings = wikiIsSpaceAdmin() ? `<button class="btn-icon wiki-hdr-btn" onclick="wikiOpenSpaceSettings()" title="${escAttr(t('wikiSpaceSettings'))}">&#9881;</button>` : '';
+  el.innerHTML = `<span class="hdr-sep">/</span>
+    <span class="hdr-filter">
+      <span class="hdr-filter-name" id="wiki-space-label" onclick="hdrDropToggle(event,'wiki-space-dd')">${esc(sp ? sp.name : t('wikiNoSpaces'))}</span>
+      <div class="hdr-filter-dropdown hidden" id="wiki-space-dd">${items}</div>
+    </span>${newSpace}${settings}`;
 }
 
 async function wikiSwitchSpace(id) {
@@ -808,22 +809,6 @@ async function wikiRestoreRevision(revId) {
     await api('/api/wiki/pages/' + wikiState.page.id + '/restore', 'POST', { revision_id: revId });
     navigateTo('/wiki/page/' + wikiState.page.id);
   } catch (e) { alert(e.message); }
-}
-
-// === Search ===
-async function wikiDoSearch(q) {
-  const box = document.getElementById('wiki-search-results');
-  if (!box) return;
-  q = q.trim();
-  if (!q) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-  try {
-    const hits = await api('/api/wiki/search?q=' + encodeURIComponent(q));
-    box.classList.remove('hidden');
-    box.innerHTML = hits.length ? hits.map(h => `<div class="wiki-hit" onclick="navigateTo('/wiki/page/${h.page_id}')">
-      <div class="wiki-hit-title">${esc(h.space_key)} / ${esc(h.title)}</div>
-      <div class="wiki-hit-snippet">${esc(h.snippet)}</div>
-    </div>`).join('') : `<div class="wiki-empty">${t('wikiNoResults')}</div>`;
-  } catch (e) { box.classList.add('hidden'); }
 }
 
 // === Spaces: create & settings ===
