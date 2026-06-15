@@ -328,15 +328,11 @@ body.has-rail #app{margin-left:52px}
 .gsearch-snip{color:var(--fg3);font-size:.8rem}
 .gsearch-empty{padding:18px;text-align:center;color:var(--fg3);font-size:.85rem}
 /* === Mail service === */
-/* Mail folders live in the top header (like the kanban sprint filter). */
-.mail-hdr{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap}
-.mail-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;cursor:pointer;font-size:.82rem;color:var(--fg2);border:1px solid transparent;white-space:nowrap}
-.mail-chip:hover{background:var(--bg3)}
-.mail-chip.active{background:var(--bg3);color:var(--accent);font-weight:600;border-color:var(--bg4)}
-.mail-chip-del{visibility:hidden;background:none;border:none;color:var(--fg3);cursor:pointer;font-size:.72rem;padding:0;line-height:1}
-.mail-chip:hover .mail-chip-del{visibility:visible}
+/* Mail folder selector lives in the header as a kanban-style dropdown. */
+.mail-chip-del{visibility:hidden;background:none;border:none;color:var(--fg3);cursor:pointer;font-size:.72rem;padding:0 0 0 4px;line-height:1;margin-left:auto}
+.sfd-item:hover .mail-chip-del{visibility:visible}
 .mail-chip-del:hover{color:var(--red)}
-.mail-chip-add{color:var(--fg3);font-weight:700}
+.mail-newfolder{color:var(--fg3)}
 .mail-hdr-compose{margin-left:8px;font-size:.8rem}
 .mail-move-sel{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg2);font-size:.78rem;padding:5px 6px}
 /* Two-pane layout: list on the left, selected message on the right. */
@@ -1935,6 +1931,20 @@ function toggleHdrFilter(e, ddId, items, currentVal, setFn) {
 }
 function closeHdrFilters() {
   document.querySelectorAll('.hdr-filter-dropdown').forEach(d => d.classList.add('hidden'));
+}
+// Generic header dropdown toggle for service filters (mail/wiki/calendar). The
+// service pre-renders the dropdown's inner items; this just shows/hides it and
+// closes other open dropdowns. Uses the same .hdr-filter visual style as kanban.
+function hdrDropToggle(e, ddId) {
+  if (e) e.stopPropagation();
+  const dd = document.getElementById(ddId);
+  if (!dd) return;
+  const show = dd.classList.contains('hidden');
+  closeHdrFilters();
+  if (show) {
+    dd.classList.remove('hidden');
+    setTimeout(() => document.addEventListener('click', closeHdrFilters, { once: true }), 0);
+  }
 }
 function toggleSprintFilter(e) {
   const sprints = [...state.sprints].sort((a,b) => b.id - a.id);

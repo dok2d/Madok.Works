@@ -123,25 +123,37 @@ function mailRenderLayout() {
   mailRenderViewPane();
 }
 
-// mailRenderHeader injects the folder chips + compose button into the app header
-// (#mail-hdr), styled like the kanban sprint filter and shown only in mail view.
+// mailRenderHeader injects the folder selector (a kanban-style header dropdown)
+// plus the compose button into the app header (#mail-hdr), shown only in mail view.
 function mailRenderHeader() {
   const el = document.getElementById('mail-hdr');
   if (!el) return;
   const canWrite = currentUser && currentUser.role !== 'readonly';
-  let chips = MAIL_FOLDERS.map(f => mailFolderChip(f, mailFolderLabel(f), false, 0)).join('');
-  for (const cf of mailState.customFolders) chips += mailFolderChip(cf.name, cf.name, true, cf.id);
-  if (canWrite) chips += `<span class="mail-chip mail-chip-add" title="${escAttr(t('mailNewFolder'))}" onclick="mailNewFolder()">+</span>`;
+  let items = MAIL_FOLDERS.map(f => mailFolderItem(f, mailFolderLabel(f), false, 0)).join('');
+  for (const cf of mailState.customFolders) items += mailFolderItem(cf.name, cf.name, true, cf.id);
+  if (canWrite) items += `<div class="sfd-item mail-newfolder" onclick="mailNewFolder()">+ ${esc(t('mailNewFolder'))}</div>`;
   const compose = canWrite ? `<button class="btn btn-primary btn-sm mail-hdr-compose" onclick="mailComposeDialog()">${esc(t('mailCompose'))}</button>` : '';
-  el.innerHTML = `<span class="hdr-sep">/</span><span class="mail-hdr">${chips}${compose}</span>`;
+  const cur = mailCurrentFolderLabel();
+  const unreadCur = (mailState.counts[mailState.folder] || {}).unread || 0;
+  el.innerHTML = `<span class="hdr-sep">/</span>
+    <span class="hdr-filter">
+      <span class="hdr-filter-name" id="mail-folder-label" onclick="hdrDropToggle(event,'mail-folder-dd')">${esc(cur)}${unreadCur ? ` <span class="mail-fcount">${unreadCur}</span>` : ''}</span>
+      <div class="hdr-filter-dropdown hidden" id="mail-folder-dd">${items}</div>
+    </span>${compose}`;
 }
 
-function mailFolderChip(name, label, deletable, fid) {
+function mailCurrentFolderLabel() {
+  if (MAIL_FOLDERS.includes(mailState.folder)) return mailFolderLabel(mailState.folder);
+  const cf = mailState.customFolders.find(c => c.name === mailState.folder);
+  return cf ? cf.name : mailState.folder;
+}
+
+function mailFolderItem(name, label, deletable, fid) {
   const c = mailState.counts[name] || {};
   const unread = c.unread > 0 ? `<span class="mail-fcount">${c.unread}</span>` : '';
   const active = mailState.folder === name ? 'active' : '';
   const del = deletable ? `<button class="mail-chip-del" title="${escAttr(t('mailDeleteFolder'))}" onclick="event.stopPropagation();mailDeleteFolder(${fid})">&#10005;</button>` : '';
-  return `<span class="mail-chip ${active}" onclick="mailOpenFolder('${escAttr(name)}')">${esc(label)}${unread}${del}</span>`;
+  return `<div class="sfd-item ${active}" onclick="mailOpenFolder('${escAttr(name)}')">${esc(label)} ${unread}${del}</div>`;
 }
 
 // Back-compat alias: callers that refreshed the folder list now refresh the header.
