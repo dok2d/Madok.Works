@@ -1,8 +1,11 @@
 package db
 
 import (
+	"bytes"
+	"compress/gzip"
 	"database/sql"
 	"fmt"
+	"io"
 	"kanban/internal/auth"
 	"kanban/internal/model"
 	"log"
@@ -480,6 +483,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE calendar_sub_events ADD COLUMN exdate TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE calendar_sub_events ADD COLUMN recurrence_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE calendar_sub_events ADD COLUMN status TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE files ADD COLUMN compressed INTEGER NOT NULL DEFAULT 0",
 	}
 	for _, q := range alters {
 		s.db.Exec(q) // ignore "duplicate column" errors
@@ -1328,8 +1332,58 @@ func (s *Store) GetImage(id int64) ([]byte, string, error) {
 
 // --- Files ---
 
+// gzipBytes / gunzipBytes are used for transparent file-blob compression.
+func gzipBytes(b []byte) []byte {
+	var buf bytes.Buffer
+	w, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	w.Write(b)
+	w.Close()
+	return buf.Bytes()
+}
+func gunzipBytes(b []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}
+
+// compressibleMime reports whether a MIME type is worth trying to gzip. Already-
+// compressed formats (media, archives, office/zip containers, PDF) are skipped.
+func compressibleMime(mime string) bool {
+	m := strings.ToLower(mime)
+	if strings.HasPrefix(m, "image/") && !strings.Contains(m, "svg") {
+		return false
+	}
+	if strings.HasPrefix(m, "video/") || strings.HasPrefix(m, "audio/") {
+		return false
+	}
+	for _, bad := range []string{"zip", "gzip", "compress", "pdf", "x-7z", "rar", "officedocument", "opendocument", "x-bzip"} {
+		if strings.Contains(m, bad) {
+			return false
+		}
+	}
+	return true
+}
+
+// maybeCompress returns the bytes to store and a flag, gzipping only when the MIME
+// is compressible and it actually saves at least ~10%.
+func maybeCompress(mime string, data []byte) ([]byte, int) {
+	if len(data) < 256 || !compressibleMime(mime) {
+		return data, 0
+	}
+	c := gzipBytes(data)
+	if len(c) < len(data)-len(data)/10 {
+		return c, 1
+	}
+	return data, 0
+}
+
 func (s *Store) SaveFile(filename string, data []byte, mime string) (int64, error) {
-	r, err := s.db.Exec("INSERT INTO files(filename,data,mime,size) VALUES(?,?,?,?)", filename, data, mime, len(data))
+	stored, compressed := maybeCompress(mime, data)
+	r, err := s.db.Exec("INSERT INTO files(filename,data,mime,size,compressed) VALUES(?,?,?,?,?)",
+		filename, stored, mime, len(data), compressed)
 	if err != nil {
 		return 0, err
 	}
@@ -1339,8 +1393,18 @@ func (s *Store) SaveFile(filename string, data []byte, mime string) (int64, erro
 func (s *Store) GetFile(id int64) ([]byte, string, string, error) {
 	var data []byte
 	var mime, filename string
-	err := s.db.QueryRow("SELECT data,mime,filename FROM files WHERE id=?", id).Scan(&data, &mime, &filename)
-	return data, mime, filename, err
+	var compressed int
+	err := s.db.QueryRow("SELECT data,mime,filename,COALESCE(compressed,0) FROM files WHERE id=?", id).
+		Scan(&data, &mime, &filename, &compressed)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if compressed == 1 {
+		if raw, derr := gunzipBytes(data); derr == nil {
+			data = raw
+		}
+	}
+	return data, mime, filename, nil
 }
 
 func (s *Store) DeleteImage(id int64) error {
@@ -1696,7 +1760,7 @@ func (s *Store) exportSubscriptions() []model.ExportSubscription {
 }
 
 func (s *Store) exportFiles() []model.ExportFile {
-	rows, err := s.db.Query("SELECT id,filename,mime,data FROM files")
+	rows, err := s.db.Query("SELECT id,filename,mime,data,COALESCE(compressed,0) FROM files")
 	if err != nil {
 		return nil
 	}
@@ -1704,8 +1768,15 @@ func (s *Store) exportFiles() []model.ExportFile {
 	var files []model.ExportFile
 	for rows.Next() {
 		var f model.ExportFile
-		if err := rows.Scan(&f.ID, &f.Filename, &f.Mime, &f.Data); err != nil {
+		var compressed int
+		if err := rows.Scan(&f.ID, &f.Filename, &f.Mime, &f.Data, &compressed); err != nil {
 			continue
+		}
+		// Export the original bytes so backups stay portable / version-independent.
+		if compressed == 1 {
+			if raw, derr := gunzipBytes(f.Data); derr == nil {
+				f.Data = raw
+			}
 		}
 		files = append(files, f)
 	}
@@ -2428,11 +2499,13 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 		tx.Exec("INSERT OR IGNORE INTO task_subscriptions(task_id,user_id) VALUES(?,?)", sub.TaskID, sub.UserID)
 	}
 
-	// Import files
+	// Import files (re-compress compressible blobs on the way in).
 	if len(data.Files) > 0 {
 		tx.Exec("DELETE FROM files")
 		for _, f := range data.Files {
-			tx.Exec("INSERT INTO files(id,filename,data,mime,size) VALUES(?,?,?,?,?)", f.ID, f.Filename, f.Data, f.Mime, len(f.Data))
+			stored, compressed := maybeCompress(f.Mime, f.Data)
+			tx.Exec("INSERT INTO files(id,filename,data,mime,size,compressed) VALUES(?,?,?,?,?,?)",
+				f.ID, f.Filename, stored, f.Mime, len(f.Data), compressed)
 		}
 	}
 
