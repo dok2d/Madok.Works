@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"strings"
+	"sync"
+	"time"
 
 	gomail "github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
@@ -19,7 +22,39 @@ import (
 // the local-part of each RCPT address is matched to a username. This keeps the
 // app's default zero-listener footprint unless mail receiving is explicitly on.
 
-const smtpMaxMessageBytes = 25 * 1024 * 1024
+const (
+	smtpMaxMessageBytes  = 25 * 1024 * 1024
+	smtpMaxRcpt          = 100 // max recipients per session
+	smtpMaxSessionsPerIP = 30  // per smtpRateWindow
+	smtpRateWindow       = time.Minute
+)
+
+// smtpRateLimiter is a tiny in-memory sliding-window limiter keyed by source IP,
+// to blunt inbound mail-bombing / connection floods.
+type smtpRateLimiter struct {
+	mu   sync.Mutex
+	hits map[string][]time.Time
+}
+
+var smtpLimiter = &smtpRateLimiter{hits: map[string][]time.Time{}}
+
+func (l *smtpRateLimiter) allow(ip string, now time.Time, limit int, window time.Duration) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	cutoff := now.Add(-window)
+	kept := l.hits[ip][:0]
+	for _, t := range l.hits[ip] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) >= limit {
+		l.hits[ip] = kept
+		return false
+	}
+	l.hits[ip] = append(kept, now)
+	return true
+}
 
 type smtpBackend struct{ h *Handler }
 
@@ -27,6 +62,14 @@ func (b *smtpBackend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	ip := ""
 	if c != nil && c.Conn() != nil {
 		ip = c.Conn().RemoteAddr().String()
+	}
+	host := ip
+	if h, _, err := net.SplitHostPort(ip); err == nil {
+		host = h
+	}
+	if host != "" && !smtpLimiter.allow(host, time.Now(), smtpMaxSessionsPerIP, smtpRateWindow) {
+		b.h.store.LogMailAudit(model.MailAudit{Event: "rate_limited", SourceIP: ip, Detail: "too many SMTP sessions"})
+		return nil, fmt.Errorf("rate limit exceeded")
 	}
 	return &smtpSession{h: b.h, sourceIP: ip}, nil
 }
@@ -43,6 +86,9 @@ func (s *smtpSession) Logout() error { return nil }
 
 func (s *smtpSession) Mail(from string, _ *smtp.MailOptions) error { s.from = from; return nil }
 func (s *smtpSession) Rcpt(to string, _ *smtp.RcptOptions) error {
+	if len(s.rcpts) >= smtpMaxRcpt {
+		return fmt.Errorf("too many recipients")
+	}
 	s.rcpts = append(s.rcpts, to)
 	return nil
 }
