@@ -300,34 +300,37 @@ body.has-rail #app{margin-left:52px}
 .gsearch-snip{color:var(--fg3);font-size:.8rem}
 .gsearch-empty{padding:18px;text-align:center;color:var(--fg3);font-size:.85rem}
 /* === Mail service === */
-.mail-layout{display:flex;height:calc(100vh - 52px)}
-.mail-side{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--bg4);display:flex;flex-direction:column;padding:12px;gap:10px;overflow-y:auto}
-[dir="rtl"] .mail-side{border-right:none;border-left:1px solid var(--bg4)}
-.mail-compose{width:100%}
-.mail-search{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:7px 10px;color:var(--fg);font-size:.82rem;width:100%}
-.mail-search:focus{outline:none;border-color:var(--accent)}
-.mail-folders{display:flex;flex-direction:column;gap:2px}
-.mail-frow{display:flex;align-items:center;gap:6px;justify-content:space-between;padding:7px 9px;border-radius:var(--radius);cursor:pointer;font-size:.88rem}
-.mail-frow-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mail-fdel{visibility:hidden;background:none;border:none;color:var(--fg3);cursor:pointer;font-size:.78rem;padding:0 2px}
-.mail-frow:hover .mail-fdel{visibility:visible}
-.mail-fdel:hover{color:var(--red)}
-.mail-newfolder{color:var(--fg3);font-size:.82rem}
+/* Mail folders live in the top header (like the kanban sprint filter). */
+.mail-hdr{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap}
+.mail-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;cursor:pointer;font-size:.82rem;color:var(--fg2);border:1px solid transparent;white-space:nowrap}
+.mail-chip:hover{background:var(--bg3)}
+.mail-chip.active{background:var(--bg3);color:var(--accent);font-weight:600;border-color:var(--bg4)}
+.mail-chip-del{visibility:hidden;background:none;border:none;color:var(--fg3);cursor:pointer;font-size:.72rem;padding:0;line-height:1}
+.mail-chip:hover .mail-chip-del{visibility:visible}
+.mail-chip-del:hover{color:var(--red)}
+.mail-chip-add{color:var(--fg3);font-weight:700}
+.mail-hdr-compose{margin-left:8px;font-size:.8rem}
 .mail-move-sel{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg2);font-size:.78rem;padding:5px 6px}
-.mail-rules-btn{margin-top:10px;width:100%}
+/* Two-pane layout: list on the left, selected message on the right. */
+.mail-split{display:flex;height:calc(100vh - 52px);overflow:hidden}
+.mail-list-pane{overflow-y:auto;min-width:240px;flex:0 0 auto;border-right:1px solid var(--bg4)}
+[dir="rtl"] .mail-list-pane{border-right:none;border-left:1px solid var(--bg4)}
+.mail-resizer{flex:0 0 5px;cursor:col-resize;background:var(--bg3)}
+.mail-resizer:hover,.mail-resizer.dragging{background:var(--accent)}
+.mail-view-pane{flex:1 1 0;min-width:0;overflow-y:auto}
+.mail-back-narrow{display:none}
 .mail-modal-inner{margin:10px 0}
 .mail-rule-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bg4);font-size:.88rem}
 .mail-rule-h{font-size:.74rem;text-transform:uppercase;color:var(--fg3);margin:12px 0 6px}
 .mail-rule-cond,.mail-rule-act{display:flex;gap:6px;align-items:center;margin-bottom:6px}
 .mail-rule-cond select,.mail-rule-cond input,.mail-rule-act select{background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg);font-size:.82rem;padding:5px 6px}
 .mail-rule-cond input{flex:1}
-.mail-frow:hover{background:var(--bg3)}
-.mail-frow.active{background:var(--bg3);color:var(--accent);font-weight:600}
 .mail-fcount{background:var(--red);color:#fff;font-size:.62rem;font-weight:600;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:8px;padding:0 4px}
-.mail-main{flex:1;overflow-y:auto;min-width:0}
 .mail-list{display:flex;flex-direction:column}
 .mail-row{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bg4);cursor:pointer}
 .mail-row:hover{background:var(--bg2)}
+.mail-row.sel{background:var(--bg3)}
+.mail-row.sel:hover{background:var(--bg3)}
 .mail-row.unread{background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .mail-row.unread .mail-row-from,.mail-row.unread .mail-row-subj{font-weight:700}
 .mail-row-flag{cursor:pointer;color:var(--fg3);flex-shrink:0}
@@ -360,9 +363,12 @@ body.has-rail #app{margin-left:52px}
 .mail-att-chip a{cursor:pointer;color:var(--red);margin-left:4px}
 .mail-modal-foot{display:flex;align-items:center;gap:8px}
 @media (max-width:760px){
-  .mail-layout{flex-direction:column;height:auto}
-  .mail-side{width:100%;min-width:0;max-height:30vh;border-right:none;border-bottom:1px solid var(--bg4)}
-  .mail-main{height:calc(100vh - 52px)}
+  .mail-list-pane{flex:1 1 auto;width:100%;min-width:0;border-right:none}
+  .mail-resizer{display:none}
+  .mail-view-pane{display:none}
+  .mail-split.viewing .mail-list-pane{display:none}
+  .mail-split.viewing .mail-view-pane{display:block;flex:1 1 auto;width:100%}
+  .mail-back-narrow{display:inline-flex !important}
   .mail-row-from{width:90px;min-width:90px}
 }
 @media (max-width:760px){
@@ -570,6 +576,7 @@ body.has-rail #app{margin-left:52px}
 body:not(.kanban-view) .hdr-filter,
 body:not(.kanban-view) .hdr-sep,
 body:not(.kanban-view) .hdr-kanban-only{display:none !important}
+body:not(.view-mail) .hdr-mail-only{display:none !important}
 /* === Admin page === */
 #admin-page{display:none;position:fixed;top:52px;left:0;right:0;bottom:0;overflow-y:auto;background:var(--bg);z-index:90}
 body.has-rail #admin-page{left:52px}
@@ -786,6 +793,7 @@ body.view-admin #admin-page{display:block}
       <span class="hdr-filter-name" id="epic-filter-label" onclick="toggleEpicFilter(event)">ALL</span>
       <div class="hdr-filter-dropdown hidden" id="epic-filter-dropdown"></div>
     </span>
+    <span class="hdr-mail-only" id="mail-hdr"></span>
   </h1>
   <div class="header-actions">
     <span class="search-wrap">
@@ -871,6 +879,10 @@ body.view-admin #admin-page{display:block}
   <div class="sidebar-section">
     <h3 data-i18n="timezone"></h3>
     <select class="tz-select" id="tz-select" onchange="setTimezone(this.value)"></select>
+  </div>
+  <div class="sidebar-section" id="mail-rules-section" style="display:none">
+    <h3 id="mail-rules-h3"></h3>
+    <button class="btn btn-ghost btn-sm" onclick="if(typeof mailRulesDialog==='function')mailRulesDialog()">&#9881; <span id="mail-rules-manage-lbl"></span></button>
   </div>
   <div class="sidebar-section" id="export-import-section" style="display:none">
     <h3 data-i18n="exportImport"></h3>
@@ -1321,6 +1333,7 @@ function renderCurrentView() {
   const kanbanViews = ['board', 'task', 'epic', 'sprint', 'backlog', 'user'];
   document.body.classList.toggle('kanban-view', kanbanViews.includes(currentView));
   document.body.classList.toggle('view-admin', currentView === 'admin');
+  document.body.classList.toggle('view-mail', currentView === 'mail');
   if (currentView === 'admin') { if (typeof renderAdminView === 'function') renderAdminView(); }
   else if (currentView === 'task' && currentTaskId) { renderTaskPage(currentTaskId).then(() => highlightCode()); }
   else if (currentView === 'epic' && currentEpicId) { renderEpicPage(currentEpicId).then(() => highlightCode()); }
@@ -1528,6 +1541,17 @@ function updateUserUI() {
     if (isAdmin()) { tgSec.style.display = ''; }
     else if (currentUser.telegram_configured) { tgSec.style.display = ''; }
     else { tgSec.style.display = 'none'; }
+  }
+  // Mail distribution rules — per-user; lives in personal settings (gear sidebar).
+  const mrSec = document.getElementById('mail-rules-section');
+  if (mrSec) {
+    const mailOn = typeof isServiceEnabled === 'function' && isServiceEnabled('mail');
+    if (mailOn && currentUser.role !== 'readonly') {
+      if (typeof ensureMailI18n === 'function') ensureMailI18n();
+      mrSec.style.display = '';
+      const h = document.getElementById('mail-rules-h3'); if (h) h.textContent = t('mailRulesTitle');
+      const l = document.getElementById('mail-rules-manage-lbl'); if (l) l.textContent = t('mailRules');
+    } else { mrSec.style.display = 'none'; }
   }
   // Personal toggle
   const pt = document.getElementById('personal-toggle');

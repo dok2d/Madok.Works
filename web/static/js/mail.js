@@ -24,7 +24,7 @@ const MAIL_I18N = {
     mailSearchPh: 'Search mail…', mailNoMessages: 'No messages', mailNoSubject: '(no subject)',
     mailAttach: 'Attach', mailAttachments: 'Attachments', mailDeleteConfirm: 'Delete this message permanently?',
     mailFrom: 'From', mailReadonly: 'Read-only access', mailRecipientsRequired: 'Add at least one recipient',
-    mailToPlaceholder: 'username, username…', mailFlag: 'Flag', mailUnflag: 'Unflag', mailBack: 'Back', mailJunk: 'Junk', mailNewFolder: 'New folder', mailDeleteFolder: 'Delete folder', mailMoveTo: 'Move to', mailSave: 'Save', mailEdit: 'Edit', mailRules: 'Rules', mailRuleNew: 'New rule', mailRuleName: 'Name', mailRuleEnabled: 'Enabled', mailRuleMatch: 'Match', mailRuleAll: 'all conditions', mailRuleAny: 'any condition', mailRuleIf: 'If', mailRuleThen: 'Then',
+    mailToPlaceholder: 'username, username…', mailFlag: 'Flag', mailUnflag: 'Unflag', mailBack: 'Back', mailJunk: 'Junk', mailNewFolder: 'New folder', mailDeleteFolder: 'Delete folder', mailMoveTo: 'Move to', mailSave: 'Save', mailEdit: 'Edit', mailRules: 'Distribution rules', mailRulesTitle: 'Mail', mailNoSelection: 'Select a message', mailRuleNew: 'New rule', mailRuleName: 'Name', mailRuleEnabled: 'Enabled', mailRuleMatch: 'Match', mailRuleAll: 'all conditions', mailRuleAny: 'any condition', mailRuleIf: 'If', mailRuleThen: 'Then',
   },
   ru: {
     mailCompose: 'Написать', mailInbox: 'Входящие', mailSent: 'Отправленные', mailDrafts: 'Черновики', mailTrash: 'Корзина',
@@ -33,7 +33,7 @@ const MAIL_I18N = {
     mailSearchPh: 'Поиск почты…', mailNoMessages: 'Нет писем', mailNoSubject: '(без темы)',
     mailAttach: 'Прикрепить', mailAttachments: 'Вложения', mailDeleteConfirm: 'Удалить письмо навсегда?',
     mailFrom: 'От', mailReadonly: 'Только чтение', mailRecipientsRequired: 'Укажите хотя бы одного получателя',
-    mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад', mailJunk: 'Спам', mailNewFolder: 'Новая папка', mailDeleteFolder: 'Удалить папку', mailMoveTo: 'Переместить в', mailSave: 'Сохранить', mailEdit: 'Изменить', mailRules: 'Правила', mailRuleNew: 'Новое правило', mailRuleName: 'Название', mailRuleEnabled: 'Включено', mailRuleMatch: 'Совпадение', mailRuleAll: 'все условия', mailRuleAny: 'любое условие', mailRuleIf: 'Если', mailRuleThen: 'То',
+    mailToPlaceholder: 'логин, логин…', mailFlag: 'Пометить', mailUnflag: 'Снять метку', mailBack: 'Назад', mailJunk: 'Спам', mailNewFolder: 'Новая папка', mailDeleteFolder: 'Удалить папку', mailMoveTo: 'Переместить в', mailSave: 'Сохранить', mailEdit: 'Изменить', mailRules: 'Правила распределения', mailRulesTitle: 'Почта', mailNoSelection: 'Выберите письмо', mailRuleNew: 'Новое правило', mailRuleName: 'Название', mailRuleEnabled: 'Включено', mailRuleMatch: 'Совпадение', mailRuleAll: 'все условия', mailRuleAny: 'любое условие', mailRuleIf: 'Если', mailRuleThen: 'То',
   },
   es: {
     mailCompose: "Redactar", mailInbox: "Entrada", mailSent: "Enviados", mailDrafts: "Borradores", mailTrash: "Papelera",
@@ -77,7 +77,8 @@ function ensureMailI18n() {
   if (mailI18nMerged || typeof LANGS === 'undefined') return;
   for (const lang of ['ru', 'en', 'zh', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ar']) {
     if (!LANGS[lang]) continue;
-    const dict = MAIL_I18N[lang] || MAIL_I18N.en;
+    // Base-en merge so keys missing from a locale fall back to English.
+    const dict = Object.assign({}, MAIL_I18N.en, MAIL_I18N[lang] || {});
     for (const k in dict) if (!(k in LANGS[lang])) LANGS[lang][k] = dict[k];
   }
   mailI18nMerged = true;
@@ -89,11 +90,14 @@ function mailFolderLabel(f) { return t('mail' + f[0].toUpperCase() + f.slice(1))
 async function renderMailView() {
   ensureMailI18n();
   mailState.view = 'list';
+  mailState.search = '';
   await mailLoadCounts();
   mailRenderLayout();
   mailConnectSSE();
   await mailLoadFolder(mailState.folder);
 }
+
+const MAIL_SPLIT_KEY = 'kanban.mailSplitPx';
 
 async function mailLoadCounts() {
   try {
@@ -106,45 +110,42 @@ async function mailLoadCounts() {
 }
 
 function mailRenderLayout() {
-  const canWrite = currentUser && currentUser.role !== 'readonly';
+  // Folders + compose now live in the top header (see mailRenderHeader). The body
+  // is a resizable two-pane split: list on the left, selected message on the right.
+  mailRenderHeader();
   document.getElementById('app').innerHTML = `
-  <div class="mail-layout">
-    <aside class="mail-side">
-      ${canWrite ? `<button class="btn btn-primary mail-compose" onclick="mailComposeDialog()">${t('mailCompose')}</button>` : ''}
-      <input class="mail-search" id="mail-search" placeholder="${t('mailSearchPh')}" autocomplete="off">
-      <div class="mail-folders" id="mail-folders"></div>
-      ${canWrite ? `<button class="btn btn-ghost btn-sm mail-rules-btn" onclick="mailRulesDialog()">&#9881; ${t('mailRules')}</button>` : ''}
-    </aside>
-    <main class="mail-main" id="mail-main"></main>
+  <div class="mail-split" id="mail-split">
+    <div class="mail-list-pane" id="mail-list-pane"></div>
+    <div class="mail-resizer" id="mail-resizer"></div>
+    <div class="mail-view-pane" id="mail-view-pane"></div>
   </div>`;
-  mailRenderFolders();
-  const se = document.getElementById('mail-search');
-  if (se) {
-    let tmo = null;
-    se.addEventListener('input', function () { clearTimeout(tmo); tmo = setTimeout(() => mailDoSearch(this.value), 300); });
-    se.addEventListener('keydown', function (e) { if (e.key === 'Escape') { this.value = ''; mailDoSearch(''); } });
-  }
+  mailInitResizer();
+  mailRenderViewPane();
 }
 
-function mailFolderRow(name, label, deletable, fid) {
+// mailRenderHeader injects the folder chips + compose button into the app header
+// (#mail-hdr), styled like the kanban sprint filter and shown only in mail view.
+function mailRenderHeader() {
+  const el = document.getElementById('mail-hdr');
+  if (!el) return;
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  let chips = MAIL_FOLDERS.map(f => mailFolderChip(f, mailFolderLabel(f), false, 0)).join('');
+  for (const cf of mailState.customFolders) chips += mailFolderChip(cf.name, cf.name, true, cf.id);
+  if (canWrite) chips += `<span class="mail-chip mail-chip-add" title="${escAttr(t('mailNewFolder'))}" onclick="mailNewFolder()">+</span>`;
+  const compose = canWrite ? `<button class="btn btn-primary btn-sm mail-hdr-compose" onclick="mailComposeDialog()">${esc(t('mailCompose'))}</button>` : '';
+  el.innerHTML = `<span class="hdr-sep">/</span><span class="mail-hdr">${chips}${compose}</span>`;
+}
+
+function mailFolderChip(name, label, deletable, fid) {
   const c = mailState.counts[name] || {};
   const unread = c.unread > 0 ? `<span class="mail-fcount">${c.unread}</span>` : '';
-  const active = mailState.folder === name && mailState.view === 'list' && !mailState.search;
-  return `<div class="mail-frow ${active ? 'active' : ''}" onclick="mailOpenFolder('${escAttr(name)}')">
-    <span class="mail-frow-name">${esc(label)}</span>
-    ${deletable ? `<button class="mail-fdel" title="${t('mailDeleteFolder')}" onclick="event.stopPropagation();mailDeleteFolder(${fid})">&#10005;</button>` : ''}
-    ${unread}</div>`;
+  const active = mailState.folder === name ? 'active' : '';
+  const del = deletable ? `<button class="mail-chip-del" title="${escAttr(t('mailDeleteFolder'))}" onclick="event.stopPropagation();mailDeleteFolder(${fid})">&#10005;</button>` : '';
+  return `<span class="mail-chip ${active}" onclick="mailOpenFolder('${escAttr(name)}')">${esc(label)}${unread}${del}</span>`;
 }
 
-function mailRenderFolders() {
-  const el = document.getElementById('mail-folders');
-  if (!el) return;
-  let html = MAIL_FOLDERS.map(f => mailFolderRow(f, mailFolderLabel(f), false, 0)).join('');
-  for (const cf of mailState.customFolders) html += mailFolderRow(cf.name, cf.name, true, cf.id);
-  const canWrite = currentUser && currentUser.role !== 'readonly';
-  if (canWrite) html += `<div class="mail-frow mail-newfolder" onclick="mailNewFolder()">+ ${t('mailNewFolder')}</div>`;
-  el.innerHTML = html;
-}
+// Back-compat alias: callers that refreshed the folder list now refresh the header.
+function mailRenderFolders() { mailRenderHeader(); }
 
 async function mailNewFolder() {
   const name = prompt(t('mailNewFolder'));
@@ -165,7 +166,6 @@ async function mailDeleteFolder(id) {
 
 function mailOpenFolder(f) {
   mailState.folder = f; mailState.search = '';
-  const se = document.getElementById('mail-search'); if (se) se.value = '';
   mailLoadFolder(f);
 }
 
@@ -173,23 +173,80 @@ async function mailLoadFolder(folder) {
   mailState.view = 'list';
   try { mailState.messages = await api('/api/mail/messages?folder=' + encodeURIComponent(folder)); }
   catch (e) { mailState.messages = []; }
-  mailRenderFolders();
+  mailRenderHeader();
+  // Drop the right-pane selection if it no longer belongs to this folder.
+  if (mailState.openBoxId && !mailState.messages.some(m => m.box_id === mailState.openBoxId)) {
+    mailState.openBoxId = null;
+    const sp = document.getElementById('mail-split'); if (sp) sp.classList.remove('viewing');
+    mailRenderViewPane();
+  }
   mailRenderList();
 }
 
 function mailRenderList() {
-  const el = document.getElementById('mail-main');
+  const el = document.getElementById('mail-list-pane');
   if (!el) return;
   const msgs = mailState.messages;
   if (!msgs.length) { el.innerHTML = `<div class="mail-empty mail-empty-lg">${t('mailNoMessages')}</div>`; return; }
   const showFrom = mailState.folder !== 'sent';
   el.innerHTML = `<div class="mail-list">${msgs.map(m => `
-    <div class="mail-row ${m.seen ? '' : 'unread'}" onclick="mailOpen(${m.box_id})">
+    <div class="mail-row ${m.seen ? '' : 'unread'} ${m.box_id === mailState.openBoxId ? 'sel' : ''}" onclick="mailOpen(${m.box_id})">
       <span class="mail-row-flag ${m.flagged ? 'on' : ''}" onclick="event.stopPropagation();mailToggleFlag(${m.box_id}, ${!m.flagged})" title="${t('mailFlag')}">${m.flagged ? '★' : '☆'}</span>
       <span class="mail-row-from">${esc(showFrom ? (m.from_name || '?') : (m.to_addrs || ''))}</span>
       <span class="mail-row-main"><b class="mail-row-subj">${esc(m.subject || t('mailNoSubject'))}</b> <span class="mail-row-snip">${esc(m.snippet || '')}</span></span>
       <span class="mail-row-date">${esc(fmtDate(m.created_at))}</span>
     </div>`).join('')}</div>`;
+}
+
+// mailRenderViewPane shows the selected message on the right, or nothing when no
+// message is selected ("просто пусто").
+function mailRenderViewPane() {
+  const el = document.getElementById('mail-view-pane');
+  if (!el) return;
+  if (!mailState.openBoxId) { el.innerHTML = ''; return; }
+}
+
+function mailCloseMessage() {
+  mailState.openBoxId = null;
+  const sp = document.getElementById('mail-split'); if (sp) sp.classList.remove('viewing');
+  mailRenderViewPane();
+  mailRenderList();
+}
+
+// mailInitResizer wires the draggable divider; the left width is persisted (px).
+let mailResizeState = null;
+let mailResizerBound = false;
+function mailInitResizer() {
+  const split = document.getElementById('mail-split');
+  const pane = document.getElementById('mail-list-pane');
+  const rez = document.getElementById('mail-resizer');
+  if (!split || !pane || !rez) return;
+  const saved = parseInt(localStorage.getItem(MAIL_SPLIT_KEY) || '', 10);
+  pane.style.flexBasis = (saved && saved > 200 ? saved : 340) + 'px';
+  rez.addEventListener('mousedown', e => {
+    mailResizeState = { pane, split, rez };
+    rez.classList.add('dragging');
+    document.body.style.userSelect = 'none'; document.body.style.cursor = 'col-resize';
+    e.preventDefault();
+  });
+  if (mailResizerBound) return;
+  mailResizerBound = true;
+  window.addEventListener('mousemove', e => {
+    if (!mailResizeState) return;
+    const rect = mailResizeState.split.getBoundingClientRect();
+    let w = e.clientX - rect.left;
+    const max = rect.width - 320;
+    if (w < 240) w = 240;
+    if (w > max) w = max;
+    mailResizeState.pane.style.flexBasis = w + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!mailResizeState) return;
+    const s = mailResizeState; mailResizeState = null;
+    s.rez.classList.remove('dragging');
+    document.body.style.userSelect = ''; document.body.style.cursor = '';
+    localStorage.setItem(MAIL_SPLIT_KEY, String(parseInt(s.pane.style.flexBasis, 10) || 340));
+  });
 }
 
 async function mailOpen(boxId) {
@@ -200,19 +257,22 @@ async function mailOpen(boxId) {
   try { mailState.thread = await api('/api/mail/thread/' + box.thread_id); }
   catch (e) { mailState.thread = [box]; }
   mailState.view = 'message';
-  mailLoadCounts().then(mailRenderFolders);
+  const m = mailState.messages.find(x => x.box_id === boxId); if (m) m.seen = true;
+  const sp = document.getElementById('mail-split'); if (sp) sp.classList.add('viewing');
+  mailLoadCounts().then(mailRenderHeader);
   mailRenderMessage(box);
+  mailRenderList();
 }
 
 function mailRenderMessage(box) {
-  const el = document.getElementById('mail-main');
+  const el = document.getElementById('mail-view-pane');
   if (!el) return;
   const canWrite = currentUser && currentUser.role !== 'readonly';
   const msgs = mailState.thread.length ? mailState.thread : [box];
   const subject = msgs[0].subject || t('mailNoSubject');
   el.innerHTML = `
     <div class="mail-msg-head">
-      <button class="btn btn-ghost btn-sm" onclick="mailOpenFolder('${mailState.folder}')">&larr; ${t('mailBack')}</button>
+      <button class="btn btn-ghost btn-sm mail-back-narrow" onclick="mailCloseMessage()">&larr; ${t('mailBack')}</button>
       <h2 class="mail-msg-subject">${esc(subject)}</h2>
       <div class="mail-msg-actions">
         ${canWrite ? `<button class="btn btn-ghost btn-sm" onclick="mailReply()">${t('mailReply')}</button>` : ''}
@@ -267,17 +327,6 @@ async function mailDelete(boxId) {
   if (!confirm(t('mailDeleteConfirm'))) return;
   try { await api('/api/mail/messages/' + boxId, 'DELETE'); } catch (e) { alert(e.message); return; }
   await mailLoadCounts(); await mailLoadFolder(mailState.folder);
-}
-
-async function mailDoSearch(q) {
-  q = q.trim();
-  mailState.search = q;
-  if (!q) { mailLoadFolder(mailState.folder); return; }
-  try { mailState.messages = await api('/api/mail/messages?q=' + encodeURIComponent(q)); }
-  catch (e) { mailState.messages = []; }
-  mailState.view = 'list';
-  mailRenderFolders();
-  mailRenderList();
 }
 
 // === Compose ===
@@ -375,7 +424,7 @@ function mailConnectSSE() {
     let tmo = null;
     es.onmessage = () => {
       clearTimeout(tmo);
-      tmo = setTimeout(() => { mailLoadCounts().then(() => { mailRenderFolders(); if (mailState.view === 'list') mailLoadFolder(mailState.folder); }); mailUpdateBadge(); }, 250);
+      tmo = setTimeout(() => { mailLoadCounts().then(() => mailLoadFolder(mailState.folder)); mailUpdateBadge(); }, 250);
     };
     es.onerror = () => { };
   } catch (e) { }
