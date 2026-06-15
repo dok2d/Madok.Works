@@ -87,7 +87,7 @@ func TestChatMessagesPagination(t *testing.T) {
 	}
 	var ids []int64
 	for i := 0; i < 5; i++ {
-		m, err := s.CreateChatMessage(ch, alice, "msg", nil)
+		m, err := s.CreateChatMessage(ch, alice, "msg", nil, 0)
 		if err != nil {
 			t.Fatalf("CreateChatMessage: %v", err)
 		}
@@ -95,7 +95,7 @@ func TestChatMessagesPagination(t *testing.T) {
 	}
 
 	// default: all five, ascending
-	all, err := s.ListChatMessages(ch, 0, 0, 0)
+	all, err := s.ListChatMessages(ch, 0, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("ListChatMessages: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestChatMessagesPagination(t *testing.T) {
 	}
 
 	// before the last id, limit 2 -> the two immediately preceding, ascending
-	before, err := s.ListChatMessages(ch, ids[4], 0, 2)
+	before, err := s.ListChatMessages(ch, ids[4], 0, 2, 0)
 	if err != nil {
 		t.Fatalf("ListChatMessages before: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestChatMessagesPagination(t *testing.T) {
 	}
 
 	// after the second id -> the three newer ones
-	after, err := s.ListChatMessages(ch, 0, ids[1], 50)
+	after, err := s.ListChatMessages(ch, 0, ids[1], 50, 0)
 	if err != nil {
 		t.Fatalf("ListChatMessages after: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestDeleteChatMessageSoftDelete(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")
 	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
-	m, err := s.CreateChatMessage(ch, alice, "to be deleted", nil)
+	m, err := s.CreateChatMessage(ch, alice, "to be deleted", nil, 0)
 	if err != nil {
 		t.Fatalf("CreateChatMessage: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestDeleteChatMessageSoftDelete(t *testing.T) {
 		t.Error("message should be marked deleted")
 	}
 	// soft delete keeps the row but clears the text in the timeline
-	list, _ := s.ListChatMessages(ch, 0, 0, 0)
+	list, _ := s.ListChatMessages(ch, 0, 0, 0, 0)
 	if len(list) != 1 {
 		t.Fatalf("expected row to remain, got %d", len(list))
 	}
@@ -164,7 +164,7 @@ func TestMarkChatReadUnread(t *testing.T) {
 	// alice posts two messages; her own messages must not count for her
 	var last int64
 	for i := 0; i < 2; i++ {
-		m, _ := s.CreateChatMessage(ch, alice, "hi", nil)
+		m, _ := s.CreateChatMessage(ch, alice, "hi", nil, 0)
 		last = m.ID
 	}
 	if n := s.TotalChatUnread(alice); n != 0 {
@@ -219,9 +219,9 @@ func TestSearchChatMessagesAccess(t *testing.T) {
 	bob := mustUser(t, s, "bob")
 
 	grp, _ := s.CreateChatChannel("secret", "", "group", alice, nil)
-	s.CreateChatMessage(grp, alice, "private treasure", nil)
+	s.CreateChatMessage(grp, alice, "private treasure", nil, 0)
 	pub, _ := s.CreateChatChannel("public", "", "channel", alice, nil)
-	s.CreateChatMessage(pub, alice, "public treasure", nil)
+	s.CreateChatMessage(pub, alice, "public treasure", nil, 0)
 
 	// bob cannot find the private message but can find the public one
 	bobHits, err := s.SearchChatMessages(bob, "treasure", 50)
@@ -247,7 +247,7 @@ func TestChatAttachments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveFile: %v", err)
 	}
-	m, err := s.CreateChatMessage(ch, alice, "see attached", []model.ChatAttachment{{FileID: fid, Filename: "doc.pdf"}})
+	m, err := s.CreateChatMessage(ch, alice, "see attached", []model.ChatAttachment{{FileID: fid, Filename: "doc.pdf"}}, 0)
 	if err != nil {
 		t.Fatalf("CreateChatMessage: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestChatAttachments(t *testing.T) {
 		t.Fatalf("attachment not returned on create: %+v", m.Attachments)
 	}
 	// batch-loaded via list
-	list, _ := s.ListChatMessages(ch, 0, 0, 0)
+	list, _ := s.ListChatMessages(ch, 0, 0, 0, 0)
 	if len(list) != 1 || len(list[0].Attachments) != 1 || list[0].Attachments[0].Filename != "doc.pdf" {
 		t.Fatalf("attachment not batch-loaded in list: %+v", list)
 	}
@@ -276,4 +276,108 @@ func msgIDs(msgs []model.ChatMessage) []int64 {
 		ids[i] = m.ID
 	}
 	return ids
+}
+
+func TestChatReply(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
+	parent, err := s.CreateChatMessage(ch, alice, "original", nil, 0)
+	if err != nil {
+		t.Fatalf("CreateChatMessage: %v", err)
+	}
+	reply, err := s.CreateChatMessage(ch, alice, "answer", nil, parent.ID)
+	if err != nil {
+		t.Fatalf("CreateChatMessage reply: %v", err)
+	}
+	if reply.ReplyTo == nil || *reply.ReplyTo != parent.ID {
+		t.Fatalf("reply_to not set: %+v", reply.ReplyTo)
+	}
+	if reply.ReplyToAuthor != "alice" || reply.ReplyToText != "original" {
+		t.Errorf("reply preview wrong: author=%q text=%q", reply.ReplyToAuthor, reply.ReplyToText)
+	}
+	// Preview also present when listing.
+	list, _ := s.ListChatMessages(ch, 0, 0, 0, alice)
+	var found bool
+	for _, m := range list {
+		if m.ID == reply.ID {
+			found = true
+			if m.ReplyToText != "original" {
+				t.Errorf("list reply preview wrong: %q", m.ReplyToText)
+			}
+		}
+	}
+	if !found {
+		t.Error("reply not in list")
+	}
+}
+
+func TestChatPin(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
+	m, _ := s.CreateChatMessage(ch, alice, "pin me", nil, 0)
+	if err := s.SetChatPinned(m.ID, alice, true); err != nil {
+		t.Fatalf("SetChatPinned: %v", err)
+	}
+	pins, err := s.ListPinnedMessages(ch, alice)
+	if err != nil {
+		t.Fatalf("ListPinnedMessages: %v", err)
+	}
+	if len(pins) != 1 || pins[0].ID != m.ID || !pins[0].Pinned {
+		t.Fatalf("expected 1 pinned message, got %+v", pins)
+	}
+	if err := s.SetChatPinned(m.ID, alice, false); err != nil {
+		t.Fatalf("unpin: %v", err)
+	}
+	if pins, _ := s.ListPinnedMessages(ch, alice); len(pins) != 0 {
+		t.Errorf("expected 0 pins after unpin, got %d", len(pins))
+	}
+}
+
+func TestChatReactions(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	bob := mustUser(t, s, "bob")
+	ch, _ := s.CreateChatChannel("c", "", "channel", alice, []int64{bob})
+	m, _ := s.CreateChatMessage(ch, alice, "react", nil, 0)
+
+	// alice and bob both add 👍; bob adds ❤️ too.
+	for _, u := range []int64{alice, bob} {
+		if err := s.ToggleChatReaction(m.ID, u, "👍"); err != nil {
+			t.Fatalf("ToggleChatReaction: %v", err)
+		}
+	}
+	if err := s.ToggleChatReaction(m.ID, bob, "❤️"); err != nil {
+		t.Fatalf("ToggleChatReaction heart: %v", err)
+	}
+
+	got, _ := s.GetChatMessageFor(m.ID, alice)
+	thumbs := reactionFor(got.Reactions, "👍")
+	if thumbs == nil || thumbs.Count != 2 || !thumbs.Mine {
+		t.Fatalf("👍 should be count=2 mine=true, got %+v", thumbs)
+	}
+	heart := reactionFor(got.Reactions, "❤️")
+	if heart == nil || heart.Count != 1 || heart.Mine {
+		t.Fatalf("❤️ should be count=1 mine=false for alice, got %+v", heart)
+	}
+
+	// Toggling off removes alice's 👍.
+	if err := s.ToggleChatReaction(m.ID, alice, "👍"); err != nil {
+		t.Fatalf("toggle off: %v", err)
+	}
+	got, _ = s.GetChatMessageFor(m.ID, alice)
+	thumbs = reactionFor(got.Reactions, "👍")
+	if thumbs == nil || thumbs.Count != 1 || thumbs.Mine {
+		t.Fatalf("👍 should be count=1 mine=false after toggle off, got %+v", thumbs)
+	}
+}
+
+func reactionFor(rs []model.ChatReaction, emoji string) *model.ChatReaction {
+	for i := range rs {
+		if rs[i].Emoji == emoji {
+			return &rs[i]
+		}
+	}
+	return nil
 }

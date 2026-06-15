@@ -26,8 +26,9 @@ var chatMentionRe = regexp.MustCompile(`@([\p{L}\p{N}_.-]+)`)
 // sseEvent is the chat-specific payload pushed to connected browsers via the
 // shared sseHub (see events.go).
 type sseEvent struct {
-	Type      string             `json:"type"` // chat_message | chat_edit | chat_delete | chat_channels
+	Type      string             `json:"type"` // chat_message | chat_edit | chat_delete | chat_channels | chat_pin | chat_react
 	ChannelID int64              `json:"channel_id,omitempty"`
+	MessageID int64              `json:"message_id,omitempty"`
 	Message   *model.ChatMessage `json:"message,omitempty"`
 }
 
@@ -155,6 +156,17 @@ func (h *Handler) handleChatChannelRoute(w http.ResponseWriter, r *http.Request)
 		h.handleChatChannelMembers(w, r, user, ch)
 	case "messages":
 		h.handleChatMessages(w, r, user, ch)
+	case "pins":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		pins, err := h.store.ListPinnedMessages(ch.ID, user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, pins)
 	case "read":
 		h.handleChatRead(w, r, user, ch)
 	default:
@@ -272,7 +284,7 @@ func (h *Handler) handleChatMessages(w http.ResponseWriter, r *http.Request, use
 		before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
 		after, _ := strconv.ParseInt(q.Get("after"), 10, 64)
 		limit, _ := strconv.Atoi(q.Get("limit"))
-		msgs, err := h.store.ListChatMessages(ch.ID, before, after, limit)
+		msgs, err := h.store.ListChatMessages(ch.ID, before, after, limit, user.ID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -282,6 +294,7 @@ func (h *Handler) handleChatMessages(w http.ResponseWriter, r *http.Request, use
 		var req struct {
 			Text        string                 `json:"text"`
 			Attachments []model.ChatAttachment `json:"attachments"`
+			ReplyTo     int64                  `json:"reply_to"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -300,7 +313,13 @@ func (h *Handler) handleChatMessages(w http.ResponseWriter, r *http.Request, use
 			http.Error(w, "too many attachments", http.StatusBadRequest)
 			return
 		}
-		msg, err := h.store.CreateChatMessage(ch.ID, user.ID, req.Text, req.Attachments)
+		// Only allow replying to a message in the same channel.
+		if req.ReplyTo > 0 {
+			if parent, err := h.store.GetChatMessage(req.ReplyTo); err != nil || parent.ChannelID != ch.ID {
+				req.ReplyTo = 0
+			}
+		}
+		msg, err := h.store.CreateChatMessage(ch.ID, user.ID, req.Text, req.Attachments, req.ReplyTo)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -332,13 +351,23 @@ func (h *Handler) handleChatRead(w http.ResponseWriter, r *http.Request, user *m
 	jsonResp(w, map[string]string{"status": "ok"})
 }
 
-// handleChatMessage handles PUT/DELETE /api/chat/messages/{id}.
+// handleChatMessage handles /api/chat/messages/{id}[/pin|/react].
 func (h *Handler) handleChatMessage(w http.ResponseWriter, r *http.Request) {
 	user := h.chatUser(w, r)
 	if user == nil {
 		return
 	}
-	id := extractID(r.URL.Path, "/api/chat/messages/")
+	rest := strings.TrimPrefix(r.URL.Path, "/api/chat/messages/")
+	parts := strings.SplitN(strings.TrimSuffix(rest, "/"), "/", 2)
+	id, perr := strconv.ParseInt(parts[0], 10, 64)
+	if perr != nil || id <= 0 {
+		http.Error(w, "bad message id", http.StatusBadRequest)
+		return
+	}
+	sub := ""
+	if len(parts) == 2 {
+		sub = parts[1]
+	}
 	msg, err := h.store.GetChatMessage(id)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "message not found", http.StatusNotFound)
@@ -357,8 +386,28 @@ func (h *Handler) handleChatMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no access to this channel", http.StatusForbidden)
 		return
 	}
+	switch sub {
+	case "pin":
+		h.handleChatPin(w, r, user, ch, msg)
+		return
+	case "react":
+		h.handleChatReact(w, r, user, ch, msg)
+		return
+	case "":
+		// handled below
+	default:
+		http.NotFound(w, r)
+		return
+	}
 	isAuthor := msg.AuthorID != nil && *msg.AuthorID == user.ID
 	switch r.Method {
+	case http.MethodGet:
+		full, err := h.store.GetChatMessageFor(msg.ID, user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, full)
 	case http.MethodPut:
 		if !isAuthor {
 			http.Error(w, "only the author can edit", http.StatusForbidden)
@@ -398,6 +447,65 @@ func (h *Handler) handleChatMessage(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleChatPin pins/unpins a message. In public channels only managers may pin;
+// in groups and DMs any member may.
+func (h *Handler) handleChatPin(w http.ResponseWriter, r *http.Request, user *model.User, ch *model.ChatChannel, msg *model.ChatMessage) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if ch.Type == "channel" && !h.chatCanManage(user, ch) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := h.store.SetChatPinned(msg.ID, user.ID, req.Pinned); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, _ := h.store.GetChatMessage(msg.ID)
+	h.sse.sendTo(h.chatAudience(ch), sseEvent{Type: "chat_pin", ChannelID: ch.ID, MessageID: msg.ID, Message: updated})
+	jsonResp(w, updated)
+}
+
+// handleChatReact toggles an emoji reaction for the current user.
+func (h *Handler) handleChatReact(w http.ResponseWriter, r *http.Request, user *model.User, ch *model.ChatChannel, msg *model.ChatMessage) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if msg.Deleted {
+		http.Error(w, "message deleted", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	req.Emoji = strings.TrimSpace(req.Emoji)
+	if req.Emoji == "" || len(req.Emoji) > 16 {
+		http.Error(w, "bad emoji", http.StatusBadRequest)
+		return
+	}
+	if err := h.store.ToggleChatReaction(msg.ID, user.ID, req.Emoji); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Broadcast a lightweight event; each client refetches to compute its own "mine".
+	h.sse.sendTo(h.chatAudience(ch), sseEvent{Type: "chat_react", ChannelID: ch.ID, MessageID: msg.ID})
+	updated, _ := h.store.GetChatMessageFor(msg.ID, user.ID)
+	jsonResp(w, updated)
 }
 
 // === DM, search, unread, events ===

@@ -253,6 +253,14 @@ func (s *Store) migrate() error {
 			edited_at DATETIME,
 			deleted INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS chat_reactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			emoji TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(message_id, user_id, emoji)
+		)`,
 		// === Calendar (ecosystem service) ===
 		`CREATE TABLE IF NOT EXISTS calendars (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -371,6 +379,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_mail_audit_created ON mail_audit(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_aliases_user ON mail_aliases(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_attachments_msg ON chat_attachments(message_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_reactions_msg ON chat_reactions(message_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_cal_reminders_event ON calendar_reminders(event_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cal_reminders_dedup ON calendar_reminders(event_id, lead_min, occurrence_start)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_box_user ON mail_box(user_id, folder, id)`,
@@ -423,6 +432,10 @@ func (s *Store) migrate() error {
 		"ALTER TABLE mail_messages ADD COLUMN spam_score INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE wiki_pages ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
+		"ALTER TABLE chat_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE chat_messages ADD COLUMN pinned_at DATETIME",
+		"ALTER TABLE chat_messages ADD COLUMN pinned_by INTEGER REFERENCES users(id)",
 	}
 	for _, q := range alters {
 		s.db.Exec(q) // ignore "duplicate column" errors

@@ -220,7 +220,31 @@ func (s *Store) MarkChatRead(channelID, userID, lastID int64) error {
 // ListChatMessages returns up to limit messages. With beforeID > 0 it pages
 // backwards (older); with afterID > 0 it returns newer messages (polling/SSE
 // catch-up). Results are always in ascending id order.
-func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit int) ([]model.ChatMessage, error) {
+// chatMsgCols is the shared projection for message rows (incl. reply/pin state).
+const chatMsgCols = `m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
+	COALESCE(m.edited_at,''), m.deleted, COALESCE(m.reply_to,0), m.pinned, COALESCE(m.pinned_at,'')`
+
+// scanChatMsg scans a row produced by chatMsgCols.
+func scanChatMsg(sc interface{ Scan(...any) error }) (model.ChatMessage, error) {
+	var m model.ChatMessage
+	var deleted, pinned int
+	var replyTo int64
+	if err := sc.Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.AuthorName, &m.Text, &m.CreatedAt,
+		&m.EditedAt, &deleted, &replyTo, &pinned, &m.PinnedAt); err != nil {
+		return m, err
+	}
+	m.Deleted = deleted == 1
+	m.Pinned = pinned == 1
+	if replyTo > 0 {
+		m.ReplyTo = &replyTo
+	}
+	if m.Deleted {
+		m.Text = ""
+	}
+	return m, nil
+}
+
+func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit int, viewerID int64) ([]model.ChatMessage, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -228,21 +252,18 @@ func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit
 	var err error
 	switch {
 	case afterID > 0:
-		rows, err = s.db.Query(`SELECT m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
-			COALESCE(m.edited_at,''), m.deleted
+		rows, err = s.db.Query(`SELECT `+chatMsgCols+`
 			FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
 			WHERE m.channel_id = ? AND m.id > ? ORDER BY m.id LIMIT ?`, channelID, afterID, limit)
 	case beforeID > 0:
 		rows, err = s.db.Query(`SELECT * FROM (
-			SELECT m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
-			COALESCE(m.edited_at,''), m.deleted
+			SELECT `+chatMsgCols+`
 			FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
 			WHERE m.channel_id = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?
 		) ORDER BY id`, channelID, beforeID, limit)
 	default:
 		rows, err = s.db.Query(`SELECT * FROM (
-			SELECT m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
-			COALESCE(m.edited_at,''), m.deleted
+			SELECT `+chatMsgCols+`
 			FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
 			WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT ?
 		) ORDER BY id`, channelID, limit)
@@ -253,21 +274,16 @@ func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit
 	defer rows.Close()
 	var out []model.ChatMessage
 	for rows.Next() {
-		var m model.ChatMessage
-		var deleted int
-		if err := rows.Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.AuthorName, &m.Text, &m.CreatedAt, &m.EditedAt, &deleted); err != nil {
+		m, err := scanChatMsg(rows)
+		if err != nil {
 			return nil, err
-		}
-		m.Deleted = deleted == 1
-		if m.Deleted {
-			m.Text = ""
 		}
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Batch-load attachments for the page (drain-then-query for the single conn).
+	// Drain-then-query (single conn): batch attachments, reply previews, reactions.
 	ids := make([]int64, 0, len(out))
 	for i := range out {
 		if !out[i].Deleted {
@@ -278,13 +294,111 @@ func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit
 	if err != nil {
 		return nil, err
 	}
+	replyIDs := make([]int64, 0)
+	for i := range out {
+		if out[i].ReplyTo != nil {
+			replyIDs = append(replyIDs, *out[i].ReplyTo)
+		}
+	}
+	replies, err := s.batchChatReplyPreviews(replyIDs)
+	if err != nil {
+		return nil, err
+	}
+	reacts, err := s.batchChatReactions(ids, viewerID)
+	if err != nil {
+		return nil, err
+	}
 	for i := range out {
 		out[i].Attachments = atts[out[i].ID]
+		out[i].Reactions = reacts[out[i].ID]
+		if out[i].ReplyTo != nil {
+			if p, ok := replies[*out[i].ReplyTo]; ok {
+				out[i].ReplyToAuthor = p.author
+				out[i].ReplyToText = p.text
+			}
+		}
 	}
 	if out == nil {
 		out = []model.ChatMessage{}
 	}
 	return out, nil
+}
+
+type chatReplyPreview struct {
+	author string
+	text   string
+}
+
+// batchChatReplyPreviews loads author+snippet of the parent messages being replied to.
+func (s *Store) batchChatReplyPreviews(ids []int64) (map[int64]chatReplyPreview, error) {
+	res := map[int64]chatReplyPreview{}
+	if len(ids) == 0 {
+		return res, nil
+	}
+	ph := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		ph[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.Query(`SELECT m.id, COALESCE(u.username,''), m.text, m.deleted
+		FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
+		WHERE m.id IN (`+strings.Join(ph, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var author, text string
+		var deleted int
+		if err := rows.Scan(&id, &author, &text, &deleted); err != nil {
+			return nil, err
+		}
+		if deleted == 1 {
+			text = ""
+		}
+		if len(text) > 140 {
+			text = text[:140]
+		}
+		res[id] = chatReplyPreview{author: author, text: text}
+	}
+	return res, rows.Err()
+}
+
+// batchChatReactions aggregates reactions for many messages (emoji -> count, and
+// whether the viewer reacted), in one query.
+func (s *Store) batchChatReactions(ids []int64, viewerID int64) (map[int64][]model.ChatReaction, error) {
+	res := map[int64][]model.ChatReaction{}
+	if len(ids) == 0 {
+		return res, nil
+	}
+	ph := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, viewerID)
+	for i, id := range ids {
+		ph[i] = "?"
+		args = append(args, id)
+	}
+	rows, err := s.db.Query(`SELECT message_id, emoji, COUNT(*),
+		SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END)
+		FROM chat_reactions WHERE message_id IN (`+strings.Join(ph, ",")+`)
+		GROUP BY message_id, emoji ORDER BY MIN(id)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mid int64
+		var r model.ChatReaction
+		var mine int
+		if err := rows.Scan(&mid, &r.Emoji, &r.Count, &mine); err != nil {
+			return nil, err
+		}
+		r.Mine = mine > 0
+		res[mid] = append(res[mid], r)
+	}
+	return res, rows.Err()
 }
 
 // chatAttachments returns attachments for one message.
@@ -336,31 +450,46 @@ func (s *Store) batchChatAttachments(messageIDs []int64) (map[int64][]model.Chat
 	return res, rows.Err()
 }
 
-func (s *Store) GetChatMessage(id int64) (*model.ChatMessage, error) {
-	var m model.ChatMessage
-	var deleted int
-	err := s.db.QueryRow(`SELECT m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
-		COALESCE(m.edited_at,''), m.deleted
-		FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id WHERE m.id = ?`, id).
-		Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.AuthorName, &m.Text, &m.CreatedAt, &m.EditedAt, &deleted)
+func (s *Store) GetChatMessage(id int64) (*model.ChatMessage, error) { return s.GetChatMessageFor(id, 0) }
+
+// GetChatMessageFor loads one message with reply preview, pin state and reactions
+// resolved for viewerID (viewer 0 leaves reaction "mine" false).
+func (s *Store) GetChatMessageFor(id, viewerID int64) (*model.ChatMessage, error) {
+	row := s.db.QueryRow(`SELECT `+chatMsgCols+`
+		FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id WHERE m.id = ?`, id)
+	m, err := scanChatMsg(row)
 	if err != nil {
 		return nil, err
 	}
-	m.Deleted = deleted == 1
+	// Drain-then-query: the QueryRow above is fully consumed by scanChatMsg.
 	if !m.Deleted {
 		m.Attachments, _ = s.chatAttachments(m.ID)
+	}
+	if m.ReplyTo != nil {
+		if rp, err := s.batchChatReplyPreviews([]int64{*m.ReplyTo}); err == nil {
+			if p, ok := rp[*m.ReplyTo]; ok {
+				m.ReplyToAuthor, m.ReplyToText = p.author, p.text
+			}
+		}
+	}
+	if rs, err := s.batchChatReactions([]int64{m.ID}, viewerID); err == nil {
+		m.Reactions = rs[m.ID]
 	}
 	return &m, nil
 }
 
-func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts []model.ChatAttachment) (*model.ChatMessage, error) {
+func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts []model.ChatAttachment, replyTo int64) (*model.ChatMessage, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO chat_messages(channel_id, author_id, text) VALUES(?,?,?)`,
-		channelID, authorID, text)
+	var replyArg any
+	if replyTo > 0 {
+		replyArg = replyTo
+	}
+	res, err := tx.Exec(`INSERT INTO chat_messages(channel_id, author_id, text, reply_to) VALUES(?,?,?,?)`,
+		channelID, authorID, text, replyArg)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +507,59 @@ func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts [
 	}
 	// author has obviously read their own message
 	s.MarkChatRead(channelID, authorID, id)
-	return s.GetChatMessage(id)
+	return s.GetChatMessageFor(id, authorID)
+}
+
+// SetChatPinned pins or unpins a message.
+func (s *Store) SetChatPinned(messageID, userID int64, pinned bool) error {
+	if pinned {
+		_, err := s.db.Exec(`UPDATE chat_messages SET pinned=1, pinned_at=CURRENT_TIMESTAMP, pinned_by=? WHERE id=? AND deleted=0`, userID, messageID)
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE chat_messages SET pinned=0, pinned_at=NULL, pinned_by=NULL WHERE id=?`, messageID)
+	return err
+}
+
+// ListPinnedMessages returns a channel's pinned messages, newest pin first.
+func (s *Store) ListPinnedMessages(channelID, viewerID int64) ([]model.ChatMessage, error) {
+	rows, err := s.db.Query(`SELECT `+chatMsgCols+`
+		FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
+		WHERE m.channel_id = ? AND m.pinned = 1 AND m.deleted = 0
+		ORDER BY m.pinned_at DESC, m.id DESC`, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ChatMessage
+	for rows.Next() {
+		m, err := scanChatMsg(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []model.ChatMessage{}
+	}
+	return out, nil
+}
+
+// ToggleChatReaction adds the emoji reaction for userID, or removes it if present.
+func (s *Store) ToggleChatReaction(messageID, userID int64, emoji string) error {
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM chat_reactions WHERE message_id=? AND user_id=? AND emoji=?`,
+		messageID, userID, emoji).Scan(&cnt); err != nil {
+		return err
+	}
+	if cnt > 0 {
+		_, err := s.db.Exec(`DELETE FROM chat_reactions WHERE message_id=? AND user_id=? AND emoji=?`, messageID, userID, emoji)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO chat_reactions(message_id, user_id, emoji) VALUES(?,?,?)`, messageID, userID, emoji)
+	return err
 }
 
 func (s *Store) UpdateChatMessage(id int64, text string) (*model.ChatMessage, error) {

@@ -10,7 +10,7 @@ import (
 // Clearing on import walks this list in reverse so foreign keys stay satisfied.
 var ecosystemTables = []string{
 	"wiki_spaces", "wiki_space_members", "wiki_pages", "wiki_revisions",
-	"chat_channels", "chat_members", "chat_messages", "chat_attachments",
+	"chat_channels", "chat_members", "chat_messages", "chat_attachments", "chat_reactions",
 	"calendars", "calendar_events", "calendar_reminders",
 	"mail_messages", "mail_box", "mail_attachments",
 	"mail_folders", "mail_rules", "mail_audit", "mail_aliases",

@@ -216,6 +216,13 @@ type ChatAttachment struct {
 	URL      string `json:"url"`
 }
 
+// ChatReaction is an emoji reaction aggregated over users for one message.
+type ChatReaction struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+	Mine  bool   `json:"mine"` // whether the requesting user reacted with this emoji
+}
+
 // ChatMessage is one message in a channel.
 type ChatMessage struct {
 	ID          int64            `json:"id"`
@@ -227,6 +234,15 @@ type ChatMessage struct {
 	EditedAt    string           `json:"edited_at,omitempty"`
 	Deleted     bool             `json:"deleted"`
 	Attachments []ChatAttachment `json:"attachments,omitempty"`
+	// Reply (Telegram-style quoted reply)
+	ReplyTo       *int64 `json:"reply_to,omitempty"`
+	ReplyToAuthor string `json:"reply_to_author,omitempty"`
+	ReplyToText   string `json:"reply_to_text,omitempty"`
+	// Pin
+	Pinned   bool   `json:"pinned"`
+	PinnedAt string `json:"pinned_at,omitempty"`
+	// Reactions
+	Reactions []ChatReaction `json:"reactions,omitempty"`
 }
 
 // ChatSearchHit is one full-text search result across visible channels.
