@@ -183,6 +183,69 @@ function chatChannelLabel(c) {
 function chatChannelIcon(c) {
   return c.type === 'dm' ? '@' : (c.type === 'group' ? '&#128274;' : '#');
 }
+
+// === Avatars (initials on a color derived from the name) ===
+const CHAT_AV_COLORS = ['#e17076', '#7bc862', '#65aadd', '#a695e7', '#ee7aae', '#6ec9cb', '#f3a85b', '#5ca3eb', '#df8ee5', '#b09b7a'];
+function chatAvatarColor(name) {
+  let h = 0;
+  const s = name || '?';
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return CHAT_AV_COLORS[h % CHAT_AV_COLORS.length];
+}
+function chatInitials(name) {
+  const parts = (name || '?').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function chatAvatar(name, cls) {
+  const bg = chatAvatarColor(name);
+  const fg = (typeof contrastColor === 'function') ? contrastColor(bg) : '#fff';
+  return `<span class="chat-av ${cls || ''}" style="background:${bg};color:${fg}">${esc(chatInitials(name))}</span>`;
+}
+
+// chatSysText localizes a system-message code ("kind|name"); used in the feed and
+// in channel-list previews.
+function chatSysCodes() { return ['create', 'join', 'leave', 'rename']; }
+function chatSysText(code) {
+  const i = code.indexOf('|');
+  const k = i < 0 ? code : code.slice(0, i);
+  const name = i < 0 ? '' : code.slice(i + 1);
+  const key = { create: 'chatSysCreate', join: 'chatSysJoin', leave: 'chatSysLeave', rename: 'chatSysRename' }[k];
+  return key ? t(key).replace('%s', name) : code;
+}
+function chatIsSysCode(text) {
+  const i = text.indexOf('|');
+  return i > 0 && chatSysCodes().includes(text.slice(0, i));
+}
+// chatListPreview renders the channel-list second line (localizes system codes).
+function chatListPreview(c) {
+  let txt = c.last_msg_text || '';
+  if (!txt) return '';
+  if (chatIsSysCode(txt)) return esc(chatSysText(txt));
+  const from = (c.type !== 'dm' && c.last_msg_from) ? esc(c.last_msg_from) + ': ' : '';
+  return from + esc(txt);
+}
+// chatListTime: today → HH:MM, otherwise short date.
+function chatListTime(s) {
+  if (!s) return '';
+  const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
+  const d = new Date(iso), now = new Date();
+  return d.toDateString() === now.toDateString() ? chatFmtTime(s) : chatTimeFmt(s, { day: '2-digit', month: '2-digit' });
+}
+
+// chatChannelRow renders one Telegram-style row: avatar + name/time + preview/badge.
+function chatChannelRow(c, label, onclick, extraCls) {
+  const badge = c.unread > 0 ? `<span class="chat-ch-badge">${c.unread > 99 ? '99+' : c.unread}</span>` : '';
+  const preview = chatListPreview(c);
+  return `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''} ${extraCls || ''}" onclick="${onclick}">
+    ${chatAvatar(label)}
+    <div class="chat-ch-main">
+      <div class="chat-ch-line1"><span class="chat-ch-name">${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
+      <div class="chat-ch-line2"><span class="chat-ch-preview">${preview}</span>${badge}</div>
+    </div>
+  </div>`;
+}
 function chatCanManage(c) {
   return c && currentUser && (currentUser.role === 'admin' || c.created_by === currentUser.id);
 }
@@ -210,10 +273,7 @@ function chatRenderChannelList() {
     html += `<div class="chat-grp">
       <div class="chat-grp-head"><span>${esc(g.label)}</span>${chatGrpAddBtn(g.key)}</div>`;
     for (const c of items) {
-      html += `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''}" onclick="chatOpen(${c.id})">
-        <span class="chat-ch-name">${chatChannelIcon(c)} ${esc(chatChannelLabel(c))}</span>
-        ${c.unread > 0 ? `<span class="chat-ch-badge">${c.unread > 99 ? '99+' : c.unread}</span>` : ''}
-      </div>`;
+      html += chatChannelRow(c, chatChannelLabel(c), `chatOpen(${c.id})`);
     }
     html += `</div>`;
   }
@@ -234,13 +294,11 @@ function chatRenderDMGroup(label) {
   for (const u of users) {
     const c = byPeer[u.id];
     if (c) {
-      rows += `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''}" onclick="chatOpen(${c.id})">
-        <span class="chat-ch-name">@ ${esc(u.username)}</span>
-        ${c.unread > 0 ? `<span class="chat-ch-badge">${c.unread > 99 ? '99+' : c.unread}</span>` : ''}
-      </div>`;
+      rows += chatChannelRow(c, u.username, `chatOpen(${c.id})`);
     } else if (canWrite) {
       rows += `<div class="chat-ch-row chat-contact" onclick="chatStartDM(${u.id})">
-        <span class="chat-ch-name">@ ${esc(u.username)}</span>
+        ${chatAvatar(u.username)}
+        <div class="chat-ch-main"><div class="chat-ch-line1"><span class="chat-ch-name">${esc(u.username)}</span></div></div>
       </div>`;
     }
   }

@@ -166,14 +166,21 @@ body.has-rail #app{margin-left:52px}
 .chat-grp-head{display:flex;align-items:center;justify-content:space-between;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--fg3);padding:4px 6px}
 .chat-grp-add{background:none;border:none;color:var(--fg3);cursor:pointer;font-size:1rem;line-height:1;padding:0 4px}
 .chat-grp-add:hover{color:var(--accent)}
-.chat-ch-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:var(--radius);cursor:pointer;font-size:.88rem}
+.chat-av{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:.82rem;user-select:none}
+.chat-av-sm{width:30px;height:30px;font-size:.72rem}
+.chat-ch-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--radius);cursor:pointer}
 .chat-ch-row:hover{background:var(--bg3)}
 .chat-ch-row.active{background:var(--bg3)}
-.chat-ch-row.active .chat-ch-name{color:var(--accent);font-weight:600}
-.chat-ch-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chat-ch-row.chat-contact .chat-ch-name{color:var(--fg3)}
+.chat-ch-row.active .chat-ch-name{color:var(--accent)}
+.chat-ch-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.chat-ch-line1{display:flex;align-items:baseline;gap:6px}
+.chat-ch-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem;font-weight:500}
+.chat-ch-time{font-size:.66rem;color:var(--fg3);flex-shrink:0}
+.chat-ch-line2{display:flex;align-items:center;gap:6px}
+.chat-ch-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem;color:var(--fg3)}
+.chat-ch-row.chat-contact .chat-ch-name{color:var(--fg2)}
 .chat-ch-row.chat-contact:hover .chat-ch-name{color:var(--fg)}
-.chat-ch-badge{background:var(--red);color:#fff;font-size:.62rem;font-weight:600;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:8px;padding:0 4px;flex-shrink:0}
+.chat-ch-badge{background:var(--accent);color:#fff;font-size:.62rem;font-weight:600;min-width:18px;height:18px;line-height:18px;text-align:center;border-radius:9px;padding:0 5px;flex-shrink:0}
 .chat-main{flex:1;display:flex;flex-direction:column;min-width:0}
 .chat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px;border-bottom:1px solid var(--bg4)}
 .chat-head-title{font-size:1.05rem;margin:0}
