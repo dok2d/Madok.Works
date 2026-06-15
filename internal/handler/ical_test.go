@@ -67,3 +67,11 @@ func TestParseICSGarbage(t *testing.T) {
 		t.Errorf("expected 0 events, got %d", len(evs))
 	}
 }
+
+func TestFetchICSRejectsInternal(t *testing.T) {
+	for _, u := range []string{"http://127.0.0.1/c.ics", "http://localhost/c.ics", "ftp://example.com/c.ics"} {
+		if _, err := fetchICS(u); err == nil {
+			t.Errorf("expected error for %q", u)
+		}
+	}
+}

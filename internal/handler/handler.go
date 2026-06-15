@@ -139,6 +139,7 @@ func New(store *db.Store, dbPath string) *Handler {
 	h.initTelegramBot()
 	go h.runBackupScheduler()
 	go h.runCalendarReminders()
+	go h.runICSSync()
 	return h
 }
 
@@ -377,6 +378,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/calendar/events/", h.handleCalendarEvent)
 	h.mux.HandleFunc("/api/calendar/stream", h.handleCalendarStream)
 	h.mux.HandleFunc("/api/calendar/upcoming", h.handleCalendarUpcoming)
+	h.mux.HandleFunc("/api/calendar/subscriptions", h.handleCalendarSubscriptions)
+	h.mux.HandleFunc("/api/calendar/subscriptions/", h.handleCalendarSubscriptionRoute)
 
 	// Mail
 	h.mux.HandleFunc("/api/mail/folders", h.handleMailFolders)
