@@ -611,8 +611,10 @@ body.has-rail #app{margin-left:52px}
 [dir="rtl"] .search-scope{border-radius:0 var(--radius) var(--radius) 0;border-right:1px solid var(--bg4);border-left:none}
 [dir="rtl"] .search-wrap .search-input{border-radius:var(--radius) 0 0 var(--radius)}
 /* hide kanban-only header controls outside kanban views */
-body:not(.kanban-view) .hdr-filter,
-body:not(.kanban-view) .hdr-sep,
+/* Hide ONLY the kanban sprint/epic filters (direct children of h1) outside the
+   board — not the service selectors nested inside the per-service header slots. */
+body:not(.kanban-view) h1 > .hdr-filter,
+body:not(.kanban-view) h1 > .hdr-sep,
 body:not(.kanban-view) .hdr-kanban-only{display:none !important}
 body:not(.view-mail) .hdr-mail-only{display:none !important}
 body:not(.view-wiki) .hdr-wiki-only{display:none !important}
