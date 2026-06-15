@@ -844,7 +844,6 @@ body.view-admin #admin-page{display:block}
     <button class="btn btn-ghost btn-sm hdr-kanban-only" id="backlog-btn" onclick="navigateTo('/backlog')" data-i18n="sprintBacklog" style="font-size:.8rem"></button>
     <button class="btn btn-ghost btn-sm" id="notif-btn" onclick="toggleNotifications()" style="position:relative">&#128276;<span id="notif-count" class="notif-badge hidden">0</span></button>
     <button class="btn btn-ghost btn-sm hdr-kanban-only" id="personal-toggle" onclick="togglePersonalView()" style="display:none"></button>
-    <button class="btn btn-ghost btn-sm" onclick="toggleSidebar()">&#9881;</button>
   </div>
 </div>
 <div class="header-spacer"></div>
@@ -854,7 +853,7 @@ body.view-admin #admin-page{display:block}
 <div id="app"></div>
 
 <div class="sidebar" id="sidebar">
-  <div class="sidebar-section">
+  <div class="sidebar-section" id="theme-section">
     <h3 data-i18n="theme"></h3>
     <div class="theme-list" id="theme-list">
       <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')">&#9790;</button>
@@ -867,11 +866,11 @@ body.view-admin #admin-page{display:block}
       <button class="theme-btn" data-theme="spacedust" onclick="setTheme('spacedust')">Spacedust</button>
     </div>
   </div>
-  <div class="sidebar-section">
+  <div class="sidebar-section" id="lang-section">
     <h3 data-i18n="language"></h3>
     <select class="lang-select" id="lang-select" onchange="setLang(this.value)"></select>
   </div>
-  <div class="sidebar-section">
+  <div class="sidebar-section" id="fontsize-section">
     <h3 data-i18n="fontSize"></h3>
     <div class="font-size-ctrl">
       <button onclick="changeFontSize(-1)">-</button>
@@ -917,7 +916,7 @@ body.view-admin #admin-page{display:block}
     <h3 data-i18n="services"></h3>
     <div class="entity-list" id="services-list"></div>
   </div>
-  <div class="sidebar-section">
+  <div class="sidebar-section" id="timezone-section">
     <h3 data-i18n="timezone"></h3>
     <select class="tz-select" id="tz-select" onchange="setTimezone(this.value)"></select>
   </div>
@@ -1334,7 +1333,7 @@ function route() {
     return;
   }
   currentServicePath = '';
-  if (path === '/admin' && isAdmin()) {
+  if (path === '/admin') {
     prevEpicId = null; prevPath = null;
     currentView = 'admin'; currentTaskId = null; currentEpicId = null; currentSprintId = null; currentProfileId = null;
     renderCurrentView();
@@ -1401,10 +1400,10 @@ function isServiceEnabled(name) { return services.some(s => s.name === name && s
 function renderAppRail() {
   const rail = document.getElementById('app-rail');
   if (!rail) return;
+  if (typeof ensureAdminI18n === 'function') ensureAdminI18n();
   const enabled = services.filter(s => s.enabled);
-  const showRail = enabled.length > 0 || isAdmin();
-  document.body.classList.toggle('has-rail', showRail);
-  if (!showRail) { rail.innerHTML = ''; return; }
+  // Rail is always shown now: it carries the universal Settings button.
+  document.body.classList.toggle('has-rail', true);
   const kanbanViews = ['board','task','epic','sprint','backlog','user'];
   const items = [`<a class="rail-btn ${kanbanViews.includes(currentView) ? 'active' : ''}" href="/" title="${t('svc_kanban')}"
     onclick="resetBoardFilters();navigateTo('/');return false;">${SERVICE_ICONS.kanban}</a>`, `<div class="rail-sep"></div>`];
@@ -1412,10 +1411,9 @@ function renderAppRail() {
     items.push(`<a class="rail-btn ${currentView === s.name ? 'active' : ''}" href="/${s.name}" title="${t('svc_' + s.name)}"
       onclick="navigateTo('/${s.name}');return false;"><span id="rail-badge-${s.name}-wrap">${SERVICE_ICONS[s.name]}</span><span class="rail-badge hidden" id="rail-badge-${s.name}"></span></a>`);
   }
-  if (isAdmin()) {
-    items.push(`<a class="rail-btn rail-admin ${currentView === 'admin' ? 'active' : ''}" href="/admin" title="${t('adminTitle')}"
-      onclick="navigateTo('/admin');return false;">&#9881;</a>`);
-  }
+  // Universal Settings entry (role-aware contents) — available to every user.
+  items.push(`<a class="rail-btn rail-admin ${currentView === 'admin' ? 'active' : ''}" href="/admin" title="${t('settingsTitle')}"
+    onclick="navigateTo('/admin');return false;">&#9881;</a>`);
   rail.innerHTML = items.join('');
 }
 

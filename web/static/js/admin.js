@@ -4,8 +4,8 @@
 // existing populate functions keep working). Phase 7 adds Mail server / Mailboxes.
 
 const ADMIN_I18N = {
-  en: { adminTitle: 'Administration', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key' },
-  ru: { adminTitle: 'Администрирование', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ' },
+  en: { adminTitle: 'Administration', settingsTitle: 'Settings', adminTabGeneral: 'General', adminTabTelegram: 'Telegram', adminTabMail: 'Mail', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key' },
+  ru: { adminTitle: 'Администрирование', settingsTitle: 'Настройки', adminTabGeneral: 'Общие', adminTabTelegram: 'Telegram', adminTabMail: 'Почта', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ' },
   es: { adminTitle: 'Administración', adminTabUsers: 'Usuarios', adminTabBoard: 'Tablero', adminTabServices: 'Servicios', adminTabIntegrations: 'Integraciones', adminTabData: 'Datos', adminTabMailServer: 'Servidor de correo', adminTabMailboxes: 'Buzones' },
   fr: { adminTitle: 'Administration', adminTabUsers: 'Utilisateurs', adminTabBoard: 'Tableau', adminTabServices: 'Services', adminTabIntegrations: 'Intégrations', adminTabData: 'Données', adminTabMailServer: 'Serveur de messagerie', adminTabMailboxes: 'Boîtes' },
   de: { adminTitle: 'Verwaltung', adminTabUsers: 'Benutzer', adminTabBoard: 'Board', adminTabServices: 'Dienste', adminTabIntegrations: 'Integrationen', adminTabData: 'Daten', adminTabMailServer: 'Mailserver', adminTabMailboxes: 'Postfächer' },
@@ -22,17 +22,29 @@ function ensureAdminI18n() {
   adminI18nMerged = true;
 }
 
-// Tab definitions. `sections` are relocated sidebar section ids; `custom` panels
-// are rendered by a function (used from Phase 7 onward).
+// Tab definitions for the unified Settings page. `sections` are relocated sidebar
+// section ids (ids preserved, so existing populate functions keep working); `render`
+// panels are drawn by a function. `admin:true` = admins only; `show()` = conditional.
 const ADMIN_TABS = [
-  { key: 'users', i: 'adminTabUsers', sections: ['users-section'] },
-  { key: 'board', i: 'adminTabBoard', sections: ['columns-section'] },
-  { key: 'services', i: 'adminTabServices', sections: ['services-section'] },
-  { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section'] },
-  { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'] },
-  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer },
-  { key: 'mailboxes', i: 'adminTabMailboxes', render: renderAdminMailboxes },
+  { key: 'general', i: 'adminTabGeneral', sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
+  { key: 'mail', i: 'adminTabMail', sections: ['mail-rules-section'], show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
+  { key: 'telegram', i: 'adminTabTelegram', sections: ['telegram-section'], show: () => isAdmin() || (currentUser && currentUser.telegram_configured) },
+  { key: 'board', i: 'adminTabBoard', sections: ['columns-section', 'epics-section', 'sprints-section', 'tags-section'], admin: true },
+  { key: 'users', i: 'adminTabUsers', sections: ['users-section'], admin: true },
+  { key: 'services', i: 'adminTabServices', sections: ['services-section'], admin: true },
+  { key: 'integrations', i: 'adminTabIntegrations', sections: ['sso-section'], admin: true },
+  { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'], admin: true },
+  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
+  { key: 'mailboxes', i: 'adminTabMailboxes', render: renderAdminMailboxes, admin: true },
 ];
+
+// adminTabVisible decides whether a tab is shown for the current user/role.
+function adminTabVisible(td) {
+  if (td.admin && !isAdmin()) return false;
+  if (typeof td.show === 'function') return td.show();
+  return true;
+}
+function adminVisibleTabs() { return ADMIN_TABS.filter(adminTabVisible); }
 
 // === Mail server tab (settings + DKIM + security audit) ===
 async function renderAdminMailServer(panel) {
@@ -124,7 +136,8 @@ function ensureAdminPage() {
   page.innerHTML = `<div class="admin-tabs" id="admin-tabs"></div><div class="admin-body" id="admin-body"></div>`;
   document.body.appendChild(page);
   const body = page.querySelector('#admin-body');
-  for (const td of ADMIN_TABS) {
+  // Only build panels (and relocate their sections) for tabs the user can see.
+  for (const td of adminVisibleTabs()) {
     const panel = document.createElement('div');
     panel.className = 'admin-panel';
     panel.id = 'admin-panel-' + td.key;
@@ -140,7 +153,7 @@ function ensureAdminPage() {
 function renderAdminTabs() {
   const bar = document.getElementById('admin-tabs');
   if (!bar) return;
-  bar.innerHTML = ADMIN_TABS.map(td => `<button class="admin-tab ${adminTab === td.key ? 'active' : ''}" onclick="adminSetTab('${td.key}')">${esc(t(td.i))}</button>`).join('');
+  bar.innerHTML = adminVisibleTabs().map(td => `<button class="admin-tab ${adminTab === td.key ? 'active' : ''}" onclick="adminSetTab('${td.key}')">${esc(t(td.i))}</button>`).join('');
   document.querySelectorAll('#admin-page .admin-panel').forEach(p => p.classList.toggle('active', p.id === 'admin-panel-' + adminTab));
 }
 
@@ -154,7 +167,8 @@ function adminSetTab(k) {
 function renderAdminView() {
   ensureAdminI18n();
   ensureAdminPage();
-  if (!ADMIN_TABS.some(td => td.key === adminTab)) adminTab = ADMIN_TABS[0].key;
+  const visible = adminVisibleTabs();
+  if (!visible.some(td => td.key === adminTab)) adminTab = visible.length ? visible[0].key : 'general';
   renderAdminTabs();
   const td = ADMIN_TABS.find(t => t.key === adminTab);
   if (td && typeof td.render === 'function') td.render(document.getElementById('admin-panel-' + adminTab));
