@@ -253,30 +253,26 @@ function wikiRenderPageView(el) {
 }
 
 // === WYSIWYG editor ===
+// Markdown toolbar: each button inserts markdown into the #wiki-md textarea.
 const WIKI_TOOLBAR = [
-  { cmd: 'formatBlock', arg: 'p', label: '&para;', key: 'tbParagraph' },
-  { cmd: 'formatBlock', arg: 'h1', label: 'H1', key: 'tbH1' },
-  { cmd: 'formatBlock', arg: 'h2', label: 'H2', key: 'tbH2' },
-  { cmd: 'formatBlock', arg: 'h3', label: 'H3', key: 'tbH3' },
+  { act: 'h1', label: 'H1', key: 'tbH1' },
+  { act: 'h2', label: 'H2', key: 'tbH2' },
+  { act: 'h3', label: 'H3', key: 'tbH3' },
   { sep: true },
-  { cmd: 'bold', label: '<b>B</b>', key: 'tbBold' },
-  { cmd: 'italic', label: '<i>I</i>', key: 'tbItalic' },
-  { cmd: 'underline', label: '<u>U</u>', key: 'tbUnderline' },
-  { cmd: 'strikeThrough', label: '<s>S</s>', key: 'tbStrike' },
-  { custom: 'inlineCode', label: '&lt;/&gt;', key: 'tbCode' },
+  { act: 'bold', label: '<b>B</b>', key: 'tbBold' },
+  { act: 'italic', label: '<i>I</i>', key: 'tbItalic' },
+  { act: 'strike', label: '<s>S</s>', key: 'tbStrike' },
+  { act: 'inlineCode', label: '&lt;/&gt;', key: 'tbCode' },
   { sep: true },
-  { cmd: 'insertUnorderedList', label: '&#8226;&#8801;', key: 'tbUl' },
-  { cmd: 'insertOrderedList', label: '1.&#8801;', key: 'tbOl' },
-  { cmd: 'formatBlock', arg: 'blockquote', label: '&#10078;', key: 'tbQuote' },
-  { custom: 'codeBlock', label: '{ }', key: 'tbCodeBlock' },
+  { act: 'ul', label: '&#8226;&#8801;', key: 'tbUl' },
+  { act: 'ol', label: '1.&#8801;', key: 'tbOl' },
+  { act: 'quote', label: '&#10078;', key: 'tbQuote' },
+  { act: 'codeBlock', label: '{ }', key: 'tbCodeBlock' },
   { sep: true },
-  { custom: 'link', label: '&#128279;', key: 'tbLink' },
-  { custom: 'image', label: '&#128247;', key: 'tbImage' },
-  { custom: 'table', label: '&#9638;', key: 'tbTable' },
-  { custom: 'callout', label: '&#128161;', key: 'tbCallout' },
-  { sep: true },
-  { cmd: 'undo', label: '&#8630;', key: 'tbUndo' },
-  { cmd: 'redo', label: '&#8631;', key: 'tbRedo' },
+  { act: 'link', label: '&#128279;', key: 'tbLink' },
+  { act: 'image', label: '&#128247;', key: 'tbImage' },
+  { act: 'table', label: '&#9638;', key: 'tbTable' },
+  { act: 'callout', label: '&#128161;', key: 'tbCallout' },
 ];
 
 // wikiMdToHtml converts markdown to HTML via the bundled marked (falls back to
@@ -340,47 +336,22 @@ function wikiHtmlToMd(root) {
   return out.trim();
 }
 
-function wikiSetEditorMode(m) {
-  if (m === wikiState.editorMode) return;
-  // Regenerate the target representation from the one we're leaving (lossless).
-  if (wikiState.editorMode === 'rich') {
-    const ed = document.getElementById('wiki-editor');
-    if (ed) { wikiState.page.content = ed.innerHTML; wikiState.page.content_md = wikiHtmlToMd(ed); }
-  } else {
-    const ta = document.getElementById('wiki-md');
-    if (ta) { wikiState.page.content_md = ta.value; wikiState.page.content = wikiMdToHtml(ta.value); }
-  }
-  wikiState.editorMode = m;
-  wikiRenderMain();
-}
-
 function wikiRenderEditor(el) {
-  wikiClearImageSel();
   const p = wikiState.page;
-  // Choose default mode once per page-edit: markdown if the page has md source.
-  if (wikiState.editorPageId !== p.id) {
-    wikiState.editorMode = p.content_md ? 'markdown' : 'rich';
-    wikiState.editorPageId = p.id;
-  }
-  const mode = wikiState.editorMode;
-  const body = mode === 'markdown'
-    ? `<div class="wiki-md-split">
-        <textarea class="wiki-md-input" id="wiki-md" placeholder="# Markdown…">${esc(p.content_md || '')}</textarea>
-        <div class="wiki-md-preview md-content" id="wiki-md-preview"></div>
-      </div>`
-    : `<div class="wiki-toolbar" id="wiki-toolbar">
-        ${WIKI_TOOLBAR.map(b => b.sep ? '<span class="wiki-tb-sep"></span>' :
-          `<button type="button" class="wiki-tb-btn" title="${t(b.key)}" data-cmd="${b.cmd || ''}" data-arg="${b.arg || ''}" data-custom="${b.custom || ''}">${b.label}</button>`).join('')}
-      </div>
-      <div class="wiki-editor md-content" id="wiki-editor" contenteditable="true">${p.content}</div>`;
+  // Markdown is the only editing mode. Seed from content_md, or derive markdown
+  // from legacy HTML pages that have no stored markdown source.
+  const md = p.content_md || (p.content ? wikiHtmlToMd(new DOMParser().parseFromString(p.content, 'text/html').body) : '');
+  const toolbar = `<div class="wiki-toolbar" id="wiki-toolbar">${WIKI_TOOLBAR.map(b =>
+    b.sep ? '<span class="wiki-tb-sep"></span>' :
+      `<button type="button" class="wiki-tb-btn" title="${t(b.key)}" data-act="${b.act}">${b.label}</button>`).join('')}</div>`;
   el.innerHTML = `
     ${wikiBreadcrumbs()}
     <input class="wiki-title-input" id="wiki-title-input" value="${escAttr(p.title)}" maxlength="300">
-    <div class="wiki-mode-tabs">
-      <button class="wiki-mode-tab ${mode === 'rich' ? 'active' : ''}" onclick="wikiSetEditorMode('rich')">${t('wikiModeRich')}</button>
-      <button class="wiki-mode-tab ${mode === 'markdown' ? 'active' : ''}" onclick="wikiSetEditorMode('markdown')">${t('wikiModeMarkdown')}</button>
+    ${toolbar}
+    <div class="wiki-md-split">
+      <textarea class="wiki-md-input" id="wiki-md" placeholder="# Markdown…">${esc(md)}</textarea>
+      <div class="wiki-md-preview md-content" id="wiki-md-preview"></div>
     </div>
-    ${body}
     <div class="wiki-edit-footer">
       <input class="wiki-comment-input" id="wiki-rev-comment" placeholder="${t('wikiComment')}" maxlength="200">
       <div style="display:flex;gap:8px">
@@ -390,47 +361,20 @@ function wikiRenderEditor(el) {
     </div>`;
   wikiState.dirty = false;
   document.getElementById('wiki-title-input').addEventListener('input', () => { wikiState.dirty = true; });
-  if (mode === 'markdown') {
-    const ta = document.getElementById('wiki-md');
-    const prev = document.getElementById('wiki-md-preview');
-    const render = () => { prev.innerHTML = wikiSanitizePreview(wikiMdToHtml(ta.value)); if (typeof highlightCode === 'function') highlightCode(); };
-    ta.addEventListener('input', () => { wikiState.dirty = true; render(); });
-    render();
-    ta.focus();
-    return;
-  }
-  const editor = document.getElementById('wiki-editor');
-  editor.addEventListener('input', () => { wikiState.dirty = true; });
+  const ta = document.getElementById('wiki-md');
+  ta.addEventListener('input', () => { wikiState.dirty = true; wikiMdPreview(); });
+  ta.addEventListener('paste', wikiHandlePaste);
   document.getElementById('wiki-toolbar').addEventListener('mousedown', e => {
     const btn = e.target.closest('.wiki-tb-btn');
     if (!btn) return;
-    e.preventDefault();
-    if (btn.dataset.custom) { wikiCustomCommand(btn.dataset.custom, btn); return; }
-    document.execCommand(btn.dataset.cmd, false, btn.dataset.arg || null);
-    editor.focus();
+    e.preventDefault(); // keep the textarea selection
+    wikiTbAction(btn.dataset.act, btn);
   });
-  editor.addEventListener('paste', wikiHandlePaste);
-  editor.addEventListener('click', e => { if (e.target.tagName === 'IMG') { wikiSelectImage(e.target); wikiImageResizePopover(e.target); } });
-  editor.addEventListener('keydown', e => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      document.execCommand(e.shiftKey ? 'outdent' : 'indent');
-    }
-  });
-  editor.focus();
+  wikiMdPreview();
+  ta.focus();
 }
 
-// === Toolbar popovers (dependency-free, replace window.prompt) ===
-function wikiSaveRange() {
-  const sel = window.getSelection();
-  return sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
-}
-function wikiRestoreRange(r) {
-  if (!r) return;
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(r);
-}
+// === Toolbar popovers (dependency-free) ===
 function wikiClosePopover() {
   const p = document.getElementById('wiki-popover');
   if (p) p.remove();
@@ -456,179 +400,134 @@ function wikiPopover(anchor, html) {
   return pop;
 }
 
-function wikiInsertTable(rows, cols) {
-  rows = Math.min(Math.max(rows, 1), 20);
-  cols = Math.min(Math.max(cols, 1), 10);
-  let html = '<table><thead><tr>';
-  for (let c = 0; c < cols; c++) html += '<th><br></th>';
-  html += '</tr></thead><tbody>';
-  for (let r = 1; r < rows; r++) {
-    html += '<tr>';
-    for (let c = 0; c < cols; c++) html += '<td><br></td>';
-    html += '</tr>';
+// === Markdown insertion helpers (operate on the #wiki-md textarea) ===
+function wikiMdTa() { return document.getElementById('wiki-md'); }
+function wikiMdPreview() {
+  const ta = wikiMdTa(), prev = document.getElementById('wiki-md-preview');
+  if (!ta || !prev) return;
+  prev.innerHTML = wikiSanitizePreview(wikiMdToHtml(ta.value));
+  if (typeof highlightCode === 'function') highlightCode();
+}
+function wikiMdChanged() { wikiState.dirty = true; wikiMdPreview(); }
+function wikiMdWrap(before, after) {
+  const ta = wikiMdTa(); if (!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd, sel = ta.value.slice(s, e);
+  ta.setRangeText(before + sel + after, s, e, 'end');
+  ta.selectionStart = s + before.length;
+  ta.selectionEnd = s + before.length + sel.length;
+  ta.focus(); wikiMdChanged();
+}
+function wikiMdLinePrefix(prefix) {
+  const ta = wikiMdTa(); if (!ta) return;
+  const v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+  const ls = v.lastIndexOf('\n', s - 1) + 1;
+  let le = v.indexOf('\n', e); if (le < 0) le = v.length;
+  const ordered = prefix === '1. ';
+  const block = v.slice(ls, le).split('\n').map((ln, i) => (ordered ? (i + 1) + '. ' : prefix) + ln).join('\n');
+  ta.setRangeText(block, ls, le, 'end');
+  ta.selectionStart = ls; ta.selectionEnd = ls + block.length;
+  ta.focus(); wikiMdChanged();
+}
+function wikiMdInsert(text) {
+  const ta = wikiMdTa(); if (!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.setRangeText(text, s, e, 'end');
+  ta.focus(); wikiMdChanged();
+}
+
+function wikiTbAction(act, anchor) {
+  switch (act) {
+    case 'h1': return wikiMdLinePrefix('# ');
+    case 'h2': return wikiMdLinePrefix('## ');
+    case 'h3': return wikiMdLinePrefix('### ');
+    case 'bold': return wikiMdWrap('**', '**');
+    case 'italic': return wikiMdWrap('*', '*');
+    case 'strike': return wikiMdWrap('~~', '~~');
+    case 'inlineCode': return wikiMdWrap('`', '`');
+    case 'ul': return wikiMdLinePrefix('- ');
+    case 'ol': return wikiMdLinePrefix('1. ');
+    case 'quote': return wikiMdLinePrefix('> ');
+    case 'codeBlock': return wikiMdCodeBlock();
+    case 'link': return wikiMdLink(anchor);
+    case 'image': return wikiMdImagePick();
+    case 'table': return wikiMdTablePick(anchor);
+    case 'callout': return wikiMdCalloutPick(anchor);
   }
-  html += '</tbody></table><p><br></p>';
-  document.execCommand('insertHTML', false, html);
-  wikiState.dirty = true;
 }
 
-function wikiImageResizePopover(img) {
-  // Sanitizer keeps only a numeric width attribute, so resize uses pixel widths.
-  const pop = wikiPopover(img, `
-    <div class="wiki-pop-row">${[200, 400, 600].map(p => `<button class="btn btn-ghost btn-sm" data-px="${p}">${p}px</button>`).join('')}</div>
-    <div class="wiki-pop-row"><input id="wiki-img-px" type="number" min="16" max="2000" placeholder="px"><button class="btn btn-primary btn-sm" id="wiki-img-set">OK</button></div>
-    <div class="wiki-pop-row"><button class="btn btn-ghost btn-sm" id="wiki-img-reset">100%</button></div>`);
-  pop.querySelectorAll('[data-px]').forEach(b => b.onclick = () => { img.setAttribute('width', b.dataset.px); wikiState.dirty = true; wikiClosePopover(); });
-  pop.querySelector('#wiki-img-set').onclick = () => { const v = parseInt(pop.querySelector('#wiki-img-px').value, 10); if (v > 0) { img.setAttribute('width', String(v)); wikiState.dirty = true; } wikiClosePopover(); };
-  pop.querySelector('#wiki-img-reset').onclick = () => { img.removeAttribute('width'); wikiState.dirty = true; wikiClearImageSel(); wikiClosePopover(); };
+function wikiMdCodeBlock() {
+  const ta = wikiMdTa(); if (!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd, sel = ta.value.slice(s, e);
+  ta.setRangeText('```\n' + sel + '\n```\n', s, e, 'end');
+  ta.focus(); wikiMdChanged();
 }
 
-// === Drag-to-resize selected image ===
-let wikiImgSel = null;       // { img, wrap, place }
-let wikiImgSelOutside = null; // active document mousedown handler
-
-// wikiSelectImage draws a selection box with a bottom-right drag handle over an
-// image so it can be resized with the mouse. Width is stored as a numeric attr,
-// which the sanitizer preserves.
-function wikiSelectImage(img) {
-  wikiClearImageSel();
-  const ed = document.getElementById('wiki-editor');
-  if (!ed) return;
-  const wrap = document.createElement('div');
-  wrap.className = 'wiki-img-overlay';
-  const handle = document.createElement('span');
-  handle.className = 'wiki-img-handle';
-  wrap.appendChild(handle);
-  ed.appendChild(wrap);
-  const place = () => {
-    const er = ed.getBoundingClientRect(), ir = img.getBoundingClientRect();
-    wrap.style.left = (ir.left - er.left + ed.scrollLeft) + 'px';
-    wrap.style.top = (ir.top - er.top + ed.scrollTop) + 'px';
-    wrap.style.width = ir.width + 'px';
-    wrap.style.height = ir.height + 'px';
+function wikiMdLink(anchor) {
+  const ta = wikiMdTa(); if (!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd, selText = ta.value.slice(s, e);
+  const pop = wikiPopover(anchor, `
+    <div class="wiki-pop-row"><input id="wiki-pop-url" placeholder="https://" value="https://"></div>
+    <div class="wiki-pop-row"><input id="wiki-pop-text" placeholder="${t('tbLinkText')}" value="${escAttr(selText)}"></div>
+    <div class="wiki-pop-btns"><button class="btn btn-ghost btn-sm" id="wiki-pop-cancel">${t('tbCancel')}</button><button class="btn btn-primary btn-sm" id="wiki-pop-ok">${t('tbInsert')}</button></div>`);
+  pop.querySelector('#wiki-pop-url').focus();
+  pop.querySelector('#wiki-pop-cancel').onclick = wikiClosePopover;
+  pop.querySelector('#wiki-pop-ok').onclick = () => {
+    const url = pop.querySelector('#wiki-pop-url').value.trim();
+    const txt = pop.querySelector('#wiki-pop-text').value;
+    wikiClosePopover();
+    if (!url) return;
+    ta.setRangeText('[' + (txt || url) + '](' + url + ')', s, e, 'end');
+    ta.focus(); wikiMdChanged();
   };
-  place();
-  wikiImgSel = { img, wrap, place };
-  handle.addEventListener('mousedown', e => {
-    e.preventDefault(); e.stopPropagation();
-    const startX = e.clientX, startW = img.getBoundingClientRect().width;
-    const maxW = ed.clientWidth - 40;
-    const move = ev => {
-      let w = Math.round(startW + (ev.clientX - startX));
-      if (w < 32) w = 32;
-      if (w > maxW) w = maxW;
-      img.setAttribute('width', String(w));
-      img.removeAttribute('height'); // keep aspect ratio
-      wikiState.dirty = true;
-      place();
-    };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move);
-    document.addEventListener('mouseup', up);
+}
+
+function wikiMdImagePick() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  inp.onchange = () => { const f = inp.files[0]; if (f) wikiUploadImage(f); };
+  inp.click();
+}
+
+function wikiMdTablePick(anchor) {
+  const N = 8;
+  let cells = '';
+  for (let r = 1; r <= N; r++) for (let c = 1; c <= N; c++) cells += `<span class="wiki-grid-cell" data-r="${r}" data-c="${c}"></span>`;
+  const pop = wikiPopover(anchor, `<div class="wiki-grid-label" id="wiki-grid-label">0×0</div><div class="wiki-grid">${cells}</div>`);
+  const label = pop.querySelector('#wiki-grid-label');
+  pop.querySelectorAll('.wiki-grid-cell').forEach(cell => {
+    cell.addEventListener('mouseenter', () => {
+      const R = +cell.dataset.r, C = +cell.dataset.c;
+      label.textContent = R + '×' + C;
+      pop.querySelectorAll('.wiki-grid-cell').forEach(x => x.classList.toggle('on', +x.dataset.r <= R && +x.dataset.c <= C));
+    });
+    cell.addEventListener('click', () => {
+      const rows = +cell.dataset.r, cols = +cell.dataset.c;
+      wikiClosePopover();
+      wikiMdInsert('\n\n' + wikiBuildMdTable(rows, cols) + '\n');
+    });
   });
-  wikiImgSelOutside = e => {
-    if (e.target === img || e.target === handle || e.target.closest('#wiki-popover')) return;
-    wikiClearImageSel();
-  };
-  document.addEventListener('mousedown', wikiImgSelOutside, true);
-  ed.addEventListener('scroll', place);
-  window.addEventListener('resize', place);
 }
 
-function wikiClearImageSel() {
-  if (wikiImgSelOutside) { document.removeEventListener('mousedown', wikiImgSelOutside, true); wikiImgSelOutside = null; }
-  if (wikiImgSel) {
-    const ed = document.getElementById('wiki-editor');
-    if (ed) ed.removeEventListener('scroll', wikiImgSel.place);
-    window.removeEventListener('resize', wikiImgSel.place);
-    if (wikiImgSel.wrap) wikiImgSel.wrap.remove();
-    wikiImgSel = null;
-  }
+function wikiBuildMdTable(rows, cols) {
+  const row = () => '| ' + Array(cols).fill('   ').join(' | ') + ' |';
+  const sep = '| ' + Array(cols).fill('---').join(' | ') + ' |';
+  const lines = [row(), sep];
+  for (let r = 1; r < rows; r++) lines.push(row());
+  return lines.join('\n') + '\n';
 }
 
-function wikiCustomCommand(name, anchor) {
-  const editor = document.getElementById('wiki-editor');
-  switch (name) {
-    case 'inlineCode': {
-      const sel = window.getSelection();
-      if (!sel.rangeCount) return;
-      const text = sel.toString();
-      if (!text) return;
-      document.execCommand('insertHTML', false, '<code>' + escHtmlText(text) + '</code>');
-      break;
-    }
-    case 'codeBlock':
-      document.execCommand('insertHTML', false, '<pre><code>' + escHtmlText(window.getSelection().toString() || ' ') + '</code></pre><p><br></p>');
-      break;
-    case 'image': {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = 'image/png,image/jpeg,image/gif,image/webp';
-      inp.onchange = async () => {
-        const f = inp.files[0];
-        if (!f) return;
-        await wikiUploadImage(f);
-      };
-      inp.click();
-      break;
-    }
-    case 'link': {
-      const saved = wikiSaveRange();
-      const selText = window.getSelection().toString();
-      const pop = wikiPopover(anchor, `
-        <div class="wiki-pop-row"><input id="wiki-pop-url" placeholder="https://" value="https://"></div>
-        <div class="wiki-pop-row"><input id="wiki-pop-text" placeholder="${t('tbLinkText')}" value="${escAttr(selText)}"></div>
-        <div class="wiki-pop-btns"><button class="btn btn-ghost btn-sm" id="wiki-pop-cancel">${t('tbCancel')}</button><button class="btn btn-primary btn-sm" id="wiki-pop-ok">${t('tbInsert')}</button></div>`);
-      pop.querySelector('#wiki-pop-url').focus();
-      pop.querySelector('#wiki-pop-cancel').onclick = wikiClosePopover;
-      pop.querySelector('#wiki-pop-ok').onclick = () => {
-        const url = pop.querySelector('#wiki-pop-url').value.trim();
-        const txt = pop.querySelector('#wiki-pop-text').value;
-        wikiClosePopover();
-        if (!url) return;
-        editor.focus(); wikiRestoreRange(saved);
-        if (selText && !txt) document.execCommand('createLink', false, url);
-        else document.execCommand('insertHTML', false, `<a href="${escAttr(url)}">${esc(txt || url)}</a>`);
-        wikiState.dirty = true;
-      };
-      return;
-    }
-    case 'table': {
-      const saved = wikiSaveRange();
-      const N = 8;
-      let cells = '';
-      for (let r = 1; r <= N; r++) for (let c = 1; c <= N; c++) cells += `<span class="wiki-grid-cell" data-r="${r}" data-c="${c}"></span>`;
-      const pop = wikiPopover(anchor, `<div class="wiki-grid-label" id="wiki-grid-label">0×0</div><div class="wiki-grid">${cells}</div>`);
-      const label = pop.querySelector('#wiki-grid-label');
-      pop.querySelectorAll('.wiki-grid-cell').forEach(cell => {
-        cell.addEventListener('mouseenter', () => {
-          const R = +cell.dataset.r, C = +cell.dataset.c;
-          label.textContent = R + '×' + C;
-          pop.querySelectorAll('.wiki-grid-cell').forEach(x => x.classList.toggle('on', +x.dataset.r <= R && +x.dataset.c <= C));
-        });
-        cell.addEventListener('click', () => {
-          const rows = +cell.dataset.r, cols = +cell.dataset.c;
-          wikiClosePopover(); editor.focus(); wikiRestoreRange(saved); wikiInsertTable(rows, cols);
-        });
-      });
-      return;
-    }
-    case 'callout': {
-      const saved = wikiSaveRange();
-      const selText = window.getSelection().toString();
-      const kinds = [['info', 'tbCalloutInfo'], ['warn', 'tbCalloutWarn'], ['note', 'tbCalloutNote'], ['success', 'tbCalloutSuccess']];
-      const pop = wikiPopover(anchor, `<div class="wiki-callout-list">${kinds.map(([k, lab]) => `<button class="wiki-callout-opt wiki-${k}" data-k="${k}">${t(lab)}</button>`).join('')}</div>`);
-      pop.querySelectorAll('.wiki-callout-opt').forEach(b => b.onclick = () => {
-        const k = b.dataset.k;
-        wikiClosePopover(); editor.focus(); wikiRestoreRange(saved);
-        document.execCommand('insertHTML', false, `<div class="wiki-${k}"><p>${escHtmlText(selText || '…')}</p></div><p><br></p>`);
-        wikiState.dirty = true;
-      });
-      return;
-    }
-  }
-  editor.focus();
-  wikiState.dirty = true;
+function wikiMdCalloutPick(anchor) {
+  const ta = wikiMdTa(); if (!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd, selText = ta.value.slice(s, e);
+  const kinds = [['info', 'tbCalloutInfo'], ['warn', 'tbCalloutWarn'], ['note', 'tbCalloutNote'], ['success', 'tbCalloutSuccess']];
+  const pop = wikiPopover(anchor, `<div class="wiki-callout-list">${kinds.map(([k, lab]) => `<button class="wiki-callout-opt wiki-${k}" data-k="${k}">${t(lab)}</button>`).join('')}</div>`);
+  pop.querySelectorAll('.wiki-callout-opt').forEach(b => b.onclick = () => {
+    const k = b.dataset.k;
+    wikiClosePopover();
+    ta.setRangeText('\n<div class="wiki-' + k + '">\n\n' + (selText || '…') + '\n\n</div>\n', s, e, 'end');
+    ta.focus(); wikiMdChanged();
+  });
 }
 
 function escHtmlText(s) {
@@ -642,8 +541,8 @@ async function wikiUploadImage(file) {
     reader.onload = async () => {
       const base64 = reader.result.split(',')[1];
       const res = await api('/api/files', 'POST', { data: base64, filename: file.name, mime: upload.type || file.type });
-      document.execCommand('insertHTML', false, `<img src="${escAttr(res.url)}" alt="${escAttr(file.name)}">`);
-      wikiState.dirty = true;
+      const alt = (file.name || 'image').replace(/[\[\]]/g, '');
+      wikiMdInsert('![' + alt + '](' + res.url + ')');
     };
     reader.readAsDataURL(upload);
   } catch (e) { alert(t('uploadError') + ': ' + e.message); }
@@ -664,13 +563,8 @@ async function wikiSavePage() {
   const p = wikiState.page;
   const btn = document.getElementById('wiki-save-btn');
   const title = document.getElementById('wiki-title-input').value.trim();
-  let content, contentMd = '';
-  if (wikiState.editorMode === 'markdown') {
-    contentMd = document.getElementById('wiki-md').value;
-    content = wikiMdToHtml(contentMd);
-  } else {
-    content = document.getElementById('wiki-editor').innerHTML;
-  }
+  const contentMd = document.getElementById('wiki-md').value;
+  const content = wikiMdToHtml(contentMd);
   const comment = document.getElementById('wiki-rev-comment').value.trim();
   if (!title) { alert(t('wikiTitleRequired')); return; }
   btn.disabled = true;
