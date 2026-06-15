@@ -13,6 +13,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -158,6 +159,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:")
 
+	// CSRF: for state-changing methods, require the Origin/Referer (when the client
+	// sends one — browsers always do for cross-origin) to match our host. Requests
+	// with neither header (curl, server-to-server) are allowed.
+	if !sameOriginOK(r) {
+		http.Error(w, "cross-origin request blocked", http.StatusForbidden)
+		return
+	}
+
 	// Public paths: login page, login API, static assets, setup
 	path := r.URL.Path
 	if path == "/login" || path == "/api/auth/login" || path == "/api/auth/setup" ||
@@ -228,6 +237,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Store user in request context
 	ctx := context.WithValue(r.Context(), userContextKey, user)
 	h.mux.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// sameOriginOK enforces a CSRF guard: unsafe methods must carry an Origin/Referer
+// that matches our host (browsers always send one cross-origin). Safe methods and
+// header-less clients (curl, server-to-server) pass.
+func sameOriginOK(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = r.Header.Get("Referer")
+	}
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return u.Host == r.Host
 }
 
 func (h *Handler) currentUser(r *http.Request) *model.User {
