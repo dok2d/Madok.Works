@@ -185,5 +185,23 @@ func deliverToMX(domain, from string, to []string, msg []byte) error {
 	if err != nil || len(mxs) == 0 {
 		return fmt.Errorf("no MX for %s: %v", domain, err)
 	}
-	return smtp.SendMail(strings.TrimSuffix(mxs[0].Host, ".")+":25", nil, from, to, msg)
+	host := strings.TrimSuffix(mxs[0].Host, ".")
+	// SSRF guard: never connect to an MX that resolves into private/loopback space.
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		return fmt.Errorf("cannot resolve MX %s: %v", host, err)
+	}
+	for _, ip := range ips {
+		if isInternalIP(ip) {
+			return fmt.Errorf("refusing MX %s: resolves to internal address %s", host, ip)
+		}
+	}
+	return smtp.SendMail(host+":25", nil, from, to, msg)
+}
+
+// isInternalIP reports whether ip is loopback, private, link-local or unspecified
+// — addresses an outbound mail relay must never be tricked into contacting.
+func isInternalIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
