@@ -177,7 +177,11 @@ func (h *Handler) handleChatChannelRoute(w http.ResponseWriter, r *http.Request)
 func (h *Handler) handleChatChannel(w http.ResponseWriter, r *http.Request, user *model.User, ch *model.ChatChannel) {
 	switch r.Method {
 	case http.MethodGet:
-		jsonResp(w, ch)
+		if full, err := h.store.GetChatChannelFor(ch.ID, user.ID); err == nil {
+			jsonResp(w, full)
+		} else {
+			jsonResp(w, ch)
+		}
 	case http.MethodPut:
 		if !h.chatCanManage(user, ch) || ch.Type == "dm" {
 			http.Error(w, "forbidden", http.StatusForbidden)

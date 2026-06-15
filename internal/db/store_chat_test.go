@@ -373,6 +373,50 @@ func TestChatReactions(t *testing.T) {
 	}
 }
 
+func TestChatChannelListPreviewAndPeerRead(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	bob := mustUser(t, s, "bob")
+	dm, err := s.GetOrCreateDM(alice, bob)
+	if err != nil {
+		t.Fatalf("GetOrCreateDM: %v", err)
+	}
+	m, _ := s.CreateChatMessage(dm, alice, "hello bob", nil, 0)
+
+	// Alice's view: last-message preview present, peer (bob) hasn't read yet.
+	chans, err := s.ListChatChannels(alice)
+	if err != nil {
+		t.Fatalf("ListChatChannels: %v", err)
+	}
+	var ch *model.ChatChannel
+	for i := range chans {
+		if chans[i].ID == dm {
+			ch = &chans[i]
+		}
+	}
+	if ch == nil {
+		t.Fatal("dm not in list")
+	}
+	if ch.LastMsgText != "hello bob" || ch.LastMsgFrom != "alice" {
+		t.Errorf("preview wrong: text=%q from=%q", ch.LastMsgText, ch.LastMsgFrom)
+	}
+	if ch.PeerLastRead >= m.ID {
+		t.Errorf("peer should not have read yet: peerLastRead=%d msg=%d", ch.PeerLastRead, m.ID)
+	}
+
+	// Bob reads; now Alice sees peer_last_read >= message id (read tick).
+	if err := s.MarkChatRead(dm, bob, m.ID); err != nil {
+		t.Fatalf("MarkChatRead: %v", err)
+	}
+	got, err := s.GetChatChannelFor(dm, alice)
+	if err != nil {
+		t.Fatalf("GetChatChannelFor: %v", err)
+	}
+	if got.PeerLastRead < m.ID {
+		t.Errorf("peer read tick not reflected: peerLastRead=%d msg=%d", got.PeerLastRead, m.ID)
+	}
+}
+
 func reactionFor(rs []model.ChatReaction, emoji string) *model.ChatReaction {
 	for i := range rs {
 		if rs[i].Emoji == emoji {

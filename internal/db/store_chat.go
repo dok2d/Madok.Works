@@ -18,7 +18,9 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 		(SELECT COUNT(*) FROM chat_members m2 WHERE m2.channel_id = c.id),
 		COALESCE(m.last_read_id, -1),
 		COALESCE((SELECT MAX(id) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), 0),
-		COALESCE((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), '')
+		COALESCE((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), ''),
+		COALESCE((SELECT msg.text FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
+		COALESCE((SELECT COALESCE(u2.username,'') FROM chat_messages msg LEFT JOIN users u2 ON u2.id = msg.author_id WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), '')
 		FROM chat_channels c
 		LEFT JOIN chat_members m ON m.channel_id = c.id AND m.user_id = ?
 		WHERE c.type = 'channel' OR m.user_id IS NOT NULL
@@ -34,7 +36,7 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 		var c model.ChatChannel
 		var lastRead, maxID int64
 		if err := rows.Scan(&c.ID, &c.Name, &c.Topic, &c.Type, &c.CreatedBy, &c.CreatedAt,
-			&c.MemberCount, &lastRead, &maxID, &c.LastMsgAt); err != nil {
+			&c.MemberCount, &lastRead, &maxID, &c.LastMsgAt, &c.LastMsgText, &c.LastMsgFrom); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -56,13 +58,14 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 			out[i].Unread = unread
 		}
 		if out[i].Type == "dm" {
-			var peerID int64
+			var peerID, peerLastRead int64
 			var peerName string
-			err := s.db.QueryRow(`SELECT u.id, u.username FROM chat_members m JOIN users u ON u.id = m.user_id
-				WHERE m.channel_id = ? AND m.user_id != ? LIMIT 1`, out[i].ID, userID).Scan(&peerID, &peerName)
+			err := s.db.QueryRow(`SELECT u.id, u.username, COALESCE(m.last_read_id,0) FROM chat_members m JOIN users u ON u.id = m.user_id
+				WHERE m.channel_id = ? AND m.user_id != ? LIMIT 1`, out[i].ID, userID).Scan(&peerID, &peerName, &peerLastRead)
 			if err == nil {
 				out[i].PeerID = &peerID
 				out[i].PeerName = peerName
+				out[i].PeerLastRead = peerLastRead
 			}
 		}
 	}
@@ -82,6 +85,26 @@ func (s *Store) GetChatChannel(id int64) (*model.ChatChannel, error) {
 		return nil, err
 	}
 	return &c, nil
+}
+
+// GetChatChannelFor returns a channel with viewer-relative DM fields populated
+// (peer id/name and the peer's last_read_id, for read ticks in the open DM).
+func (s *Store) GetChatChannelFor(id, viewerID int64) (*model.ChatChannel, error) {
+	c, err := s.GetChatChannel(id)
+	if err != nil {
+		return nil, err
+	}
+	if c.Type == "dm" {
+		var peerID, peerLastRead int64
+		var peerName string
+		if e := s.db.QueryRow(`SELECT u.id, u.username, COALESCE(m.last_read_id,0) FROM chat_members m JOIN users u ON u.id = m.user_id
+			WHERE m.channel_id = ? AND m.user_id != ? LIMIT 1`, id, viewerID).Scan(&peerID, &peerName, &peerLastRead); e == nil {
+			c.PeerID = &peerID
+			c.PeerName = peerName
+			c.PeerLastRead = peerLastRead
+		}
+	}
+	return c, nil
 }
 
 // IsChatMember reports membership; public channels are open to everyone.

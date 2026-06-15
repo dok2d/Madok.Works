@@ -202,10 +202,13 @@ type ChatChannel struct {
 	MemberCount int    `json:"member_count"`
 	Unread      int    `json:"unread"`
 	LastMsgAt   string `json:"last_msg_at,omitempty"`
+	LastMsgText string `json:"last_msg_text,omitempty"`
+	LastMsgFrom string `json:"last_msg_from,omitempty"`
 	IsMember    bool   `json:"is_member"`
 	// For DM channels: the other participant
-	PeerID   *int64 `json:"peer_id,omitempty"`
-	PeerName string `json:"peer_name,omitempty"`
+	PeerID       *int64 `json:"peer_id,omitempty"`
+	PeerName     string `json:"peer_name,omitempty"`
+	PeerLastRead int64  `json:"peer_last_read,omitempty"` // DM: peer's last_read_id (for read ticks)
 }
 
 // ChatAttachment links an uploaded file to a chat message.
