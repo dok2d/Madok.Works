@@ -75,12 +75,17 @@ func normalizeRRuleUntil(s string) string {
 // BYSETPOS, WKST, etc. Bounded to [from,to] via Between so it can't run away on
 // infinite or huge-COUNT rules.
 func expandOccurrences(start time.Time, rruleStr string, from, to time.Time) []time.Time {
+	return expandOccurrencesEx(start, rruleStr, nil, from, to)
+}
+
+// expandOccurrencesEx is expandOccurrences with EXDATE exclusions (RFC 5545), used
+// for ICS subscriptions where Google removes individual occurrences of a series.
+func expandOccurrencesEx(start time.Time, rruleStr string, exdates []time.Time, from, to time.Time) []time.Time {
 	rruleStr = strings.TrimSpace(rruleStr)
 	if rruleStr == "" {
 		return []time.Time{start}
 	}
-	rruleStr = normalizeRRuleUntil(rruleStr)
-	r, err := rrule.StrToRRule(rruleStr)
+	r, err := rrule.StrToRRule(normalizeRRuleUntil(rruleStr))
 	if err != nil {
 		// Unparseable rule: fall back to the single start if it overlaps the window.
 		if !start.Before(from) && !start.After(to) {
@@ -88,8 +93,17 @@ func expandOccurrences(start time.Time, rruleStr string, from, to time.Time) []t
 		}
 		return nil
 	}
-	r.DTStart(start.UTC())
-	return r.Between(from.UTC(), to.UTC(), true)
+	if len(exdates) == 0 {
+		r.DTStart(start.UTC())
+		return r.Between(from.UTC(), to.UTC(), true)
+	}
+	set := &rrule.Set{}
+	set.DTStart(start.UTC())
+	set.RRule(r)
+	for _, ex := range exdates {
+		set.ExDate(ex.UTC())
+	}
+	return set.Between(from.UTC(), to.UTC(), true)
 }
 
 // === Calendars ===

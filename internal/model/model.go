@@ -312,6 +312,22 @@ type CalendarSubscription struct {
 	LastError  string `json:"last_error,omitempty"`
 }
 
+// SubEvent is one parsed VEVENT from an external ICS feed, cached for overlay.
+// ExDates/RecurrenceID/Status carry RFC 5545 recurrence exceptions and overrides.
+type SubEvent struct {
+	UID          string
+	Title        string
+	Description  string
+	Location     string
+	Start        string // UTC layout
+	End          string // UTC layout
+	AllDay       bool
+	RRule        string
+	ExDates      []string // UTC-layout times excluded from the series
+	RecurrenceID string   // UTC-layout time this VEVENT overrides ("" for the master)
+	Status       string   // "" or "CANCELLED"
+}
+
 // CalendarReminder is one reminder definition for an event.
 type CalendarReminder struct {
 	LeadMin int    `json:"lead_min"`

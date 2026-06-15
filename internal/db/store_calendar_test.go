@@ -222,7 +222,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSubscription: %v", err)
 	}
-	evs := []model.CalendarEvent{
+	evs := []model.SubEvent{
 		{Title: "Meeting", Start: "2026-01-15 09:00:00", End: "2026-01-15 10:00:00"},
 		{Title: "Weekly", Start: "2026-01-01 09:00:00", End: "2026-01-01 09:30:00", RRule: "FREQ=WEEKLY;COUNT=10"},
 	}
@@ -314,5 +314,50 @@ func TestExpandOccurrencesAdvanced(t *testing.T) {
 	occ3 := expandOccurrences(mustTime(t, "2026-01-30 18:00:00"), "FREQ=MONTHLY;BYDAY=-1FR", from, to)
 	if len(occ3) != 3 {
 		t.Errorf("last Friday: got %d want 3", len(occ3))
+	}
+}
+
+func TestSubscriptionExdateAndOverrides(t *testing.T) {
+	s := newTestStore(t)
+	u := mustUser(t, s, "alice")
+	id, _ := s.CreateSubscription(u, "G", "https://e.test/c.ics", "#abc")
+
+	// Weekly Thu 09:00 in Jan 2026 (1,8,15,22,29). Exclude Jan 15; move Jan 22 to
+	// Jan 23 14:00; cancel Jan 29. UID ties the override rows to the master.
+	evs := []model.SubEvent{
+		{UID: "ev1", Title: "Standup", Start: "2026-01-01 09:00:00", End: "2026-01-01 09:30:00",
+			RRule: "FREQ=WEEKLY;UNTIL=2026-01-31", ExDates: []string{"2026-01-15 09:00:00"}},
+		{UID: "ev1", Title: "Standup (moved)", Start: "2026-01-23 14:00:00", End: "2026-01-23 14:30:00",
+			RecurrenceID: "2026-01-22 09:00:00"},
+		{UID: "ev1", RecurrenceID: "2026-01-29 09:00:00", Status: "CANCELLED"},
+	}
+	if err := s.ReplaceSubscriptionEvents(id, evs); err != nil {
+		t.Fatalf("ReplaceSubscriptionEvents: %v", err)
+	}
+	out, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	if err != nil {
+		t.Fatalf("ListCalendarEvents: %v", err)
+	}
+	got := map[string]string{} // start -> title, ics only
+	for _, e := range out {
+		if e.Source == "ics" {
+			got[e.Start] = e.Title
+		}
+	}
+	// Expected: Jan 1, 8 (series), Jan 23 14:00 (moved). Excluded 15, cancelled 29.
+	if len(got) != 3 {
+		t.Fatalf("expected 3 ics occurrences, got %d: %v", len(got), got)
+	}
+	if _, ok := got["2026-01-15 09:00:00"]; ok {
+		t.Error("EXDATE Jan 15 should be excluded")
+	}
+	if _, ok := got["2026-01-29 09:00:00"]; ok {
+		t.Error("cancelled Jan 29 should be gone")
+	}
+	if got["2026-01-22 09:00:00"] != "" {
+		t.Error("original Jan 22 should be replaced by the moved instance")
+	}
+	if got["2026-01-23 14:00:00"] != "Standup (moved)" {
+		t.Errorf("moved instance missing/wrong: %v", got)
 	}
 }

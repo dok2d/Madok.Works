@@ -477,6 +477,9 @@ func (s *Store) migrate() error {
 		"ALTER TABLE chat_messages ADD COLUMN pinned_at DATETIME",
 		"ALTER TABLE chat_messages ADD COLUMN pinned_by INTEGER REFERENCES users(id)",
 		"ALTER TABLE chat_messages ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE calendar_sub_events ADD COLUMN exdate TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE calendar_sub_events ADD COLUMN recurrence_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE calendar_sub_events ADD COLUMN status TEXT NOT NULL DEFAULT ''",
 	}
 	for _, q := range alters {
 		s.db.Exec(q) // ignore "duplicate column" errors

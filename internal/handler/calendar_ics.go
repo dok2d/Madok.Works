@@ -79,11 +79,12 @@ func (h *Handler) syncSubscription(sub model.CalendarSubscription) {
 		return
 	}
 	parsed := parseICS(data)
-	evs := make([]model.CalendarEvent, 0, len(parsed))
+	evs := make([]model.SubEvent, 0, len(parsed))
 	for _, p := range parsed {
-		evs = append(evs, model.CalendarEvent{
-			Title: p.Title, Description: p.Description, Location: p.Location,
+		evs = append(evs, model.SubEvent{
+			UID: p.UID, Title: p.Title, Description: p.Description, Location: p.Location,
 			Start: p.Start, End: p.End, AllDay: p.AllDay, RRule: p.RRule,
+			ExDates: p.ExDates, RecurrenceID: p.RecurrenceID, Status: p.Status,
 		})
 	}
 	if err := h.store.ReplaceSubscriptionEvents(sub.ID, evs); err != nil {

@@ -14,14 +14,17 @@ const icsTimeLayout = "2006-01-02 15:04:05" // matches calTimeLayout (UTC)
 
 // icsEvent is one parsed VEVENT, with times normalized to the UTC store layout.
 type icsEvent struct {
-	UID         string
-	Title       string
-	Description string
-	Location    string
-	Start       string // UTC "2006-01-02 15:04:05"
-	End         string
-	AllDay      bool
-	RRule       string
+	UID          string
+	Title        string
+	Description  string
+	Location     string
+	Start        string // UTC "2006-01-02 15:04:05"
+	End          string
+	AllDay       bool
+	RRule        string
+	ExDates      []string // excluded occurrence times (UTC layout)
+	RecurrenceID string   // overridden occurrence time (UTC layout); "" = master
+	Status       string   // "" or "CANCELLED"
 }
 
 // icsUnfold joins folded lines (a CRLF/LF followed by a space or tab is a
@@ -113,7 +116,9 @@ func parseICS(data []byte) []icsEvent {
 				if cur.End == "" {
 					cur.End = cur.Start
 				}
-				if cur.Start != "" {
+				// Keep events with a start, or override/cancellation entries that key
+				// off a RECURRENCE-ID even without their own DTSTART.
+				if cur.Start != "" || cur.RecurrenceID != "" {
 					out = append(out, *cur)
 				}
 			}
@@ -135,6 +140,18 @@ func parseICS(data []byte) []icsEvent {
 			cur.UID = value
 		case "RRULE":
 			cur.RRule = strings.TrimSpace(value)
+		case "STATUS":
+			cur.Status = strings.ToUpper(strings.TrimSpace(value))
+		case "RECURRENCE-ID":
+			if ts, _ := icsParseTime(value, params); ts != "" {
+				cur.RecurrenceID = ts
+			}
+		case "EXDATE":
+			for _, v := range strings.Split(value, ",") {
+				if ts, _ := icsParseTime(v, params); ts != "" {
+					cur.ExDates = append(cur.ExDates, ts)
+				}
+			}
 		case "DTSTART":
 			if ts, allDay := icsParseTime(value, params); ts != "" {
 				cur.Start, cur.AllDay = ts, allDay
