@@ -7,8 +7,9 @@ let calState = {
   events: [],
   view: 'month', // month | week | agenda
   cursor: null, // a Date within the visible period (browser-local)
-  hidden: {}, // calendarId -> true when unchecked
+  hidden: {}, // calendarId -> true when unchecked (subscriptions use -subId)
   hideKanban: false, // hide task/sprint overlay
+  subscriptions: [], // external ICS subscriptions
   es: null, // EventSource for live updates
   dragId: null, // event id being dragged
 };
@@ -54,6 +55,8 @@ const CAL_I18N = {
     calShared: 'Shared', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
     calDeleteCalendarConfirm: 'Delete this calendar and all its events?', calName: 'Name',
     calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints', calReminders: 'Reminders', calReminderAdd: 'Add reminder', calRemBefore: 'before', calRemMin: 'minutes', calRemHour: 'hours', calRemDay: 'days', calRemTg: 'Telegram', calRemInApp: 'In-app', calRemBoth: 'Both',
+    calAddIcsSub: 'Google Calendar (ICS)', calIcsUrl: 'iCal/ICS address (secret URL)', calIcsName: 'Name', calSyncNow: 'Sync now', calSubDelete: 'Remove subscription', calNoTitle: '(no title)',
+    calIcsHint: 'Google Calendar → Settings → your calendar → "Secret address in iCal format". Read-only.',
   },
   ru: {
     calNewEvent: 'Новое событие', calNewCalendar: 'Новый календарь', calToday: 'Сегодня',
@@ -69,6 +72,8 @@ const CAL_I18N = {
     calShared: 'Общий', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
     calDeleteCalendarConfirm: 'Удалить календарь и все его события?', calName: 'Название',
     calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты', calReminders: 'Напоминания', calReminderAdd: 'Добавить напоминание', calRemBefore: 'до начала', calRemMin: 'минут', calRemHour: 'часов', calRemDay: 'дней', calRemTg: 'Telegram', calRemInApp: 'В приложении', calRemBoth: 'Оба',
+    calAddIcsSub: 'Google Календарь (ICS)', calIcsUrl: 'Адрес iCal/ICS (секретный URL)', calIcsName: 'Название', calSyncNow: 'Синхронизировать', calSubDelete: 'Удалить подписку', calNoTitle: '(без названия)',
+    calIcsHint: 'Google Календарь → Настройки → ваш календарь → «Секретный адрес в формате iCal». Только чтение.',
   },
   es: {
     calNewEvent: "Nuevo evento", calNewCalendar: "Nuevo calendario", calToday: "Hoy",
@@ -165,6 +170,14 @@ function calFmtTime(s) {
   try { return new Intl.DateTimeFormat(calLocale(), { timeZone: getTimezone(), hour: '2-digit', minute: '2-digit', hour12: false }).format(calParseUTC(s)); }
   catch (e) { return ''; }
 }
+function calFmtDay(s) {
+  try { return new Intl.DateTimeFormat(calLocale(), { timeZone: getTimezone(), year: 'numeric', month: 'short', day: 'numeric' }).format(calParseUTC(s)); }
+  catch (e) { return ''; }
+}
+function calFmtDateTime(s) {
+  try { return new Intl.DateTimeFormat(calLocale(), { timeZone: getTimezone(), month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(calParseUTC(s)); }
+  catch (e) { return ''; }
+}
 
 // === Entry point ===
 async function renderCalendarView() {
@@ -177,6 +190,8 @@ async function renderCalendarView() {
     document.getElementById('app').innerHTML = `<div class="cal-empty cal-empty-lg">${esc(e.message)}</div>`;
     return;
   }
+  try { calState.subscriptions = await api('/api/calendar/subscriptions'); }
+  catch (e) { calState.subscriptions = []; }
   calRenderLayout();
   calConnectSSE();
   await calLoadAndRender();
@@ -245,7 +260,19 @@ function calRenderHeader() {
       <span class="cal-dot" style="background:#ef4444"></span>
       <span class="cal-cl-name">${esc(t('calKanban'))}</span>
     </label>`;
+  // External ICS subscriptions (read-only), toggled by -subId.
+  for (const sub of (calState.subscriptions || [])) {
+    const key = -sub.id;
+    calItems += `<label class="sfd-item cal-dd-row">
+      <input type="checkbox" ${calState.hidden[key] ? '' : 'checked'} onchange="calToggleCal(${key}, this.checked)">
+      <span class="cal-dot" style="background:${escAttr(sub.color)}"></span>
+      <span class="cal-cl-name">${esc(sub.name)}</span>
+      ${sub.last_error ? `<span class="cal-sub-err" title="${escAttr(sub.last_error)}">&#9888;</span>` : ''}
+      ${canWrite ? `<button class="cal-cl-edit" title="${escAttr(t('calSubDelete'))}" onclick="event.preventDefault();event.stopPropagation();calDeleteSubscription(${sub.id})">&#10005;</button>` : ''}
+    </label>`;
+  }
   if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calNewCalendarDialog()">+ ${esc(t('calNewCalendar'))}</div>`;
+  if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calSubscriptionDialog()">+ ${esc(t('calAddIcsSub'))}</div>`;
   el.innerHTML = `<span class="hdr-sep">/</span>
     <span class="hdr-filter">
       <span class="hdr-filter-name" id="cal-view-label" onclick="hdrDropToggle(event,'cal-view-dd')">${esc(vlabel(calState.view))}</span>
@@ -270,8 +297,8 @@ function calToggleCal(id, checked) {
 
 function calVisibleEvents() {
   return calState.events.filter(e => {
-    if (e.source) return !calState.hideKanban;
-    return !calState.hidden[e.calendar_id];
+    if (e.source === 'task' || e.source === 'sprint') return !calState.hideKanban;
+    return !calState.hidden[e.calendar_id]; // ICS events use calendar_id = -subId
   });
 }
 
@@ -463,8 +490,73 @@ function calCellClick(dayKey) {
 function calEventClick(id, source, refId) {
   if (source === 'task') { navigateTo('/task/' + refId); return; }
   if (source === 'sprint') { navigateTo('/sprint/' + refId); return; }
+  if (source === 'ics') {
+    const e = calState.events.find(x => x.source === 'ics' && x.id === id);
+    if (e) calIcsDialog(e);
+    return;
+  }
   const e = calState.events.find(x => x.id === id && !x.source);
   if (e) calEventDialog(e);
+}
+
+// calIcsDialog shows a read-only external (subscription) event.
+function calIcsDialog(e) {
+  const when = e.all_day ? calFmtDay(e.start) : (calFmtDateTime(e.start) + ' – ' + calFmtDateTime(e.end));
+  let body = `<div class="cal-ics-when">${esc(when)}</div>`;
+  if (e.location) body += `<div class="cal-ics-row">📍 ${esc(e.location)}</div>`;
+  if (e.description) body += `<div class="cal-ics-row cal-ics-desc">${esc(e.description)}</div>`;
+  if (e.calendar_name) body += `<div class="cal-ics-row cal-ics-src">${esc(e.calendar_name)}</div>`;
+  calModal(e.title || t('calNoTitle') || '—', body, null);
+}
+
+// === ICS subscriptions ===
+function calSubscriptionDialog() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+  const subs = calState.subscriptions || [];
+  const list = subs.map(s => `<div class="cal-sub-row">
+      <span class="cal-dot" style="background:${escAttr(s.color)}"></span>
+      <span class="cal-sub-name">${esc(s.name)}${s.last_error ? ` <span class="cal-sub-err" title="${escAttr(s.last_error)}">&#9888;</span>` : ''}</span>
+      <button class="btn btn-ghost btn-sm" onclick="calSyncSubscription(${s.id})">${t('calSyncNow')}</button>
+      <button class="btn-icon btn-sm cal-danger" title="${escAttr(t('calSubDelete'))}" onclick="calDeleteSubscription(${s.id})">&#10005;</button>
+    </div>`).join('') || `<div class="cal-empty">—</div>`;
+  const body = `
+    <div class="cal-sub-list">${list}</div>
+    <div class="cal-sub-add">
+      <input id="cal-sub-name" placeholder="${escAttr(t('calIcsName') || 'Name')}">
+      <input id="cal-sub-url" placeholder="${escAttr(t('calIcsUrl'))}">
+      <input id="cal-sub-color" type="color" value="#0ea5e9">
+    </div>
+    <div class="cal-ics-hint">${esc(t('calIcsHint'))}</div>`;
+  calModal(t('calAddIcsSub'), body, async ov => {
+    const url = ov.querySelector('#cal-sub-url').value.trim();
+    if (!url) return;
+    const name = ov.querySelector('#cal-sub-name').value.trim();
+    const color = ov.querySelector('#cal-sub-color').value;
+    try {
+      await api('/api/calendar/subscriptions', 'POST', { name, url, color });
+      calState.subscriptions = await api('/api/calendar/subscriptions');
+      ov.remove();
+      calRenderHeader();
+    } catch (e) { alert(e.message); }
+  });
+}
+
+async function calDeleteSubscription(id) {
+  if (!confirm(t('calSubDelete') + '?')) return;
+  try {
+    await api('/api/calendar/subscriptions/' + id, 'DELETE');
+    calState.subscriptions = await api('/api/calendar/subscriptions');
+    document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+    calRenderHeader();
+    await calLoadAndRender();
+  } catch (e) { alert(e.message); }
+}
+
+async function calSyncSubscription(id) {
+  try {
+    await api('/api/calendar/subscriptions/' + id + '/sync', 'POST', {});
+    // Server syncs in the background and pushes a calendar SSE event when done.
+  } catch (e) { alert(e.message); }
 }
 
 // === Dialogs ===

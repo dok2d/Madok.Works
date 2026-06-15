@@ -141,7 +141,7 @@ func (s *Store) subscriptionEvents(userID int64, from, to time.Time) ([]model.Ca
 	}
 
 	// 2) cached events for those subscriptions (ids are integers — safe to inline).
-	r2, err := s.db.Query(`SELECT sub_id, title, description, location, start_utc, end_utc, all_day, rrule
+	r2, err := s.db.Query(`SELECT id, sub_id, title, description, location, start_utc, end_utc, all_day, rrule
 		FROM calendar_sub_events WHERE sub_id IN (`+strings.Join(ids, ",")+`) AND start_utc <= ? ORDER BY start_utc`, to.Format(calTimeLayout))
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (s *Store) subscriptionEvents(userID int64, from, to time.Time) ([]model.Ca
 		var e model.CalendarEvent
 		var subID int64
 		var allDay int
-		if err := r2.Scan(&subID, &e.Title, &e.Description, &e.Location, &e.Start, &e.End, &allDay, &e.RRule); err != nil {
+		if err := r2.Scan(&e.ID, &subID, &e.Title, &e.Description, &e.Location, &e.Start, &e.End, &allDay, &e.RRule); err != nil {
 			r2.Close()
 			return nil, err
 		}
