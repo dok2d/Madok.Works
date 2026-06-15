@@ -27,7 +27,7 @@ function ensureAdminI18n() {
 // panels are drawn by a function. `admin:true` = admins only; `show()` = conditional.
 const ADMIN_TABS = [
   { key: 'general', i: 'adminTabGeneral', sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
-  { key: 'mail', i: 'adminTabMail', sections: ['mail-rules-section'], show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
+  { key: 'mail', i: 'adminTabMail', render: renderAdminMail, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
   { key: 'telegram', i: 'adminTabTelegram', sections: ['telegram-section'], show: () => isAdmin() || (currentUser && currentUser.telegram_configured) },
   { key: 'site', i: 'adminTabSite', render: renderAdminSite, admin: true },
   { key: 'board', i: 'adminTabBoard', sections: ['columns-section', 'epics-section', 'sprints-section', 'tags-section'], admin: true },
@@ -36,7 +36,6 @@ const ADMIN_TABS = [
   { key: 'integrations', i: 'adminTabIntegrations', sections: ['sso-section'], admin: true },
   { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'], admin: true },
   { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
-  { key: 'mailboxes', i: 'adminTabMailboxes', render: renderAdminMailboxes, admin: true },
 ];
 
 // adminTabVisible decides whether a tab is shown for the current user/role.
@@ -196,4 +195,17 @@ async function adminSaveAppName() {
     const r = await api('/api/settings/app', 'POST', { name });
     if (typeof applyAppName === 'function') applyAppName(r.name || name || 'Kanban');
   } catch (e) { alert(e.message); }
+}
+
+// === Mail tab (per-user distribution rules + admin mailboxes/aliases) ===
+function renderAdminMail(panel) {
+  if (!panel) return;
+  if (typeof ensureMailI18n === 'function') ensureMailI18n();
+  let html = `<h2 class="admin-h">${t('adminTabMail')}</h2>
+    <div class="admin-form">
+      <div class="admin-row"><button class="btn btn-primary btn-sm" onclick="mailRulesDialog()">${t('mailRules')}</button></div>
+    </div>`;
+  if (isAdmin()) html += `<div id="admin-mb-block" style="margin-top:28px"></div>`;
+  panel.innerHTML = html;
+  if (isAdmin()) renderAdminMailboxes(panel.querySelector('#admin-mb-block'));
 }
