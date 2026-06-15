@@ -15,11 +15,11 @@ prioritized plan below.
 | # | Severity | Area | Status |
 |---|----------|------|--------|
 | S1 | High | Secrets (DKIM key, TG token) present in JSON export | ⚠️ Accepted (owner decision) — see note |
-| A1 | Medium | No CSRF tokens (relies on SameSite=Lax) | Planned P1 |
-| A2 | Medium | Outbound SMTP SSRF / open-relay-ish surface | Planned P1 |
-| A3 | Medium | Inbound SMTP: no rate-limiting / mail-bomb DoS | Planned P1 |
-| A4 | Low | Self-XSS in wiki Markdown live preview | Planned P2 |
-| A5 | Low | Mailbox alias can shadow a username | Planned P2 |
+| A1 | Medium | No CSRF tokens (relies on SameSite=Lax) | ✅ Fixed |
+| A2 | Medium | Outbound SMTP SSRF / open-relay-ish surface | ✅ Fixed |
+| A3 | Medium | Inbound SMTP: no rate-limiting / mail-bomb DoS | ✅ Fixed |
+| A4 | Low | Self-XSS in wiki Markdown live preview | ✅ Fixed |
+| A5 | Low | Mailbox alias can shadow a username | ✅ Fixed |
 | A6 | Low | Antispam/DKIM/SPF best-effort, bypassable | Accepted/Deploy |
 | A7 | Low | DKIM private key stored plaintext in DB | Accepted/Deploy |
 | I1 | Info | Mail-rule regex is RE2 → no ReDoS | No action |
@@ -117,6 +117,19 @@ table-name list (`ecosystemTables`); LIKE uses `escapeLike` + bound parameters. 
   are not deleted (regression-tested).
 - **Secret exposure via API:** `/api/mail/settings` returns only `dkim_configured` + the
   *public* DKIM TXT, never the private key.
+
+## Status update
+P1 and P2 are implemented and tested:
+- **A1** `sameOriginOK` CSRF guard in `ServeHTTP` (`csrf_test.go`).
+- **A2** `deliverToMX` refuses MX hosts resolving to internal IPs (`isInternalIP`, test).
+- **A3** inbound SMTP per-IP sliding-window limiter + recipient cap (`smtpRateLimiter`, test).
+- **A4** `wikiSanitizePreview` strips active content from the Markdown preview.
+- **A5** `CreateAlias` rejects aliases shadowing another user's username (test).
+
+Remaining are deploy-time/operational (A6, A7) — no code change:
+- **A6/A7:** publish SPF/DKIM/DMARC DNS records and enable TLS at the MTA edge for real
+  inbound enforcement; run on an encrypted volume; protect the JSON export artifact and
+  review the Telegram daily-backup channel (see S1).
 
 ## Remediation plan (prioritized)
 - **P0:** S1 — owner chose to keep secrets in the export (complete one-file backup);
