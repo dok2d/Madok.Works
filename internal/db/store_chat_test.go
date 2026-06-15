@@ -417,6 +417,35 @@ func TestChatChannelListPreviewAndPeerRead(t *testing.T) {
 	}
 }
 
+func TestChatChannelSortByLastMessage(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	a, _ := s.CreateChatChannel("aaa", "", "channel", alice, nil)
+	b, _ := s.CreateChatChannel("bbb", "", "channel", alice, nil)
+	empty, _ := s.CreateChatChannel("ccc", "", "channel", alice, nil)
+	// b gets a message first, then a — so a is the most recent.
+	if _, err := s.CreateChatMessage(b, alice, "in b", nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateChatMessage(a, alice, "in a", nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	chans, err := s.ListChatChannels(alice)
+	if err != nil {
+		t.Fatalf("ListChatChannels: %v", err)
+	}
+	pos := map[int64]int{}
+	for i, c := range chans {
+		pos[c.ID] = i
+	}
+	if !(pos[a] < pos[b]) {
+		t.Errorf("channel with newer message should sort first: a=%d b=%d", pos[a], pos[b])
+	}
+	if !(pos[b] < pos[empty]) {
+		t.Errorf("channel without messages should sort last: b=%d empty=%d", pos[b], pos[empty])
+	}
+}
+
 func TestChatSystemMessage(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")

@@ -18,13 +18,13 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 		(SELECT COUNT(*) FROM chat_members m2 WHERE m2.channel_id = c.id),
 		COALESCE(m.last_read_id, -1),
 		COALESCE((SELECT MAX(id) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), 0),
-		COALESCE((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), ''),
+		COALESCE((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), '') AS last_at,
 		COALESCE((SELECT msg.text FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
 		COALESCE((SELECT COALESCE(u2.username,'') FROM chat_messages msg LEFT JOIN users u2 ON u2.id = msg.author_id WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), '')
 		FROM chat_channels c
 		LEFT JOIN chat_members m ON m.channel_id = c.id AND m.user_id = ?
 		WHERE c.type = 'channel' OR m.user_id IS NOT NULL
-		ORDER BY c.type, c.name COLLATE NOCASE`, userID)
+		ORDER BY last_at DESC, c.name COLLATE NOCASE`, userID)
 	if err != nil {
 		return nil, err
 	}

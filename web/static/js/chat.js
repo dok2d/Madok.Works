@@ -289,23 +289,26 @@ function chatRenderChannelList() {
 function chatRenderDMGroup(label) {
   const meId = currentUser && currentUser.id;
   const canWrite = currentUser && currentUser.role !== 'readonly';
-  const byPeer = {};
-  for (const c of chatState.channels) if (c.type === 'dm' && c.peer_id != null) byPeer[c.peer_id] = c;
-  const users = (state.users || []).filter(u => u.id !== meId)
-    .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
-  let h = `<div class="chat-grp"><div class="chat-grp-head"><span>${esc(label)}</span></div>`;
+  // Existing DMs first, ordered by last message (channels already come sorted desc);
+  // then contacts without a DM yet, alphabetically.
+  const havePeer = {};
   let rows = '';
-  for (const u of users) {
-    const c = byPeer[u.id];
-    if (c) {
-      rows += chatChannelRow(c, u.username, `chatOpen(${c.id})`);
-    } else if (canWrite) {
+  for (const c of chatState.channels) {
+    if (c.type !== 'dm') continue;
+    if (c.peer_id != null) havePeer[c.peer_id] = true;
+    rows += chatChannelRow(c, chatChannelLabel(c), `chatOpen(${c.id})`);
+  }
+  if (canWrite) {
+    const contacts = (state.users || []).filter(u => u.id !== meId && !havePeer[u.id])
+      .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+    for (const u of contacts) {
       rows += `<div class="chat-ch-row chat-contact" onclick="chatStartDM(${u.id})">
         ${chatAvatar(u.username)}
         <div class="chat-ch-main"><div class="chat-ch-line1"><span class="chat-ch-name">${esc(u.username)}</span></div></div>
       </div>`;
     }
   }
+  let h = `<div class="chat-grp"><div class="chat-grp-head"><span>${esc(label)}</span></div>`;
   h += rows || `<div class="chat-empty">${t('chatNoUsers')}</div>`;
   h += `</div>`;
   return h;
