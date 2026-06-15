@@ -235,6 +235,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Service gate: a disabled service is enforced on the server, not just hidden.
+	if svc := serviceForPath(path); svc != "" && !h.serviceEnabled(svc) {
+		if strings.HasPrefix(path, "/api/") {
+			http.Error(w, "service disabled", http.StatusForbidden)
+		} else {
+			http.Redirect(w, r, loginRedirect, http.StatusFound)
+		}
+		return
+	}
+
 	// Store user in request context
 	ctx := context.WithValue(r.Context(), userContextKey, user)
 	h.mux.ServeHTTP(w, r.WithContext(ctx))
@@ -341,6 +351,7 @@ func (h *Handler) routes() {
 
 	// Ecosystem services
 	h.mux.HandleFunc("/api/services", h.handleServices)
+	h.mux.HandleFunc("/api/services/reorder", h.handleServicesReorder)
 
 	// Wiki
 	h.mux.HandleFunc("/api/wiki/spaces", h.handleWikiSpaces)
