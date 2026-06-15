@@ -26,16 +26,17 @@ function ensureAdminI18n() {
 // section ids (ids preserved, so existing populate functions keep working); `render`
 // panels are drawn by a function. `admin:true` = admins only; `show()` = conditional.
 const ADMIN_TABS = [
+  // User-facing first
   { key: 'general', i: 'adminTabGeneral', sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
   { key: 'mail', i: 'adminTabMail', render: renderAdminMail, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
-  { key: 'telegram', i: 'adminTabTelegram', sections: ['telegram-section'], show: () => isAdmin() || (currentUser && currentUser.telegram_configured) },
-  { key: 'site', i: 'adminTabSite', render: renderAdminSite, admin: true },
+  { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section'], show: () => isAdmin() || (currentUser && currentUser.telegram_configured) },
+  // Admin configuration
   { key: 'board', i: 'adminTabBoard', sections: ['columns-section', 'epics-section', 'sprints-section', 'tags-section'], admin: true },
   { key: 'users', i: 'adminTabUsers', sections: ['users-section'], admin: true },
   { key: 'services', i: 'adminTabServices', sections: ['services-section'], admin: true },
-  { key: 'integrations', i: 'adminTabIntegrations', sections: ['sso-section'], admin: true },
-  { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'], admin: true },
+  { key: 'site', i: 'adminTabSite', render: renderAdminSite, admin: true },
   { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
+  { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'], admin: true },
 ];
 
 // adminTabVisible decides whether a tab is shown for the current user/role.
@@ -126,7 +127,7 @@ async function adminSetPrimaryAlias(id) {
 }
 
 let adminBuilt = false;
-let adminTab = 'users';
+let adminTab = 'general';
 
 function ensureAdminPage() {
   if (adminBuilt) return;
