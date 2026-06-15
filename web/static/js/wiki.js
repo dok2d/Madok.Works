@@ -301,11 +301,50 @@ function wikiSanitizePreview(html) {
   return doc.body.innerHTML;
 }
 
+// wikiHtmlToMd converts the rich editor's HTML into Markdown so switching to the
+// Markdown view never loses content. Covers what the toolbar can produce.
+function wikiHtmlToMd(root) {
+  const inline = (node) => {
+    let s = '';
+    node.childNodes.forEach(n => {
+      if (n.nodeType === 3) { s += n.textContent; return; }
+      if (n.nodeType !== 1) return;
+      const t = n.tagName.toLowerCase();
+      const inner = inline(n);
+      if (t === 'b' || t === 'strong') s += '**' + inner + '**';
+      else if (t === 'i' || t === 'em') s += '*' + inner + '*';
+      else if (t === 's' || t === 'del') s += '~~' + inner + '~~';
+      else if (t === 'code') s += '`' + n.textContent + '`';
+      else if (t === 'a') s += '[' + inner + '](' + (n.getAttribute('href') || '') + ')';
+      else if (t === 'img') s += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + ')';
+      else if (t === 'br') s += '\n';
+      else s += inner;
+    });
+    return s;
+  };
+  let out = '';
+  root.childNodes.forEach(node => {
+    if (node.nodeType === 3) { const tx = node.textContent.trim(); if (tx) out += tx + '\n\n'; return; }
+    if (node.nodeType !== 1) return;
+    const t = node.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(t)) out += '#'.repeat(+t[1]) + ' ' + inline(node).trim() + '\n\n';
+    else if (t === 'p' || t === 'div') { const s = inline(node).trim(); if (s) out += s + '\n\n'; }
+    else if (t === 'ul') { node.querySelectorAll(':scope > li').forEach(li => out += '- ' + inline(li).trim() + '\n'); out += '\n'; }
+    else if (t === 'ol') { let i = 1; node.querySelectorAll(':scope > li').forEach(li => out += (i++) + '. ' + inline(li).trim() + '\n'); out += '\n'; }
+    else if (t === 'blockquote') out += '> ' + inline(node).trim().replace(/\n/g, '\n> ') + '\n\n';
+    else if (t === 'pre') out += '```\n' + node.textContent.replace(/\n+$/, '') + '\n```\n\n';
+    else if (t === 'hr') out += '---\n\n';
+    else { const s = inline(node).trim(); if (s) out += s + '\n\n'; }
+  });
+  return out.trim();
+}
+
 function wikiSetEditorMode(m) {
-  // Preserve the current buffer so switching doesn't lose edits.
+  if (m === wikiState.editorMode) return;
+  // Regenerate the target representation from the one we're leaving (lossless).
   if (wikiState.editorMode === 'rich') {
     const ed = document.getElementById('wiki-editor');
-    if (ed) wikiState.page.content = ed.innerHTML;
+    if (ed) { wikiState.page.content = ed.innerHTML; wikiState.page.content_md = wikiHtmlToMd(ed); }
   } else {
     const ta = document.getElementById('wiki-md');
     if (ta) { wikiState.page.content_md = ta.value; wikiState.page.content = wikiMdToHtml(ta.value); }
