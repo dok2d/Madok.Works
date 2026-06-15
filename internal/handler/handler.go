@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -8,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"kanban/internal/auth"
 	"kanban/internal/db"
 	"kanban/internal/model"
@@ -1519,6 +1522,29 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Export / Import ---
+// gzipBytes compresses a payload (used for backups/export).
+func gzipBytes(b []byte) []byte {
+	var buf bytes.Buffer
+	w, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	w.Write(b)
+	w.Close()
+	return buf.Bytes()
+}
+
+// gunzipIfNeeded transparently decompresses gzip payloads (by magic bytes), so
+// both .json.gz and legacy plain .json backups/imports work.
+func gunzipIfNeeded(b []byte) []byte {
+	if len(b) >= 2 && b[0] == 0x1f && b[1] == 0x8b {
+		if r, err := gzip.NewReader(bytes.NewReader(b)); err == nil {
+			defer r.Close()
+			if out, err := io.ReadAll(r); err == nil {
+				return out
+			}
+		}
+	}
+	return b
+}
+
 func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1535,9 +1561,14 @@ func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "export error", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment; filename="+h.appSlug()+"-export.json")
-	json.NewEncoder(w).Encode(data)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "marshal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", "attachment; filename="+h.appSlug()+"-export.json.gz")
+	w.Write(gzipBytes(jsonData))
 }
 
 func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
@@ -1550,8 +1581,13 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "admin only", http.StatusForbidden)
 		return
 	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
 	var data model.ExportData
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+	if err := json.Unmarshal(gunzipIfNeeded(body), &data); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1592,7 +1628,7 @@ func (h *Handler) handleBackups(w http.ResponseWriter, r *http.Request) {
 		}
 		var backups []backupInfo
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			if e.IsDir() || (!strings.HasSuffix(e.Name(), ".json") && !strings.HasSuffix(e.Name(), ".json.gz")) {
 				continue
 			}
 			info, err := e.Info()
@@ -1630,13 +1666,14 @@ func (h *Handler) handleBackups(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "marshal error", http.StatusInternalServerError)
 			return
 		}
-		filename := fmt.Sprintf("%s-backup-%s.json", h.appSlug(), time.Now().Format("2006-01-02_150405"))
+		gz := gzipBytes(jsonData)
+		filename := fmt.Sprintf("%s-backup-%s.json.gz", h.appSlug(), time.Now().Format("2006-01-02_150405"))
 		path := filepath.Join(dir, filename)
-		if err := os.WriteFile(path, jsonData, 0640); err != nil {
+		if err := os.WriteFile(path, gz, 0640); err != nil {
 			http.Error(w, "write error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[backup] manual backup created: %s (%d bytes)", filename, len(jsonData))
+		log.Printf("[backup] manual backup created: %s (%d → %d bytes)", filename, len(jsonData), len(gz))
 		jsonResp(w, map[string]string{"status": "ok", "name": filename})
 
 	default:
@@ -1663,24 +1700,28 @@ func (h *Handler) handleBackupAction(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		// Download backup
-		jsonData, err := os.ReadFile(path)
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			http.Error(w, "backup not found", http.StatusNotFound)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		ctype := "application/json"
+		if strings.HasSuffix(name, ".gz") {
+			ctype = "application/gzip"
+		}
+		w.Header().Set("Content-Type", ctype)
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", name))
-		w.Write(jsonData)
+		w.Write(raw)
 
 	case http.MethodPost:
-		// Restore from backup
-		jsonData, err := os.ReadFile(path)
+		// Restore from backup (handles both .json.gz and legacy .json)
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			http.Error(w, "backup not found", http.StatusNotFound)
 			return
 		}
 		var data model.ExportData
-		if err := json.Unmarshal(jsonData, &data); err != nil {
+		if err := json.Unmarshal(gunzipIfNeeded(raw), &data); err != nil {
 			http.Error(w, "invalid backup: "+err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -1688,9 +1729,9 @@ func (h *Handler) handleBackupAction(w http.ResponseWriter, r *http.Request) {
 		preData, err := h.store.ExportAll()
 		if err == nil {
 			preJSON, _ := json.Marshal(preData)
-			preName := fmt.Sprintf("pre-restore-%s.json", time.Now().Format("2006-01-02_150405"))
+			preName := fmt.Sprintf("pre-restore-%s.json.gz", time.Now().Format("2006-01-02_150405"))
 			os.MkdirAll(h.backupDir(), 0750)
-			os.WriteFile(filepath.Join(h.backupDir(), preName), preJSON, 0640)
+			os.WriteFile(filepath.Join(h.backupDir(), preName), gzipBytes(preJSON), 0640)
 			log.Printf("[backup] pre-restore backup: %s", preName)
 		}
 		if err := h.store.ImportAll(&data); err != nil {
@@ -2566,9 +2607,10 @@ func (h *Handler) sendDailyBackup(lastChecksum string) string {
 		return lastChecksum
 	}
 
-	filename := fmt.Sprintf("%s-backup-%s.json", h.appSlug(), time.Now().Format("2006-01-02"))
+	gz := gzipBytes(jsonData)
+	filename := fmt.Sprintf("%s-backup-%s.json.gz", h.appSlug(), time.Now().Format("2006-01-02"))
 	for _, chatID := range adminChatIDs {
-		h.sendTelegramDocument(token, chatID, filename, jsonData, "📦 Ежедневный бэкап "+h.appName())
+		h.sendTelegramDocument(token, chatID, filename, gz, "📦 Ежедневный бэкап "+h.appName())
 	}
 	log.Printf("[backup] sent daily backup to %d admin(s)", len(adminChatIDs))
 	return checksum

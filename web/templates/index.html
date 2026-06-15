@@ -971,7 +971,7 @@ body.view-admin #admin-page{display:block}
     <div class="export-import-btns">
       <button class="btn btn-ghost btn-sm" onclick="exportBoard()">&#128229; Export JSON</button>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-file').click()">&#128228; Import JSON</button>
-      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importBoard(this)">
+      <input type="file" id="import-file" accept=".json,.gz" style="display:none" onchange="importBoard(this)">
     </div>
   </div>
   <div class="sidebar-section" id="backup-section" style="display:none">
@@ -3566,7 +3566,13 @@ async function importBoard(input) {
   if (!file) return;
   if (!confirm(t('importConfirm'))) { input.value = ''; return; }
   try {
-    const text = await file.text();
+    let text;
+    if ((file.name.endsWith('.gz') || file.type === 'application/gzip') && typeof DecompressionStream !== 'undefined') {
+      const stream = file.stream().pipeThrough(new DecompressionStream('gzip'));
+      text = await new Response(stream).text();
+    } else {
+      text = await file.text();
+    }
     let data;
     try { data = JSON.parse(text); } catch(pe) { alert(t('importError') + ': invalid JSON'); input.value = ''; return; }
     if (!data || !Array.isArray(data.columns) || !Array.isArray(data.tasks)) { alert(t('importError') + ': invalid structure'); input.value = ''; return; }
