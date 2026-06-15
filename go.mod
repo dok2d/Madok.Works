@@ -7,6 +7,7 @@ require (
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-smtp v0.24.0
 	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/teambition/rrule-go v1.8.2
 )
 
 require (

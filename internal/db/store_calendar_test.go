@@ -295,3 +295,24 @@ func TestExpandOccurrencesIcalUntil(t *testing.T) {
 		t.Error("infinite weekly series should still occur in 2026")
 	}
 }
+
+func TestExpandOccurrencesAdvanced(t *testing.T) {
+	from := mustTime(t, "2026-01-01 00:00:00")
+	to := mustTime(t, "2026-03-31 23:59:59")
+
+	// Weekly on Mon+Wed until end of Jan (start Mon Jan 5): 5,7,12,14,19,21,26,28 = 8.
+	occ := expandOccurrences(mustTime(t, "2026-01-05 09:00:00"), "FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=2026-01-31", from, to)
+	if len(occ) != 8 {
+		t.Errorf("BYDAY=MO,WE: got %d want 8", len(occ))
+	}
+	// Monthly 2nd Tuesday, 3 times: Jan 13, Feb 10, Mar 10.
+	occ2 := expandOccurrences(mustTime(t, "2026-01-13 10:00:00"), "FREQ=MONTHLY;BYDAY=2TU;COUNT=3", from, to)
+	if len(occ2) != 3 {
+		t.Errorf("monthly 2nd Tuesday: got %d want 3", len(occ2))
+	}
+	// Last Friday of the month (BYDAY=-1FR), Jan–Mar: Jan 30, Feb 27, Mar 27.
+	occ3 := expandOccurrences(mustTime(t, "2026-01-30 18:00:00"), "FREQ=MONTHLY;BYDAY=-1FR", from, to)
+	if len(occ3) != 3 {
+		t.Errorf("last Friday: got %d want 3", len(occ3))
+	}
+}

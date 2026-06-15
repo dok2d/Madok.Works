@@ -6,14 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/teambition/rrule-go"
+
 	"kanban/internal/model"
 )
 
 // All calendar times are stored in this UTC layout so that lexical string
 // comparison equals chronological order (used by range queries).
 const calTimeLayout = "2006-01-02 15:04:05"
-
-const calMaxOccurrences = 10000 // safety bound for recurrence expansion
 
 // parseCalTime accepts the canonical layout plus a few ISO variants and
 // normalizes to UTC.
@@ -41,79 +41,55 @@ func normCalTime(s string) (string, bool) {
 	return t.Format(calTimeLayout), true
 }
 
-func parseRRule(s string) map[string]string {
-	m := map[string]string{}
-	for _, part := range strings.Split(s, ";") {
-		kv := strings.SplitN(part, "=", 2)
-		if len(kv) == 2 {
-			m[strings.ToUpper(strings.TrimSpace(kv[0]))] = strings.TrimSpace(kv[1])
+// normalizeRRuleUntil rewrites an UNTIL value into the compact iCalendar form that
+// rrule-go expects. Our native rule builder emits ISO dates (UNTIL=2026-01-29);
+// feeds already use the compact form (left as-is). Date-only UNTIL becomes the end
+// of that day so the final day's occurrences are included.
+func normalizeRRuleUntil(s string) string {
+	parts := strings.Split(s, ";")
+	for i, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) != 2 || !strings.EqualFold(strings.TrimSpace(kv[0]), "UNTIL") {
+			continue
 		}
+		raw := strings.TrimSpace(kv[1])
+		if !strings.Contains(raw, "-") {
+			continue // already compact iCal form
+		}
+		t, ok := parseCalTime(raw)
+		if !ok {
+			continue
+		}
+		if len(raw) <= 10 { // date-only → inclusive of the whole day
+			t = t.Add(24*time.Hour - time.Second)
+		}
+		parts[i] = "UNTIL=" + t.UTC().Format("20060102T150405Z")
 	}
-	return m
-}
-
-func calStep(t time.Time, freq string, interval int) time.Time {
-	switch freq {
-	case "DAILY":
-		return t.AddDate(0, 0, interval)
-	case "WEEKLY":
-		return t.AddDate(0, 0, 7*interval)
-	case "MONTHLY":
-		return t.AddDate(0, interval, 0)
-	case "YEARLY":
-		return t.AddDate(interval, 0, 0)
-	}
-	return t.AddDate(0, 0, interval)
+	return strings.Join(parts, ";")
 }
 
 // expandOccurrences returns the start times of a (possibly recurring) event that
 // fall within [from,to]. A blank rrule yields the single start time (the caller
-// still checks overlap). FREQ, INTERVAL, COUNT and UNTIL are supported.
-func expandOccurrences(start time.Time, rrule string, from, to time.Time) []time.Time {
-	if rrule == "" {
+// still checks overlap). Backed by a full RFC 5545 engine (teambition/rrule-go):
+// FREQ/INTERVAL/COUNT/UNTIL plus BYDAY (incl. 2MO/-1FR), BYMONTHDAY, BYMONTH,
+// BYSETPOS, WKST, etc. Bounded to [from,to] via Between so it can't run away on
+// infinite or huge-COUNT rules.
+func expandOccurrences(start time.Time, rruleStr string, from, to time.Time) []time.Time {
+	rruleStr = strings.TrimSpace(rruleStr)
+	if rruleStr == "" {
 		return []time.Time{start}
 	}
-	p := parseRRule(rrule)
-	freq := strings.ToUpper(p["FREQ"])
-	if freq == "" {
-		return []time.Time{start}
-	}
-	interval := 1
-	if v, err := strconv.Atoi(p["INTERVAL"]); err == nil && v > 0 {
-		interval = v
-	}
-	count := 0
-	if v, err := strconv.Atoi(p["COUNT"]); err == nil && v > 0 {
-		count = v
-	}
-	until, hasUntil := parseCalTime(p["UNTIL"])
-	if hasUntil && len(strings.TrimSpace(p["UNTIL"])) <= 10 {
-		// date-only UNTIL is inclusive of the whole day
-		until = until.Add(24*time.Hour - time.Second)
-	}
-
-	var out []time.Time
-	cur := start
-	for i := 0; i < calMaxOccurrences; i++ {
-		if count > 0 && i >= count {
-			break
+	rruleStr = normalizeRRuleUntil(rruleStr)
+	r, err := rrule.StrToRRule(rruleStr)
+	if err != nil {
+		// Unparseable rule: fall back to the single start if it overlaps the window.
+		if !start.Before(from) && !start.After(to) {
+			return []time.Time{start}
 		}
-		if hasUntil && cur.After(until) {
-			break
-		}
-		if cur.After(to) {
-			break
-		}
-		if !cur.Before(from) {
-			out = append(out, cur)
-		}
-		next := calStep(cur, freq, interval)
-		if !next.After(cur) { // guard against non-advancing rules
-			break
-		}
-		cur = next
+		return nil
 	}
-	return out
+	r.DTStart(start.UTC())
+	return r.Between(from.UTC(), to.UTC(), true)
 }
 
 // === Calendars ===
