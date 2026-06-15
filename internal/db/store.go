@@ -408,7 +408,6 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_cal_reminders_event ON calendar_reminders(event_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cal_reminders_dedup ON calendar_reminders(event_id, lead_min, occurrence_start)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_box_user ON mail_box(user_id, folder, id)`,
-		`CREATE INDEX IF NOT EXISTS idx_mail_messages_thread ON mail_messages(thread_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_attachments_msg ON mail_attachments(message_id)`,
 		// indexes for FK lookups
 		`CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id, start_utc)`,
@@ -455,6 +454,14 @@ func (s *Store) migrate() error {
 		"ALTER TABLE users ADD COLUMN external_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE calendar_events ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE mail_messages ADD COLUMN spam_score INTEGER NOT NULL DEFAULT 0",
+		// Columns added to mail_messages after early builds (idempotent upgrade of
+		// databases created before SMTP/threading fields existed).
+		"ALTER TABLE mail_messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE mail_messages ADD COLUMN from_addr TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE mail_messages ADD COLUMN to_addrs TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE mail_messages ADD COLUMN cc_addrs TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE mail_messages ADD COLUMN in_reply_to TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE mail_messages ADD COLUMN message_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_pages ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
@@ -469,6 +476,7 @@ func (s *Store) migrate() error {
 
 	// create indexes that depend on ALTER TABLE columns
 	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_tasks_sprint_id ON tasks(sprint_id)")
+	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_mail_messages_thread ON mail_messages(thread_id)")
 
 	// Migrate existing users: set role based on is_admin
 	s.db.Exec("UPDATE users SET role='admin' WHERE is_admin=1 AND role='regular'")
