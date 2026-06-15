@@ -19,7 +19,12 @@ const calMaxOccurrences = 10000 // safety bound for recurrence expansion
 // normalizes to UTC.
 func parseCalTime(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
-	for _, l := range []string{calTimeLayout, time.RFC3339, "2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+	for _, l := range []string{
+		calTimeLayout, time.RFC3339,
+		"2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02",
+		// Compact iCalendar forms (e.g. RRULE UNTIL=20150101T000000Z, DTSTART dates).
+		"20060102T150405Z", "20060102T150405", "20060102",
+	} {
 		if t, err := time.Parse(l, s); err == nil {
 			return t.UTC(), true
 		}

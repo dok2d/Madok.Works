@@ -274,3 +274,24 @@ func TestSubscriptionEvents(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandOccurrencesIcalUntil(t *testing.T) {
+	start := mustTime(t, "2015-01-01 09:00:00")
+	from := mustTime(t, "2026-06-01 00:00:00")
+	to := mustTime(t, "2026-06-30 23:59:59")
+
+	// Weekly series that ended in 2015 (compact iCalendar UNTIL) must NOT recur now.
+	occ := expandOccurrences(start, "FREQ=WEEKLY;UNTIL=20150201T000000Z", from, to)
+	if len(occ) != 0 {
+		t.Errorf("expired UNTIL series should not occur in 2026, got %d", len(occ))
+	}
+	// Date-only compact UNTIL too.
+	occD := expandOccurrences(start, "FREQ=WEEKLY;UNTIL=20150201", from, to)
+	if len(occD) != 0 {
+		t.Errorf("expired date-only UNTIL should not occur, got %d", len(occD))
+	}
+	// Sanity: a genuinely infinite weekly series still occurs now.
+	if len(expandOccurrences(start, "FREQ=WEEKLY", from, to)) == 0 {
+		t.Error("infinite weekly series should still occur in 2026")
+	}
+}
