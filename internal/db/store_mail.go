@@ -209,6 +209,13 @@ func (s *Store) CreateAlias(userID int64, localpart string, primary bool) (int64
 	if localpart == "" || strings.ContainsAny(localpart, "@ \t") {
 		return 0, fmt.Errorf("invalid alias")
 	}
+	// Reject an alias that shadows a different user's username (inbound resolves
+	// aliases before usernames, so this would hijack their mail).
+	var other int64
+	s.db.QueryRow(`SELECT id FROM users WHERE LOWER(username)=? AND id<>?`, localpart, userID).Scan(&other)
+	if other != 0 {
+		return 0, fmt.Errorf("alias matches another user's username")
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err

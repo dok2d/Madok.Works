@@ -285,6 +285,22 @@ function wikiMdToHtml(md) {
   return '<p>' + escHtmlText(md || '') + '</p>';
 }
 
+// wikiSanitizePreview strips active content from rendered HTML before it goes into
+// the live preview (defence-in-depth against self-XSS; stored content is also
+// sanitized server-side on save).
+function wikiSanitizePreview(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script,style,iframe,object,embed,link,meta,base,form').forEach(e => e.remove());
+  doc.querySelectorAll('*').forEach(el => {
+    Array.from(el.attributes).forEach(a => {
+      const n = a.name.toLowerCase(), v = a.value.replace(/\s/g, '').toLowerCase();
+      if (n.startsWith('on')) el.removeAttribute(a.name);
+      else if ((n === 'href' || n === 'src' || n === 'xlink:href') && (v.startsWith('javascript:') || v.startsWith('data:text/html'))) el.removeAttribute(a.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
+
 function wikiSetEditorMode(m) {
   // Preserve the current buffer so switching doesn't lose edits.
   if (wikiState.editorMode === 'rich') {
@@ -336,7 +352,7 @@ function wikiRenderEditor(el) {
   if (mode === 'markdown') {
     const ta = document.getElementById('wiki-md');
     const prev = document.getElementById('wiki-md-preview');
-    const render = () => { prev.innerHTML = wikiMdToHtml(ta.value); if (typeof highlightCode === 'function') highlightCode(); };
+    const render = () => { prev.innerHTML = wikiSanitizePreview(wikiMdToHtml(ta.value)); if (typeof highlightCode === 'function') highlightCode(); };
     ta.addEventListener('input', () => { wikiState.dirty = true; render(); });
     render();
     ta.focus();

@@ -135,6 +135,22 @@ func TestSettingsExportImportRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAliasShadowGuard(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	mustUser(t, s, "bob")
+	if _, err := s.CreateAlias(alice, "bob", false); err == nil {
+		t.Error("alias matching another user's username must be rejected")
+	}
+	if _, err := s.CreateAlias(alice, "sales", false); err != nil {
+		t.Errorf("normal alias should be allowed: %v", err)
+	}
+	// resolves back to alice
+	if s.ResolveAlias("sales") != alice {
+		t.Error("alias should resolve to its owner")
+	}
+}
+
 func TestEvaluateRules(t *testing.T) {
 	rules := []model.MailRule{
 		{Enabled: true, MatchType: "all",
