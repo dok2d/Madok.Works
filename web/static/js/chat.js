@@ -12,9 +12,15 @@ let chatState = {
   loadingOlder: false,
   es: null, // EventSource for live updates
   pending: [], // attachments staged for the next message
+  replyTo: null, // message being replied to {id, author_name, text}
+  pinned: [], // pinned messages for the current channel
+  pinnedIdx: 0, // which pinned message the bar currently shows
 };
 
 const CHAT_CHANNEL_KEY = 'kanban-chat-channel';
+
+// Quick-reaction emoji set (Telegram-style), positive and negative.
+const CHAT_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '🔥', '👏', '🙏', '👎', '😢', '😡', '💩'];
 
 // === i18n ===
 // Chat strings are merged into the shared LANGS object on first render. ru/en are
@@ -34,6 +40,8 @@ const CHAT_I18N = {
     chatDeleteChannel: 'Delete channel', chatDeleteChannelConfirm: 'Delete this channel and all its messages?',
     chatNoUsers: 'No other users', chatDeleteMsgConfirm: 'Delete this message?',
     chatEditPrompt: 'Edit message:', chatAttach: 'Attach file',
+    chatReply: 'Reply', chatReact: 'React', chatPin: 'Pin', chatUnpin: 'Unpin',
+    chatPinned: 'Pinned message', chatReplyingTo: 'Replying to', chatCancelReply: 'Cancel',
   },
   ru: {
     chatChannels: 'Каналы', chatGroups: 'Группы', chatDirect: 'Личные сообщения',
@@ -49,6 +57,8 @@ const CHAT_I18N = {
     chatDeleteChannel: 'Удалить канал', chatDeleteChannelConfirm: 'Удалить канал и все его сообщения?',
     chatNoUsers: 'Нет других пользователей', chatDeleteMsgConfirm: 'Удалить сообщение?',
     chatEditPrompt: 'Изменить сообщение:', chatAttach: 'Прикрепить файл',
+    chatReply: 'Ответить', chatReact: 'Реакция', chatPin: 'Закрепить', chatUnpin: 'Открепить',
+    chatPinned: 'Закреплённое', chatReplyingTo: 'Ответ', chatCancelReply: 'Отмена',
   },
   es: {
     chatChannels: "Canales", chatGroups: "Grupos", chatDirect: "Mensajes directos",
@@ -117,7 +127,8 @@ function ensureChatI18n() {
   if (chatI18nMerged || typeof LANGS === 'undefined') return;
   for (const lang of ['ru', 'en', 'zh', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ar']) {
     if (!LANGS[lang]) continue;
-    const dict = CHAT_I18N[lang] || CHAT_I18N.en;
+    // Base-en merge so keys missing from a locale fall back to English.
+    const dict = Object.assign({}, CHAT_I18N.en, CHAT_I18N[lang] || {});
     for (const k in dict) if (!(k in LANGS[lang])) LANGS[lang][k] = dict[k];
   }
   chatI18nMerged = true;
@@ -231,9 +242,11 @@ function chatRenderMain() {
       </div>
       <div class="chat-head-actions">${chatHeadActions(c)}</div>
     </div>
+    <div class="chat-pinned-bar hidden" id="chat-pinned-bar"></div>
     <div class="chat-msgs" id="chat-msgs"></div>
     ${chatComposer()}`;
   chatRenderMessages();
+  chatRenderPinnedBar();
   chatScrollBottom();
   const inp = document.getElementById('chat-input');
   if (inp) {
@@ -255,7 +268,8 @@ function chatHeadActions(c) {
 
 function chatComposer() {
   if (currentUser && currentUser.role === 'readonly') return `<div class="chat-readonly">${t('chatReadonly')}</div>`;
-  return `<div class="chat-pending" id="chat-pending"></div>
+  return `<div class="chat-reply-bar hidden" id="chat-reply-bar"></div>
+  <div class="chat-pending" id="chat-pending"></div>
   <div class="chat-composer">
     <button class="btn btn-ghost btn-sm chat-attach-btn" title="${t('chatAttach')}" onclick="chatAttachFile()">&#128206;</button>
     <textarea id="chat-input" class="chat-input" rows="1" placeholder="${t('chatMessagePh')}"></textarea>
@@ -324,22 +338,49 @@ function chatRenderMessages() {
 
 function chatRenderMsg(msg, grouped) {
   if (msg.deleted) {
-    return `<div class="chat-msg deleted"><div class="chat-msg-body"><i class="chat-del">${t('chatDeleted')}</i></div></div>`;
+    return `<div class="chat-msg deleted" id="chat-msg-${msg.id}"><div class="chat-msg-body"><i class="chat-del">${t('chatDeleted')}</i></div></div>`;
   }
   const mine = currentUser && msg.author_id === currentUser.id;
   const canManage = mine || (currentUser && currentUser.role === 'admin');
-  return `<div class="chat-msg ${grouped ? 'grouped' : ''}">
+  const canWrite = currentUser && currentUser.role !== 'readonly';
+  const canPin = chatCanPin();
+  return `<div class="chat-msg ${grouped ? 'grouped' : ''} ${msg.pinned ? 'pinned' : ''}" id="chat-msg-${msg.id}">
     ${grouped ? '' : `<div class="chat-msg-head"><b class="chat-author">${esc(msg.author_name || '?')}</b> <span class="chat-time">${esc(chatFmtTime(msg.created_at))}</span></div>`}
     <div class="chat-msg-body">
+      ${msg.reply_to ? chatReplyQuote(msg) : ''}
       <span class="chat-text">${chatFormatText(msg.text)}</span>
+      ${msg.pinned ? `<span class="chat-pin-mark" title="${t('chatPinned')}">&#128204;</span>` : ''}
       ${msg.edited_at ? `<span class="chat-edited">(${t('chatEdited')})</span>` : ''}
       ${chatRenderAttachments(msg)}
-      ${canManage ? `<span class="chat-msg-actions">
+      ${chatReactionChips(msg)}
+      <span class="chat-msg-actions">
+        ${canWrite ? `<a onclick="chatStartReply(${msg.id})">${t('chatReply')}</a>` : ''}
+        ${canWrite ? `<a onclick="chatReactPick(event, ${msg.id})">${t('chatReact')}</a>` : ''}
+        ${canPin ? `<a onclick="chatTogglePin(${msg.id}, ${msg.pinned ? 0 : 1})">${msg.pinned ? t('chatUnpin') : t('chatPin')}</a>` : ''}
         ${mine ? `<a onclick="chatEditMsg(${msg.id})">${t('chatEdit')}</a>` : ''}
-        <a class="chat-danger" onclick="chatDeleteMsg(${msg.id})">${t('chatDelete')}</a>
-      </span>` : ''}
+        ${canManage ? `<a class="chat-danger" onclick="chatDeleteMsg(${msg.id})">${t('chatDelete')}</a>` : ''}
+      </span>
     </div>
   </div>`;
+}
+
+// chatCanPin: managers can pin in public channels; any member in groups/DMs.
+function chatCanPin() {
+  const c = chatState.channel;
+  if (!c || !currentUser || currentUser.role === 'readonly') return false;
+  return c.type === 'channel' ? chatCanManage(c) : true;
+}
+
+function chatReplyQuote(msg) {
+  return `<div class="chat-reply-quote" onclick="chatJumpTo(${msg.reply_to})">
+    <b>${esc(msg.reply_to_author || '?')}</b> <span>${esc((msg.reply_to_text || '').slice(0, 120))}</span></div>`;
+}
+
+function chatReactionChips(msg) {
+  if (!msg.reactions || !msg.reactions.length) return '';
+  return `<div class="chat-reactions">` + msg.reactions.map(r =>
+    `<button class="chat-react-chip ${r.mine ? 'mine' : ''}" onclick="chatReact(${msg.id}, '${escAttr(r.emoji)}')">${esc(r.emoji)} ${r.count}</button>`
+  ).join('') + `</div>`;
 }
 
 // chatFormatText escapes the text, then highlights @mentions of known users and
@@ -361,7 +402,11 @@ async function chatOpenChannel(id) {
   } catch (e) { chatState.messages = []; }
   chatState.hasMore = chatState.messages.length >= 50;
   chatState.oldestId = chatState.messages.length ? chatState.messages[0].id : null;
+  chatState.replyTo = null;
+  chatState.pinned = [];
+  chatState.pinnedIdx = 0;
   chatRenderMain();
+  chatLoadPinned();
   chatMarkRead();
 }
 
@@ -384,11 +429,116 @@ async function chatSend() {
   chatAutoGrow.call(inp);
   chatState.pending = [];
   chatRenderPending();
+  const replyTo = chatState.replyTo ? chatState.replyTo.id : 0;
   try {
-    const msg = await api(`/api/chat/channels/${chatState.channelId}/messages`, 'POST', { text, attachments: atts });
+    const msg = await api(`/api/chat/channels/${chatState.channelId}/messages`, 'POST', { text, attachments: atts, reply_to: replyTo });
+    chatCancelReply();
     chatAppendMsg(msg);
     chatMarkRead();
   } catch (e) { inp.value = text; chatState.pending = atts; chatRenderPending(); alert(e.message); }
+}
+
+// === Reply ===
+function chatStartReply(id) {
+  const msg = chatState.messages.find(m => m.id === id);
+  if (!msg) return;
+  chatState.replyTo = { id: msg.id, author_name: msg.author_name, text: msg.text };
+  chatRenderReplyBar();
+  const inp = document.getElementById('chat-input');
+  if (inp) inp.focus();
+}
+function chatCancelReply() { chatState.replyTo = null; chatRenderReplyBar(); }
+function chatRenderReplyBar() {
+  const el = document.getElementById('chat-reply-bar');
+  if (!el) return;
+  const r = chatState.replyTo;
+  if (!r) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="chat-reply-bar-info">
+      <b>${t('chatReplyingTo')} ${esc(r.author_name || '?')}</b>
+      <span>${esc((r.text || '').slice(0, 120))}</span>
+    </div>
+    <button class="btn-icon btn-sm" title="${t('chatCancelReply')}" onclick="chatCancelReply()">&#10005;</button>`;
+}
+
+// === Reactions ===
+function chatReactPick(ev, id) {
+  ev.stopPropagation();
+  document.querySelectorAll('.chat-react-pop').forEach(p => p.remove());
+  const pop = document.createElement('div');
+  pop.className = 'chat-react-pop';
+  pop.innerHTML = CHAT_EMOJI.map(e => `<button class="chat-react-opt" onclick="chatReact(${id}, '${escAttr(e)}')">${esc(e)}</button>`).join('');
+  document.body.appendChild(pop);
+  const rect = ev.target.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (rect.bottom + 4) + 'px';
+  const close = e => { if (!e.target.closest('.chat-react-pop')) { pop.remove(); document.removeEventListener('mousedown', close, true); } };
+  setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+}
+
+async function chatReact(id, emoji) {
+  document.querySelectorAll('.chat-react-pop').forEach(p => p.remove());
+  try {
+    const upd = await api('/api/chat/messages/' + id + '/react', 'POST', { emoji });
+    chatMergeMsg(upd);
+  } catch (e) { alert(e.message); }
+}
+
+// chatMergeMsg replaces a message in place, preserving scroll (used for reactions/pins).
+function chatMergeMsg(msg) {
+  const i = chatState.messages.findIndex(m => m.id === msg.id);
+  if (i >= 0) { chatState.messages[i] = msg; chatRenderMessages(); }
+}
+
+// === Pins ===
+async function chatTogglePin(id, pin) {
+  try {
+    const upd = await api('/api/chat/messages/' + id + '/pin', 'POST', { pinned: !!pin });
+    chatMergeMsg(upd);
+    await chatLoadPinned();
+  } catch (e) { alert(e.message); }
+}
+
+async function chatLoadPinned() {
+  if (!chatState.channelId) return;
+  try { chatState.pinned = await api(`/api/chat/channels/${chatState.channelId}/pins`); }
+  catch (e) { chatState.pinned = []; }
+  if (chatState.pinnedIdx >= chatState.pinned.length) chatState.pinnedIdx = 0;
+  chatRenderPinnedBar();
+}
+
+function chatRenderPinnedBar() {
+  const el = document.getElementById('chat-pinned-bar');
+  if (!el) return;
+  const pins = chatState.pinned || [];
+  if (!pins.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  if (chatState.pinnedIdx >= pins.length) chatState.pinnedIdx = 0;
+  const p = pins[chatState.pinnedIdx];
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="chat-pinned-inner" onclick="chatJumpTo(${p.id})">
+      <span class="chat-pinned-icon">&#128204;</span>
+      <div class="chat-pinned-text"><b>${t('chatPinned')}${pins.length > 1 ? ` (${chatState.pinnedIdx + 1}/${pins.length})` : ''}</b>
+        <span>${esc((p.text || '').slice(0, 140)) || '&#128206;'}</span></div>
+    </div>
+    <div class="chat-pinned-actions">
+      ${pins.length > 1 ? `<button class="btn-icon btn-sm" title="next" onclick="event.stopPropagation();chatCyclePinned()">&#9660;</button>` : ''}
+      ${chatCanPin() ? `<button class="btn-icon btn-sm" title="${t('chatUnpin')}" onclick="event.stopPropagation();chatTogglePin(${p.id},0)">&#10005;</button>` : ''}
+    </div>`;
+}
+
+function chatCyclePinned() {
+  if (!chatState.pinned.length) return;
+  chatState.pinnedIdx = (chatState.pinnedIdx + 1) % chatState.pinned.length;
+  chatRenderPinnedBar();
+}
+
+// chatJumpTo scrolls to a message if it is currently loaded and flashes it.
+function chatJumpTo(id) {
+  const el = document.getElementById('chat-msg-' + id);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.classList.add('chat-flash');
+  setTimeout(() => el.classList.remove('chat-flash'), 1500);
 }
 
 function chatAppendMsg(msg) {
@@ -513,13 +663,34 @@ function chatHandleEvent(ev) {
       chatRefreshChannelsSoon();
       break;
     case 'chat_edit':
+      // Preserve locally-known reactions ("mine" is per-viewer, not in the broadcast).
+      if (ev.message && ev.channel_id === chatState.channelId) {
+        const i = chatState.messages.findIndex(m => m.id === ev.message.id);
+        if (i >= 0) { ev.message.reactions = chatState.messages[i].reactions; chatState.messages[i] = ev.message; chatRenderMessages(); }
+      }
+      break;
     case 'chat_delete':
       if (ev.message && ev.channel_id === chatState.channelId) chatReplaceMsg(ev.message);
+      break;
+    case 'chat_pin':
+      if (ev.channel_id === chatState.channelId) {
+        if (ev.message) chatMergeMsg(ev.message);
+        chatLoadPinned();
+      }
+      break;
+    case 'chat_react':
+      if (ev.channel_id === chatState.channelId && ev.message_id) chatRefetchMsg(ev.message_id);
       break;
     case 'chat_channels':
       chatRefreshChannelsSoon();
       break;
   }
+}
+
+// chatRefetchMsg reloads one message (viewer-aware) and updates it in place.
+async function chatRefetchMsg(id) {
+  if (!chatState.messages.some(m => m.id === id)) return;
+  try { const m = await api('/api/chat/messages/' + id); chatMergeMsg(m); } catch (e) { /* ignore */ }
 }
 
 let chatChanTmo = null;

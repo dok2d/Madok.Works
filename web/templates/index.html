@@ -206,6 +206,34 @@ body.has-rail #app{margin-left:52px}
 .chat-pending:empty{padding:0}
 .chat-pending-chip{font-size:.76rem;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:3px 8px}
 .chat-pending-chip a{cursor:pointer;color:var(--red);margin-left:4px}
+/* Pinned-message bar (Telegram-style) */
+.chat-pinned-bar{display:flex;align-items:center;gap:8px;padding:8px 20px;border-bottom:1px solid var(--bg4);background:var(--bg2)}
+.chat-pinned-inner{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;border-left:2px solid var(--accent);padding-left:10px}
+.chat-pinned-icon{color:var(--accent);flex-shrink:0}
+.chat-pinned-text{min-width:0;font-size:.82rem;display:flex;flex-direction:column;line-height:1.3}
+.chat-pinned-text b{color:var(--accent);font-size:.72rem}
+.chat-pinned-text span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
+.chat-pinned-actions{display:flex;gap:2px;flex-shrink:0}
+.chat-msg.pinned>.chat-msg-body{border-left:2px solid var(--accent);padding-left:8px;margin-left:-10px}
+.chat-pin-mark{font-size:.72rem;margin-left:4px;opacity:.7}
+.chat-flash{animation:chatFlash 1.5s ease-out}
+@keyframes chatFlash{0%{background:color-mix(in srgb,var(--accent) 30%,transparent)}100%{background:transparent}}
+/* Reply quote (inside a message + above the composer) */
+.chat-reply-quote{border-left:2px solid var(--accent);padding:2px 8px;margin-bottom:4px;cursor:pointer;font-size:.8rem;background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:0 var(--radius) var(--radius) 0}
+.chat-reply-quote b{color:var(--accent);margin-right:6px}
+.chat-reply-quote span{color:var(--fg3)}
+.chat-reply-bar{display:flex;align-items:center;gap:8px;padding:8px 20px 0}
+.chat-reply-bar-info{flex:1;min-width:0;border-left:2px solid var(--accent);padding-left:10px;font-size:.8rem;display:flex;flex-direction:column;line-height:1.3}
+.chat-reply-bar-info b{color:var(--accent);font-size:.72rem}
+.chat-reply-bar-info span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg3)}
+/* Reactions */
+.chat-reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.chat-react-chip{background:var(--bg3);border:1px solid var(--bg4);border-radius:999px;padding:1px 9px;font-size:.8rem;cursor:pointer;color:var(--fg2);line-height:1.5}
+.chat-react-chip:hover{border-color:var(--accent)}
+.chat-react-chip.mine{background:color-mix(in srgb,var(--accent) 18%,transparent);border-color:var(--accent);color:var(--fg)}
+.chat-react-pop{position:fixed;z-index:320;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:5px;display:flex;flex-wrap:wrap;gap:2px;max-width:230px}
+.chat-react-opt{background:none;border:none;cursor:pointer;font-size:1.25rem;padding:3px 5px;border-radius:var(--radius);line-height:1}
+.chat-react-opt:hover{background:var(--bg4)}
 .chat-atts{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .chat-att{font-size:.8rem;color:var(--accent);text-decoration:none;border:1px solid var(--bg4);border-radius:var(--radius);padding:3px 8px}
 .chat-att-img{max-width:240px;max-height:200px;border-radius:var(--radius);display:block}
