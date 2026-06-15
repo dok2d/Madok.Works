@@ -69,3 +69,35 @@ func TestDKIMSignNoKeyPassthrough(t *testing.T) {
 		t.Error("expected passthrough when no DKIM key configured")
 	}
 }
+
+func TestHeaderInjectionBlocked(t *testing.T) {
+	// CRLF in subject/recipient must not create new headers.
+	msg := string(buildRFC822("a@x.test", "Alice", []string{"b@y.test\r\nBcc: evil@z.test"},
+		"Hello\r\nBcc: evil2@z.test", "body", "Mon, 01 Jan 2026 00:00:00 +0000"))
+	// The injected CRLF is neutralized: the header section (before the blank line)
+	// must contain only the 6 known header lines — no extra Bcc header.
+	head := strings.SplitN(msg, "\r\n\r\n", 2)[0]
+	for _, line := range strings.Split(head, "\r\n") {
+		k := strings.SplitN(line, ":", 2)[0]
+		switch k {
+		case "From", "To", "Subject", "Date", "MIME-Version", "Content-Type":
+		default:
+			t.Errorf("unexpected/injected header line: %q", line)
+		}
+	}
+}
+
+func TestValidEmail(t *testing.T) {
+	ok := []string{"a@b.com", "user.name+tag@sub.example.org"}
+	bad := []string{"", "notanemail", "a@b.com\r\nBcc: x@y", "a b@c.com", "<a@b.com>"}
+	for _, s := range ok {
+		if !validEmail(s) {
+			t.Errorf("%q should be valid", s)
+		}
+	}
+	for _, s := range bad {
+		if validEmail(s) {
+			t.Errorf("%q should be invalid", s)
+		}
+	}
+}

@@ -22,6 +22,11 @@ prioritized plan below.
 | A5 | Low | Mailbox alias can shadow a username | ✅ Fixed |
 | A6 | Low | Antispam/DKIM/SPF best-effort, bypassable | Accepted/Deploy |
 | A7 | Low | DKIM private key stored plaintext in DB | Accepted/Deploy |
+| M1 | High | Outbound SMTP header/CRLF injection | ✅ Fixed |
+| M2 | Medium | SMTP server: no timeouts/line/recipient caps (slowloris) | ✅ Fixed |
+| M3 | Medium | Accepting mail for unknown recipients (backscatter) | ✅ Fixed |
+| M4 | Medium | Outbound abused as spam relay (no per-user cap) | ✅ Fixed |
+| M5 | Low | Inbound remote-image/email-tracking, MIME edge cases | Accepted/Deploy |
 | I1 | Info | Mail-rule regex is RE2 → no ReDoS | No action |
 | I2 | Info | New dynamic SQL is int-id/fixed-table only → no SQLi | No action |
 
@@ -130,6 +135,27 @@ Remaining are deploy-time/operational (A6, A7) — no code change:
 - **A6/A7:** publish SPF/DKIM/DMARC DNS records and enable TLS at the MTA edge for real
   inbound enforcement; run on an encrypted volume; protect the JSON export artifact and
   review the Telegram daily-backup channel (see S1).
+
+## Mail hardening pass (dedicated)
+Defence against the common mail attack classes, layered with the existing antispam +
+audit + SSRF + rate-limit work:
+- **M1 — header/CRLF injection (outbound):** `buildRFC822` runs every header value
+  through `hdrClean` (CR/LF/control → space); recipients are validated with
+  `validEmail` (net/mail + no CRLF) before sending. Tests: `TestHeaderInjectionBlocked`,
+  `TestValidEmail`.
+- **M2 — connection abuse / slowloris:** SMTP server sets `ReadTimeout`/`WriteTimeout`
+  (60s), `MaxRecipients`, `MaxLineLength`, `MaxMessageBytes` (25MB).
+- **M3 — backscatter / relay posture:** RCPT is rejected (`550 no such user`) unless it
+  resolves to a local user/alias; the server never relays received external mail. Rejects
+  are audited.
+- **M4 — outbound spam abuse:** per-user outbound rate limit (`outboundPerHour`) gates
+  external relay; over-limit is audited as `rate_limited`.
+- **Already in place:** antispam scoring → Junk (A6/Phase 5), DKIM sign + verify, per-IP
+  inbound rate limit + RCPT cap (A3), outbound SSRF guard (A2), HTML body sanitization,
+  attack-investigation audit log (Phase 4).
+- **M5 / deploy (residual):** remote-image tracking in HTML mail, advanced MIME-bomb
+  parsing, and SPF/DMARC *enforcement* are deploy/edge concerns (publish DNS records, run
+  a front MTA / scanner if needed). Documented, no in-app code.
 
 ## Remediation plan (prioritized)
 - **P0:** S1 — owner chose to keep secrets in the export (complete one-file backup);

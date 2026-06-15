@@ -89,6 +89,13 @@ func (s *smtpSession) Rcpt(to string, _ *smtp.RcptOptions) error {
 	if len(s.rcpts) >= smtpMaxRcpt {
 		return fmt.Errorf("too many recipients")
 	}
+	// Accept only mail addressed to a known local user/alias — we are not a relay,
+	// and rejecting here avoids accepting backscatter for non-existent mailboxes.
+	if s.h.resolveLocalRecipient(localPart(to)) == nil {
+		s.h.store.LogMailAudit(model.MailAudit{Event: "inbound_reject", SourceIP: s.sourceIP, MailFrom: s.from,
+			Rcpt: to, Detail: "unknown recipient"})
+		return fmt.Errorf("550 no such user here")
+	}
 	s.rcpts = append(s.rcpts, to)
 	return nil
 }
@@ -104,6 +111,10 @@ func (h *Handler) StartSMTPServer(addr string) {
 	srv.Domain = "localhost"
 	srv.AllowInsecureAuth = true
 	srv.MaxMessageBytes = smtpMaxMessageBytes
+	srv.MaxRecipients = smtpMaxRcpt
+	srv.MaxLineLength = 4000
+	srv.ReadTimeout = 60 * time.Second // mitigate slowloris
+	srv.WriteTimeout = 60 * time.Second
 	log.Printf("inbound SMTP listening on %s", addr)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {

@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"kanban/internal/db"
 	"kanban/internal/model"
 )
+
+const outboundPerHour = 60 // max external messages per user per hour
 
 // applyMailRules evaluates a user's filters against a freshly delivered message
 // (identified by box id) and applies the resulting actions.
@@ -548,8 +551,13 @@ func (h *Handler) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	if len(external) > 0 {
 		ev := "relay_attempt"
 		if h.outboundEnabled() {
-			ev = "relay"
-			go h.sendExternal(user.Username, external, strings.TrimSpace(req.Subject), req.BodyText)
+			// Per-user outbound rate limit: stop the app being abused as a spam cannon.
+			if smtpLimiter.allow("out:"+user.Username, time.Now(), outboundPerHour, time.Hour) {
+				ev = "relay"
+				go h.sendExternal(user.Username, external, strings.TrimSpace(req.Subject), req.BodyText)
+			} else {
+				ev = "rate_limited"
+			}
 		}
 		h.store.LogMailAudit(model.MailAudit{Event: ev, MailFrom: user.Username, UserID: &uid,
 			Rcpt: strings.Join(external, ", "), Subject: strings.TrimSpace(req.Subject)})

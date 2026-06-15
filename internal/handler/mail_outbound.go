@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	mailpkg "net/mail"
 	"net/smtp"
 	"os"
 	"strings"
@@ -105,15 +106,42 @@ func (h *Handler) dkimPublicTXT() string {
 	return "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(der)
 }
 
-// buildRFC822 assembles a minimal RFC 5322 text/plain message.
+// hdrClean strips CR/LF and other control chars from a header value to prevent
+// SMTP header/CRLF injection. Header content is always single-line.
+func hdrClean(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' || (r < 0x20 && r != '\t') {
+			return ' '
+		}
+		return r
+	}, s)
+}
+
+// validEmail reports a syntactically valid, injection-free email address.
+func validEmail(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" || strings.ContainsAny(addr, "\r\n") || len(addr) > 320 {
+		return false
+	}
+	a, err := mailpkg.ParseAddress(addr)
+	return err == nil && a.Address == addr
+}
+
+// buildRFC822 assembles a minimal RFC 5322 text/plain message. All header values
+// are run through hdrClean so user input cannot inject extra headers.
 func buildRFC822(fromAddr, fromName string, to []string, subject, body, date string) []byte {
+	fromAddr, fromName, subject, date = hdrClean(fromAddr), hdrClean(fromName), hdrClean(subject), hdrClean(date)
+	cleanTo := make([]string, 0, len(to))
+	for _, a := range to {
+		cleanTo = append(cleanTo, hdrClean(a))
+	}
 	var b strings.Builder
 	if fromName != "" {
 		fmt.Fprintf(&b, "From: %s <%s>\r\n", fromName, fromAddr)
 	} else {
 		fmt.Fprintf(&b, "From: %s\r\n", fromAddr)
 	}
-	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(to, ", "))
+	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(cleanTo, ", "))
 	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&b, "Date: %s\r\n", date)
 	fmt.Fprintf(&b, "MIME-Version: 1.0\r\n")
@@ -148,7 +176,18 @@ func (h *Handler) dkimSign(raw []byte) ([]byte, error) {
 // sendExternal builds, signs and delivers a message to external recipients via
 // their MX hosts. No-op unless outbound is enabled.
 func (h *Handler) sendExternal(fromName string, to []string, subject, body string) {
-	if !h.outboundEnabled() || len(to) == 0 {
+	if !h.outboundEnabled() {
+		return
+	}
+	// Drop malformed/injection-bearing recipient addresses before building headers.
+	valid := to[:0]
+	for _, a := range to {
+		if validEmail(a) {
+			valid = append(valid, a)
+		}
+	}
+	to = valid
+	if len(to) == 0 {
 		return
 	}
 	local := fromName
