@@ -478,6 +478,16 @@ func (h *Handler) handleBoard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// /api/board doubles as the bootstrap (it carries the user list used by chat,
+	// mentions, assignees). When kanban is disabled, return users but no board data.
+	if !h.serviceEnabled("kanban") {
+		users, err := h.store.ListUsers()
+		if err != nil {
+			users = []model.User{}
+		}
+		jsonResp(w, map[string]any{"columns": []any{}, "tasks": []any{}, "epics": []any{}, "sprints": []any{}, "tags": []any{}, "users": users, "kanban_disabled": true})
+		return
+	}
 	cols, err := h.store.ListColumns()
 	if err != nil {
 		h.logf("handleBoard ListColumns error: %v", err)

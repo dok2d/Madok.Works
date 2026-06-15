@@ -82,8 +82,7 @@ func serviceForPath(path string) string {
 		return "calendar"
 	case strings.HasPrefix(path, "/api/mail/"):
 		return "mail"
-	case path == "/api/board" ||
-		strings.HasPrefix(path, "/api/columns") ||
+	case strings.HasPrefix(path, "/api/columns") ||
 		strings.HasPrefix(path, "/api/epics") ||
 		strings.HasPrefix(path, "/api/sprints") ||
 		strings.HasPrefix(path, "/api/tags") ||
