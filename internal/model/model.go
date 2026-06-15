@@ -303,6 +303,7 @@ type CalendarEvent struct {
 // Google Calendar "secret address in iCal format").
 type CalendarSubscription struct {
 	ID         int64  `json:"id"`
+	UserID     int64  `json:"-"`
 	Name       string `json:"name"`
 	URL        string `json:"url,omitempty"`
 	Color      string `json:"color"`

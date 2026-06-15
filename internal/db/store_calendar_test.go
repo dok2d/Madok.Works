@@ -214,3 +214,63 @@ func TestCalendarVisibility(t *testing.T) {
 		t.Errorf("admin should see both events, got %d", len(adminEvents))
 	}
 }
+
+func TestSubscriptionEvents(t *testing.T) {
+	s := newTestStore(t)
+	u := mustUser(t, s, "alice")
+	id, err := s.CreateSubscription(u, "Google", "https://example.com/c.ics", "#0ea5e9")
+	if err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
+	evs := []model.CalendarEvent{
+		{Title: "Meeting", Start: "2026-01-15 09:00:00", End: "2026-01-15 10:00:00"},
+		{Title: "Weekly", Start: "2026-01-01 09:00:00", End: "2026-01-01 09:30:00", RRule: "FREQ=WEEKLY;COUNT=10"},
+	}
+	if err := s.ReplaceSubscriptionEvents(id, evs); err != nil {
+		t.Fatalf("ReplaceSubscriptionEvents: %v", err)
+	}
+	out, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	if err != nil {
+		t.Fatalf("ListCalendarEvents: %v", err)
+	}
+	ics, hasMeeting := 0, false
+	for _, e := range out {
+		if e.Source != "ics" {
+			continue
+		}
+		ics++
+		if e.CalendarID != -id {
+			t.Errorf("ics event calendar_id = %d, want %d", e.CalendarID, -id)
+		}
+		if e.Color != "#0ea5e9" || e.CalName != "Google" {
+			t.Errorf("ics event meta wrong: %+v", e)
+		}
+		if e.Title == "Meeting" {
+			hasMeeting = true
+		}
+	}
+	if !hasMeeting {
+		t.Error("non-recurring ics event missing")
+	}
+	if ics < 3 {
+		t.Errorf("expected expanded weekly + meeting (>=3 in Jan), got %d", ics)
+	}
+	// Other users don't see this private subscription.
+	bob := mustUser(t, s, "bob")
+	bout, _ := s.ListCalendarEvents(bob, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	for _, e := range bout {
+		if e.Source == "ics" {
+			t.Error("subscription leaked to another user")
+		}
+	}
+	// Deleting the subscription removes its events from the overlay.
+	if err := s.DeleteSubscription(id, u); err != nil {
+		t.Fatalf("DeleteSubscription: %v", err)
+	}
+	out2, _ := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	for _, e := range out2 {
+		if e.Source == "ics" {
+			t.Error("ics events remain after delete")
+		}
+	}
+}

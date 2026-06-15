@@ -455,6 +455,13 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 		return nil, err
 	}
 	out = append(out, kb...)
+
+	// Overlay read-only external ICS subscription events.
+	subs, err := s.subscriptionEvents(userID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, subs...)
 	return out, nil
 }
 
