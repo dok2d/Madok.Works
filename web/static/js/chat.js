@@ -43,6 +43,8 @@ const CHAT_I18N = {
     chatReply: 'Reply', chatReact: 'React', chatPin: 'Pin', chatUnpin: 'Unpin',
     chatPinned: 'Pinned message', chatReplyingTo: 'Replying to', chatCancelReply: 'Cancel',
     chatOptions: 'Options',
+    chatTyping: '%s is typing…', chatSysCreate: '%s created the chat', chatSysJoin: '%s joined',
+    chatSysLeave: '%s left', chatSysRename: 'Renamed to “%s”',
   },
   ru: {
     chatChannels: 'Каналы', chatGroups: 'Группы', chatDirect: 'Личные сообщения',
@@ -61,6 +63,8 @@ const CHAT_I18N = {
     chatReply: 'Ответить', chatReact: 'Реакция', chatPin: 'Закрепить', chatUnpin: 'Открепить',
     chatPinned: 'Закреплённое', chatReplyingTo: 'Ответ', chatCancelReply: 'Отмена',
     chatOptions: 'Опции',
+    chatTyping: '%s печатает…', chatSysCreate: '%s создал(а) чат', chatSysJoin: '%s присоединился(ась)',
+    chatSysLeave: '%s покинул(а) чат', chatSysRename: 'Чат переименован в «%s»',
   },
   es: {
     chatChannels: "Canales", chatGroups: "Grupos", chatDirect: "Mensajes directos",
@@ -346,7 +350,9 @@ function chatRenderMain() {
   if (inp) {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } });
     inp.addEventListener('input', chatAutoGrow);
+    inp.addEventListener('input', chatOnType);
   }
+  chatRenderTyping();
 }
 
 function chatHeadActions(c) {
@@ -535,6 +541,7 @@ async function chatOpenChannel(id) {
   chatState.replyTo = null;
   chatState.pinned = [];
   chatState.pinnedIdx = 0;
+  chatTypingUsers = {};
   chatRenderMain();
   chatLoadPinned();
   chatMarkRead();
@@ -566,6 +573,40 @@ async function chatSend() {
     chatAppendMsg(msg);
     chatMarkRead();
   } catch (e) { inp.value = text; chatState.pending = atts; chatRenderPending(); alert(e.message); }
+}
+
+// === Typing indicator ===
+let chatTypingSent = 0;       // throttle outgoing typing pings
+let chatTypingUsers = {};     // id -> { name, until }
+let chatTypingTimer = null;
+function chatOnType() {
+  if (!chatState.channelId) return;
+  const now = Date.now();
+  if (now - chatTypingSent < 2500) return;
+  chatTypingSent = now;
+  api(`/api/chat/channels/${chatState.channelId}/typing`, 'POST', {}).catch(() => {});
+}
+function chatShowTyping(uid, name) {
+  if (!uid || uid === (currentUser && currentUser.id)) return;
+  chatTypingUsers[uid] = { name: name || '?', until: Date.now() + 4500 };
+  chatRenderTyping();
+  clearTimeout(chatTypingTimer);
+  chatTypingTimer = setTimeout(chatPruneTyping, 1200);
+}
+function chatPruneTyping() {
+  const now = Date.now();
+  for (const id in chatTypingUsers) if (chatTypingUsers[id].until < now) delete chatTypingUsers[id];
+  chatRenderTyping();
+  if (Object.keys(chatTypingUsers).length) chatTypingTimer = setTimeout(chatPruneTyping, 1200);
+}
+function chatClearTyping(uid) { if (chatTypingUsers[uid]) { delete chatTypingUsers[uid]; chatRenderTyping(); } }
+function chatRenderTyping() {
+  const el = document.getElementById('chat-typing');
+  if (!el) return;
+  const names = Object.values(chatTypingUsers).map(x => x.name);
+  if (!names.length) { el.classList.remove('on'); el.textContent = ''; return; }
+  el.classList.add('on');
+  el.textContent = t('chatTyping').replace('%s', names.join(', '));
 }
 
 // === Reply ===
@@ -787,10 +828,22 @@ function chatHandleEvent(ev) {
   switch (ev.type) {
     case 'chat_message':
       if (ev.message && ev.channel_id === chatState.channelId) {
+        if (ev.message.author_id) chatClearTyping(ev.message.author_id);
         chatAppendMsg(ev.message);
         if (document.hasFocus()) chatMarkRead();
       }
       chatRefreshChannelsSoon();
+      break;
+    case 'chat_typing':
+      if (ev.channel_id === chatState.channelId) chatShowTyping(ev.user_id, ev.user_name);
+      break;
+    case 'chat_read':
+      if (ev.channel_id === chatState.channelId && ev.user_id && ev.user_id !== (currentUser && currentUser.id) && chatState.channel) {
+        if ((ev.message_id || 0) > (chatState.channel.peer_last_read || 0)) {
+          chatState.channel.peer_last_read = ev.message_id;
+          chatRenderMessages();
+        }
+      }
       break;
     case 'chat_edit':
       // Preserve locally-known reactions ("mine" is per-viewer, not in the broadcast).
