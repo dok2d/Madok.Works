@@ -26,9 +26,11 @@ var chatMentionRe = regexp.MustCompile(`@([\p{L}\p{N}_.-]+)`)
 // sseEvent is the chat-specific payload pushed to connected browsers via the
 // shared sseHub (see events.go).
 type sseEvent struct {
-	Type      string             `json:"type"` // chat_message | chat_edit | chat_delete | chat_channels | chat_pin | chat_react
+	Type      string             `json:"type"` // chat_message | chat_edit | chat_delete | chat_channels | chat_pin | chat_react | chat_typing | chat_read
 	ChannelID int64              `json:"channel_id,omitempty"`
 	MessageID int64              `json:"message_id,omitempty"`
+	UserID    int64              `json:"user_id,omitempty"`  // chat_typing / chat_read: who
+	UserName  string             `json:"user_name,omitempty"` // chat_typing: display name
 	Message   *model.ChatMessage `json:"message,omitempty"`
 }
 
@@ -169,6 +171,13 @@ func (h *Handler) handleChatChannelRoute(w http.ResponseWriter, r *http.Request)
 		jsonResp(w, pins)
 	case "read":
 		h.handleChatRead(w, r, user, ch)
+	case "typing":
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.sse.sendTo(h.chatAudience(ch), sseEvent{Type: "chat_typing", ChannelID: ch.ID, UserID: user.ID, UserName: user.Username})
+		jsonResp(w, map[string]string{"status": "ok"})
 	default:
 		http.NotFound(w, r)
 	}
@@ -352,6 +361,8 @@ func (h *Handler) handleChatRead(w http.ResponseWriter, r *http.Request, user *m
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Notify the audience so the sender can show read ticks (used for DM).
+	h.sse.sendTo(h.chatAudience(ch), sseEvent{Type: "chat_read", ChannelID: ch.ID, MessageID: req.LastID, UserID: user.ID})
 	jsonResp(w, map[string]string{"status": "ok"})
 }
 
