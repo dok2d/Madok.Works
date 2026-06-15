@@ -13,6 +13,7 @@ import (
 	"kanban/internal/model"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -270,7 +271,23 @@ func sameOriginOK(r *http.Request) bool {
 	if err != nil || u.Host == "" {
 		return false
 	}
-	return u.Host == r.Host
+	// Behind a reverse proxy the upstream Host may drop the port (e.g. nginx
+	// `proxy_set_header Host $host`), so compare hostnames port-insensitively and
+	// honor X-Forwarded-Host. This keeps CSRF protection (cross-host requests are
+	// still rejected) while working behind proxies.
+	expected := r.Host
+	if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
+		expected = xfh
+	}
+	return u.Host == expected || hostnameOnly(u.Host) == hostnameOnly(expected)
+}
+
+// hostnameOnly strips the port from a host[:port] value (IPv6-safe).
+func hostnameOnly(h string) string {
+	if host, _, err := net.SplitHostPort(h); err == nil {
+		return host
+	}
+	return h
 }
 
 func (h *Handler) currentUser(r *http.Request) *model.User {
