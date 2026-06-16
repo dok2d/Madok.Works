@@ -356,7 +356,7 @@ function calRenderPeriodLabel() {
   }
   el.innerHTML = `<span class="cal-period-main">${esc(main)}</span> ` +
     `<span class="cal-year-btn" onclick="calTogglePicker(event)" title="${escAttr(t('calPickPeriod') || '')}">${year}</span>` +
-    `<div class="cal-picker hidden" id="cal-picker"></div>`;
+    `<div class="cal-picker hidden" id="cal-picker" onclick="event.stopPropagation()"></div>`;
 }
 
 function calSetView(v) { calState.view = v; localStorage.setItem(CAL_VIEW_KEY, v); calRenderLayout(); calLoadAndRender(); }
