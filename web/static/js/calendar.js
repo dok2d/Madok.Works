@@ -496,10 +496,12 @@ function calRenderBody() {
   calRenderGrid(el);
 }
 
-function calAgendaRow(e) {
+function calAgendaRow(e, dayKey) {
+  const isStart = !dayKey || dayKey === calEventDayKey(e);
+  const timeLabel = e.all_day ? t('calAllDay') : (isStart ? esc(calFmtTime(e.start)) : '');
   return `<div class="cal-agenda-row" onclick="calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})">
     <span class="cal-dot" style="background:${escAttr(e.color || '#6366f1')}"></span>
-    <span class="cal-agenda-time">${e.all_day ? t('calAllDay') : esc(calFmtTime(e.start))}</span>
+    <span class="cal-agenda-time">${timeLabel}</span>
     <span class="cal-agenda-title">${esc(e.title)}</span>
     ${e.location ? `<span class="cal-agenda-loc">${esc(e.location)}</span>` : ''}
   </div>`;
@@ -509,7 +511,7 @@ function calRenderDay(el) {
   const key = calDayKeyLocal(calState.cursor);
   const evs = calVisibleEvents().filter(e => calEventDayKeys(e).includes(key)).sort((a, b) => a.start.localeCompare(b.start));
   if (!evs.length) { el.innerHTML = `<div class="cal-empty cal-empty-lg">${t('calNoEvents')}</div>`; return; }
-  el.innerHTML = `<div class="cal-agenda"><div class="cal-agenda-day">${evs.map(calAgendaRow).join('')}</div></div>`;
+  el.innerHTML = `<div class="cal-agenda"><div class="cal-agenda-day">${evs.map(e => calAgendaRow(e, key)).join('')}</div></div>`;
 }
 
 // === Drag to reschedule (whole-day moves; single, editable events only) ===
@@ -581,7 +583,7 @@ function calRenderGrid(el) {
       html += `<div class="cal-cell ${out} ${today} ${weekend}" onclick="calCellClick('${key}')" ondragover="event.preventDefault()" ondrop="calDrop(event,'${key}')">
         <div class="cal-cell-date">${d.getDate()}</div>
         <div class="cal-cell-events">
-          ${evs.map(e => calEventChip(e)).join('')}
+          ${evs.map(e => calEventChip(e, key)).join('')}
         </div>
       </div>`;
     }
@@ -590,9 +592,11 @@ function calRenderGrid(el) {
   el.innerHTML = html;
 }
 
-function calEventChip(e) {
+function calEventChip(e, dayKey) {
   const color = e.color || '#6366f1';
-  const time = e.all_day ? '' : calFmtTime(e.start) + ' ';
+  // Show the start time only on the event's first day; continuation days omit it.
+  const isStart = !dayKey || dayKey === calEventDayKey(e);
+  const time = (e.all_day || !isStart) ? '' : calFmtTime(e.start) + ' ';
   const cal = calState.calendars.find(c => c.id === e.calendar_id);
   const drag = !e.source && !e.rrule && cal && cal.can_edit;
   return `<div class="cal-chip" style="--c:${escAttr(color)}" ${drag ? `draggable="true" ondragstart="calDragStart(event, ${e.id})"` : ''} onclick="event.stopPropagation();calEventClick(${e.id}, '${esc(e.source || '')}', ${e.ref_id || 0})" title="${escAttr(e.title)}">
@@ -608,7 +612,7 @@ function calRenderAgenda(el) {
   let html = '<div class="cal-agenda">';
   for (const k of Object.keys(byDay).sort()) {
     html += `<div class="cal-agenda-day"><div class="cal-agenda-date">${esc(fmt.format(calParseUTC(k + ' 12:00:00')))}</div>`;
-    for (const e of byDay[k]) html += calAgendaRow(e);
+    for (const e of byDay[k]) html += calAgendaRow(e, k);
     html += `</div>`;
   }
   html += '</div>';
