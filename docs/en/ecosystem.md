@@ -58,6 +58,9 @@ Real-time messaging, modeled closely on Telegram.
 - **View selection** (month / week / day / agenda) and the **calendar list**
   (visibility via checkboxes) live in the **header** (dropdowns styled like the
   Kanban controls); the separate calendar sidebar has been removed.
+- **Navigation:** ISO week number in the month and week views; paging through
+  periods with the **mouse wheel** (except in Agenda); clicking the year opens a
+  mini calendar to pick a year, then a month.
 - **Recurring events** (RRULE: `FREQ` daily/weekly/monthly/yearly, `INTERVAL`,
   `COUNT`, `UNTIL`).
 - **Configurable reminders** (Telegram / in-app / both), including for recurring

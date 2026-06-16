@@ -201,6 +201,14 @@ The view (month / week / day / agenda) and the list of calendars are selected
 reminders**, and a read-only overlay of **task and sprint deadlines** from the
 board.
 
+**Navigating periods:**
+
+- The month and week views show the **ISO week number** in a column on the left.
+- The **mouse wheel** pages through periods by one step matching the current view
+  (month / week / day). Agenda view does not page on scroll.
+- Clicking the **year** in the header opens a mini calendar: pick a year, then a
+  month — a quick jump to any date.
+
 ### Connecting a Google Calendar (ICS)
 
 You can subscribe to an external, read-only calendar:
