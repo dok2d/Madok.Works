@@ -154,6 +154,22 @@ function calParseUTC(s) { return new Date(s && s.includes('T') ? s : (s || '').r
 function calPad(n) { return String(n).padStart(2, '0'); }
 function calDayKeyLocal(d) { return d.getFullYear() + '-' + calPad(d.getMonth() + 1) + '-' + calPad(d.getDate()); }
 function calEventDayKey(e) { return calDayKeyLocal(calParseUTC(e.start)); }
+// Local day keys covered by an event, so multi-day events (incl. ICS/Google all-day
+// spans) render on every day they touch, not just the first. The last day is taken
+// from (end - 1s) so it works for both inclusive ends (native all-day at 23:59) and
+// exclusive ends (iCal all-day DTEND at the next midnight).
+function calEventDayKeys(e) {
+  const start = calParseUTC(e.start);
+  const end = calParseUTC(e.end);
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const lastMoment = new Date(Math.max(end.getTime() - 1000, start.getTime()));
+  const lastDay = new Date(lastMoment.getFullYear(), lastMoment.getMonth(), lastMoment.getDate());
+  const keys = [];
+  for (let d = startDay, guard = 0; d.getTime() <= lastDay.getTime() && guard < 400; d.setDate(d.getDate() + 1), guard++) {
+    keys.push(calDayKeyLocal(d));
+  }
+  return keys.length ? keys : [calDayKeyLocal(start)];
+}
 // datetime-local input value (browser-local) -> UTC storage string
 function calInputToUTC(v) {
   if (!v) return '';
@@ -488,7 +504,7 @@ function calAgendaRow(e) {
 
 function calRenderDay(el) {
   const key = calDayKeyLocal(calState.cursor);
-  const evs = calVisibleEvents().filter(e => calEventDayKey(e) === key).sort((a, b) => a.start.localeCompare(b.start));
+  const evs = calVisibleEvents().filter(e => calEventDayKeys(e).includes(key)).sort((a, b) => a.start.localeCompare(b.start));
   if (!evs.length) { el.innerHTML = `<div class="cal-empty cal-empty-lg">${t('calNoEvents')}</div>`; return; }
   el.innerHTML = `<div class="cal-agenda"><div class="cal-agenda-day">${evs.map(calAgendaRow).join('')}</div></div>`;
 }
@@ -534,7 +550,7 @@ function calWeekdayNames() {
 
 function calEventsByDay() {
   const map = {};
-  for (const e of calVisibleEvents()) { const k = calEventDayKey(e); (map[k] = map[k] || []).push(e); }
+  for (const e of calVisibleEvents()) { for (const k of calEventDayKeys(e)) (map[k] = map[k] || []).push(e); }
   for (const k in map) map[k].sort((a, b) => a.start.localeCompare(b.start));
   return map;
 }
@@ -584,7 +600,7 @@ function calRenderAgenda(el) {
   const evs = calVisibleEvents().slice().sort((a, b) => a.start.localeCompare(b.start));
   if (!evs.length) { el.innerHTML = `<div class="cal-empty cal-empty-lg">${t('calNoEvents')}</div>`; return; }
   const byDay = {};
-  for (const e of evs) { const k = calEventDayKey(e); (byDay[k] = byDay[k] || []).push(e); }
+  for (const e of evs) { for (const k of calEventDayKeys(e)) (byDay[k] = byDay[k] || []).push(e); }
   const fmt = new Intl.DateTimeFormat(calLocale(), { weekday: 'long', day: 'numeric', month: 'long' });
   let html = '<div class="cal-agenda">';
   for (const k of Object.keys(byDay).sort()) {
