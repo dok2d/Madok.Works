@@ -582,15 +582,15 @@ async function wikiSavePage() {
   }
 }
 
-function wikiCancelEdit() {
-  if (wikiState.dirty && !confirm(t('wikiUnsaved'))) return;
+async function wikiCancelEdit() {
+  if (wikiState.dirty && !await uiConfirm(t('wikiUnsaved'))) return;
   wikiState.dirty = false;
   navigateTo('/wiki/page/' + wikiState.page.id);
 }
 
 // === Page operations ===
 async function wikiNewPage(parentId) {
-  const title = prompt(t('wikiNewPageTitle'));
+  const title = await uiPrompt(t('wikiNewPageTitle'));
   if (!title || !title.trim()) return;
   try {
     const res = await api('/api/wiki/pages', 'POST', {
@@ -601,7 +601,7 @@ async function wikiNewPage(parentId) {
 }
 
 async function wikiDeletePage(id) {
-  if (!confirm(t('wikiDeleteConfirm'))) return;
+  if (!await uiConfirm(t('wikiDeleteConfirm'))) return;
   try {
     await api('/api/wiki/pages/' + id, 'DELETE');
     navigateTo('/wiki/space/' + wikiState.spaceId);
@@ -698,7 +698,7 @@ async function wikiViewRevision(revId) {
 }
 
 async function wikiRestoreRevision(revId) {
-  if (!confirm(t('wikiRestoreConfirm'))) return;
+  if (!await uiConfirm(t('wikiRestoreConfirm'))) return;
   try {
     await api('/api/wiki/pages/' + wikiState.page.id + '/restore', 'POST', { revision_id: revId });
     navigateTo('/wiki/page/' + wikiState.page.id);
@@ -707,9 +707,9 @@ async function wikiRestoreRevision(revId) {
 
 // === Spaces: create & settings ===
 async function wikiNewSpaceDialog() {
-  const name = prompt(t('wikiSpaceNamePrompt'));
+  const name = await uiPrompt(t('wikiSpaceNamePrompt'));
   if (!name || !name.trim()) return;
-  let key = prompt(t('wikiSpaceKeyPrompt'), wikiSuggestKey(name));
+  let key = await uiPrompt(t('wikiSpaceKeyPrompt'), wikiSuggestKey(name));
   if (!key) return;
   key = key.trim().toUpperCase();
   try {
@@ -796,7 +796,7 @@ async function wikiSaveSpaceSettings() {
 
 async function wikiDeleteSpace() {
   const sp = wikiSpace();
-  if (!confirm(t('wikiDeleteSpaceConfirm').replace('{n}', sp.page_count))) return;
+  if (!await uiConfirm(t('wikiDeleteSpaceConfirm').replace('{n}', sp.page_count))) return;
   try {
     await api('/api/wiki/spaces/' + sp.id, 'DELETE');
     localStorage.removeItem('kanban-wiki-space');

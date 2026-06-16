@@ -160,14 +160,14 @@ function mailFolderItem(name, label, deletable, fid) {
 function mailRenderFolders() { mailRenderHeader(); }
 
 async function mailNewFolder() {
-  const name = prompt(t('mailNewFolder'));
+  const name = await uiPrompt(t('mailNewFolder'));
   if (!name || !name.trim()) return;
   try { await api('/api/mail/folders/custom', 'POST', { name: name.trim() }); await mailLoadCounts(); mailRenderFolders(); }
   catch (e) { alert(e.message); }
 }
 
 async function mailDeleteFolder(id) {
-  if (!confirm(t('mailDeleteFolder') + '?')) return;
+  if (!await uiConfirm(t('mailDeleteFolder') + '?')) return;
   try {
     await api('/api/mail/folders/custom/' + id, 'DELETE');
     if (!MAIL_FOLDERS.includes(mailState.folder)) mailState.folder = 'inbox';
@@ -336,7 +336,7 @@ async function mailMove(boxId, folder) {
 }
 
 async function mailDelete(boxId) {
-  if (!confirm(t('mailDeleteConfirm'))) return;
+  if (!await uiConfirm(t('mailDeleteConfirm'))) return;
   try { await api('/api/mail/messages/' + boxId, 'DELETE'); } catch (e) { alert(e.message); return; }
   await mailLoadCounts(); await mailLoadFolder(mailState.folder);
 }
@@ -543,7 +543,7 @@ function mailRenderRuleEditor() {
 }
 
 async function mailRuleDelete(id) {
-  if (!confirm(t('mailDelete') + '?')) return;
+  if (!await uiConfirm(t('mailDelete') + '?')) return;
   try { await api('/api/mail/rules/' + id, 'DELETE'); mailRulesDialog(); } catch (e) { alert(e.message); }
 }
 

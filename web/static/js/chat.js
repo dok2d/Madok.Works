@@ -726,7 +726,7 @@ function chatAppendMsg(msg) {
 async function chatEditMsg(id) {
   const msg = chatState.messages.find(m => m.id === id);
   if (!msg) return;
-  const text = prompt(t('chatEditPrompt'), msg.text);
+  const text = await uiPrompt(t('chatEditPrompt'), msg.text);
   if (text === null) return;
   const v = text.trim();
   if (!v) return;
@@ -737,7 +737,7 @@ async function chatEditMsg(id) {
 }
 
 async function chatDeleteMsg(id) {
-  if (!confirm(t('chatDeleteMsgConfirm'))) return;
+  if (!await uiConfirm(t('chatDeleteMsgConfirm'))) return;
   try {
     await api('/api/chat/messages/' + id, 'DELETE');
     const i = chatState.messages.findIndex(m => m.id === id);
@@ -992,7 +992,7 @@ async function chatJoin() {
 }
 
 async function chatLeave() {
-  if (!confirm(t('chatConfirmLeave'))) return;
+  if (!await uiConfirm(t('chatConfirmLeave'))) return;
   try {
     await api(`/api/chat/channels/${chatState.channelId}/members?user_id=${currentUser.id}`, 'DELETE');
     localStorage.removeItem(CHAT_CHANNEL_KEY);
@@ -1024,7 +1024,7 @@ function chatChannelSettings() {
 async function chatDeleteChannel() {
   const c = chatState.channel;
   if (!c) return;
-  if (!confirm(t('chatDeleteChannelConfirm'))) return;
+  if (!await uiConfirm(t('chatDeleteChannelConfirm'))) return;
   try {
     await api(`/api/chat/channels/${c.id}`, 'DELETE');
     document.querySelectorAll('.modal-overlay').forEach(m => m.remove());

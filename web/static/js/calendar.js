@@ -542,7 +542,7 @@ function calSubscriptionDialog() {
 }
 
 async function calDeleteSubscription(id) {
-  if (!confirm(t('calSubDelete') + '?')) return;
+  if (!await uiConfirm(t('calSubDelete') + '?')) return;
   try {
     await api('/api/calendar/subscriptions/' + id, 'DELETE');
     calState.subscriptions = await api('/api/calendar/subscriptions');
@@ -697,7 +697,7 @@ async function calEventDialog(ev) {
 }
 
 async function calDeleteEvent(id) {
-  if (!confirm(t('calDeleteConfirm'))) return;
+  if (!await uiConfirm(t('calDeleteConfirm'))) return;
   try {
     await api('/api/calendar/events/' + id, 'DELETE');
     document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
@@ -742,7 +742,7 @@ function calEditCalendarDialog(id) {
 }
 
 async function calDeleteCalendar(id) {
-  if (!confirm(t('calDeleteCalendarConfirm'))) return;
+  if (!await uiConfirm(t('calDeleteCalendarConfirm'))) return;
   try {
     await api('/api/calendar/calendars/' + id, 'DELETE');
     document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
