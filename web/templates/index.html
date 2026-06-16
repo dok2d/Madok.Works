@@ -1206,6 +1206,9 @@ function parseTodoItems(text) {
   });
 }
 function todoItemsToText(items) { return items.map(i => `- [${i.done ? 'x' : ' '}] ${i.label}`).join('\n'); }
+// sortTodos keeps pending items on top and moves done items to the end, preserving
+// the original order within each group (Array.sort is stable).
+function sortTodos(items) { return items.slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0)); }
 
 function epicProgress(epicId) {
   const epicTasks = state.tasks.filter(t => t.epic_id === epicId && !t.is_personal);
@@ -2259,7 +2262,7 @@ async function renderTaskPage(taskId) {
 
   // TODO
   if (task.todo) {
-    const items = parseTodoItems(task.todo);
+    const items = sortTodos(parseTodoItems(task.todo));
     if (items.length > 0) {
       html += `<div class="task-page-section"><h3>${t('todo')}</h3><div class="todo-list">`;
       items.forEach((item, i) => {
@@ -2502,8 +2505,9 @@ async function toggleTodo(taskId, index, checked) {
   _todoLock = true;
   try {
     const task = await api('/api/tasks/' + taskId);
-    const items = parseTodoItems(task.todo);
+    let items = parseTodoItems(task.todo);
     if (items[index]) items[index].done = checked;
+    items = sortTodos(items); // move done to the end automatically
     await api('/api/tasks/' + taskId, 'PUT', { ...taskToReq(task), todo: todoItemsToText(items) });
     renderTodoList(taskId, items);
   } finally { _todoLock = false; }
@@ -2516,8 +2520,9 @@ async function addTodoItem(taskId) {
   try {
     const label = inp.value.trim();
     const task = await api('/api/tasks/' + taskId);
-    const items = parseTodoItems(task.todo);
+    let items = parseTodoItems(task.todo);
     items.push({ done: false, label });
+    items = sortTodos(items); // new pending item sits above completed ones
     await api('/api/tasks/' + taskId, 'PUT', { ...taskToReq(task), todo: todoItemsToText(items) });
     inp.value = '';
     renderTodoList(taskId, items);
