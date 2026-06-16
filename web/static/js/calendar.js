@@ -160,6 +160,9 @@ function calEventDayKey(e) { return calDayKeyLocal(calParseUTC(e.start)); }
 // exclusive ends (iCal all-day DTEND at the next midnight).
 function calEventDayKeys(e) {
   const start = calParseUTC(e.start);
+  // Kanban overlay (task deadlines, sprint ranges) stays a single marker on its
+  // start day — stretching a whole sprint across the grid is noisy.
+  if (e.source === 'task' || e.source === 'sprint') return [calDayKeyLocal(start)];
   const end = calParseUTC(e.end);
   const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const lastMoment = new Date(Math.max(end.getTime() - 1000, start.getTime()));
