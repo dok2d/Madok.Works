@@ -735,11 +735,8 @@ function wikiOpenSpaceSettings() {
   wikiRenderMain();
 }
 
-async function wikiRenderSpaceSettings(el) {
+function wikiRenderSpaceSettings(el) {
   const sp = wikiSpace();
-  let members = [];
-  try { members = await api('/api/wiki/spaces/' + sp.id + '/members'); } catch (e) { /* ignore */ }
-  const allUsers = (state.users || []).filter(u => !members.some(m => m.user_id === u.id));
   el.innerHTML = `
     <div class="wiki-page-header">
       <h1 class="wiki-title">${esc(sp.name)} — ${t('wikiSpaceSettings')}</h1>
@@ -760,25 +757,57 @@ async function wikiRenderSpaceSettings(el) {
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="wikiDeleteSpace()">${t('wikiDeleteSpace')}</button>
       </div>
       <h3>${t('wikiMembers')}</h3>
-      <div class="entity-list">
-        ${members.map(m => `<div class="entity-item">
-          <span>${esc(m.username)}</span>
-          <select onchange="wikiSetMember(${m.user_id}, this.value)">
-            ${['viewer', 'editor', 'admin'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${t('wikiRole_' + r)}</option>`).join('')}
-          </select>
-          <button class="btn-icon btn-sm" style="color:var(--red)" onclick="wikiRemoveMember(${m.user_id})">&#10005;</button>
-        </div>`).join('') || `<div class="wiki-empty">${t('wikiNoMembers')}</div>`}
-      </div>
-      ${allUsers.length ? `<div class="entity-add" style="margin-top:8px">
-        <select id="wiki-new-member">${allUsers.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
-        <select id="wiki-new-member-role">
-          <option value="viewer">${t('wikiRole_viewer')}</option>
-          <option value="editor" selected>${t('wikiRole_editor')}</option>
-          <option value="admin">${t('wikiRole_admin')}</option>
-        </select>
-        <button class="btn btn-primary btn-sm" onclick="wikiAddMember()">+</button>
-      </div>` : ''}
+      <div id="wiki-members" class="wiki-members"></div>
     </div>`;
+  wikiRenderMembers();
+}
+
+// Renders just the members block into #wiki-members so add/remove/role changes
+// never wipe the unsaved name/description/visibility fields above it. The space
+// owner (and the implicit "everyone" access of open spaces) is surfaced so the
+// list never looks empty while people still have access.
+async function wikiRenderMembers() {
+  const container = document.getElementById('wiki-members');
+  if (!container) return;
+  const sp = wikiSpace();
+  let members = [];
+  try { members = await api('/api/wiki/spaces/' + sp.id + '/members'); }
+  catch (e) { container.innerHTML = `<div class="wiki-empty">${esc(e.message)}</div>`; return; }
+  // Re-target in case the view changed while the request was in flight.
+  if (!document.getElementById('wiki-members')) return;
+  const ownerId = sp.created_by;
+  const owner = ownerId ? (state.users || []).find(u => u.id === ownerId) : null;
+  const rows = members.filter(m => m.user_id !== ownerId);
+  const taken = new Set(members.map(m => m.user_id));
+  if (ownerId) taken.add(ownerId);
+  const allUsers = (state.users || []).filter(u => !taken.has(u.id));
+
+  let listHtml = '';
+  if (owner) listHtml += `<div class="entity-item">
+      <span>${esc(owner.username)}</span>
+      <span class="wiki-owner-badge">${t('wikiRole_admin')} · ${t('wikiOwner')}</span>
+    </div>`;
+  listHtml += rows.map(m => `<div class="entity-item">
+      <span>${esc(m.username)}</span>
+      <select onchange="wikiSetMember(${m.user_id}, this.value)">
+        ${['viewer', 'editor', 'admin'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${t('wikiRole_' + r)}</option>`).join('')}
+      </select>
+      <button class="btn-icon btn-sm" style="color:var(--red)" title="${escAttr(t('delete'))}" onclick="wikiRemoveMember(${m.user_id})">&#10005;</button>
+    </div>`).join('');
+  if (!owner && !rows.length) listHtml += `<div class="wiki-empty">${t('wikiNoMembers')}</div>`;
+
+  const hint = sp.visibility === 'open' ? `<div class="wiki-members-hint">${t('wikiOpenHint')}</div>` : '';
+  const addHtml = allUsers.length ? `<div class="entity-add" style="margin-top:8px">
+      <select id="wiki-new-member">${allUsers.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
+      <select id="wiki-new-member-role">
+        <option value="viewer">${t('wikiRole_viewer')}</option>
+        <option value="editor" selected>${t('wikiRole_editor')}</option>
+        <option value="admin">${t('wikiRole_admin')}</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="wikiAddMember()">+</button>
+    </div>` : '';
+
+  container.innerHTML = hint + `<div class="entity-list">${listHtml}</div>` + addHtml;
 }
 
 async function wikiSaveSpaceSettings() {
@@ -806,25 +835,27 @@ async function wikiDeleteSpace() {
 
 async function wikiAddMember() {
   const sp = wikiSpace();
-  const uid = Number(document.getElementById('wiki-new-member').value);
+  const sel = document.getElementById('wiki-new-member');
+  if (!sel || !sel.value) return;
+  const uid = Number(sel.value);
   const role = document.getElementById('wiki-new-member-role').value;
   try {
     await api('/api/wiki/spaces/' + sp.id + '/members', 'POST', { user_id: uid, role });
-    wikiRenderMain();
+    wikiRenderMembers();
   } catch (e) { alert(e.message); }
 }
 
 async function wikiSetMember(uid, role) {
   const sp = wikiSpace();
   try { await api('/api/wiki/spaces/' + sp.id + '/members', 'POST', { user_id: uid, role }); }
-  catch (e) { alert(e.message); }
+  catch (e) { alert(e.message); wikiRenderMembers(); }
 }
 
 async function wikiRemoveMember(uid) {
   const sp = wikiSpace();
   try {
     await api('/api/wiki/spaces/' + sp.id + '/members?user_id=' + uid, 'DELETE');
-    wikiRenderMain();
+    wikiRenderMembers();
   } catch (e) { alert(e.message); }
 }
 
