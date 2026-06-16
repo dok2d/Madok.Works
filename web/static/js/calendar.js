@@ -57,6 +57,7 @@ const CAL_I18N = {
     calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints', calReminders: 'Reminders', calReminderAdd: 'Add reminder', calRemBefore: 'before', calRemMin: 'minutes', calRemHour: 'hours', calRemDay: 'days', calRemTg: 'Telegram', calRemInApp: 'In-app', calRemBoth: 'Both',
     calAddIcsSub: 'Google Calendar (ICS)', calIcsUrl: 'iCal/ICS address (secret URL)', calIcsName: 'Name', calSyncNow: 'Sync now', calSubDelete: 'Remove subscription', calNoTitle: '(no title)',
     calIcsHint: 'Google Calendar → Settings → your calendar → "Secret address in iCal format". Read-only.',
+    calWkShort: 'Wk', calWeekNum: 'Week', calPickPeriod: 'Pick month / year',
   },
   ru: {
     calNewEvent: 'Новое событие', calNewCalendar: 'Новый календарь', calToday: 'Сегодня',
@@ -74,6 +75,7 @@ const CAL_I18N = {
     calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты', calReminders: 'Напоминания', calReminderAdd: 'Добавить напоминание', calRemBefore: 'до начала', calRemMin: 'минут', calRemHour: 'часов', calRemDay: 'дней', calRemTg: 'Telegram', calRemInApp: 'В приложении', calRemBoth: 'Оба',
     calAddIcsSub: 'Google Календарь (ICS)', calIcsUrl: 'Адрес iCal/ICS (секретный URL)', calIcsName: 'Название', calSyncNow: 'Синхронизировать', calSubDelete: 'Удалить подписку', calNoTitle: '(без названия)',
     calIcsHint: 'Google Календарь → Настройки → ваш календарь → «Секретный адрес в формате iCal». Только чтение.',
+    calWkShort: '№', calWeekNum: 'Неделя', calPickPeriod: 'Выбрать месяц / год',
   },
   es: {
     calNewEvent: "Nuevo evento", calNewCalendar: "Nuevo calendario", calToday: "Hoy",
@@ -238,6 +240,8 @@ function calRenderLayout() {
       </div>
       <div class="cal-body" id="cal-body"></div>
     </main>`;
+  const body = document.getElementById('cal-body');
+  if (body) body.addEventListener('wheel', calWheel, { passive: false });
 }
 
 // calRenderHeader injects the view switcher + calendars visibility selector into
@@ -337,16 +341,22 @@ async function calLoadAndRender() {
 function calRenderPeriodLabel() {
   const el = document.getElementById('cal-period');
   if (!el) return;
+  calClosePicker(); // drop any stale outside-click listener before rebuilding
   const c = calState.cursor;
+  let main = '', year = c.getFullYear();
   if (calState.view === 'day') {
-    el.textContent = new Intl.DateTimeFormat(calLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(c);
+    main = new Intl.DateTimeFormat(calLocale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(c);
   } else if (calState.view === 'week') {
     const { start, end } = calPeriodRange();
     const f = new Intl.DateTimeFormat(calLocale(), { day: 'numeric', month: 'short' });
-    el.textContent = f.format(start) + ' – ' + f.format(end) + ' ' + start.getFullYear();
+    main = f.format(start) + ' – ' + f.format(end);
+    year = start.getFullYear();
   } else {
-    el.textContent = new Intl.DateTimeFormat(calLocale(), { month: 'long', year: 'numeric' }).format(c);
+    main = new Intl.DateTimeFormat(calLocale(), { month: 'long' }).format(c);
   }
+  el.innerHTML = `<span class="cal-period-main">${esc(main)}</span> ` +
+    `<span class="cal-year-btn" onclick="calTogglePicker(event)" title="${escAttr(t('calPickPeriod') || '')}">${year}</span>` +
+    `<div class="cal-picker hidden" id="cal-picker"></div>`;
 }
 
 function calSetView(v) { calState.view = v; localStorage.setItem(CAL_VIEW_KEY, v); calRenderLayout(); calLoadAndRender(); }
@@ -357,6 +367,104 @@ function calMove(dir) {
   else if (calState.view === 'week') c.setDate(c.getDate() + 7 * dir);
   else c.setMonth(c.getMonth() + dir);
   calState.cursor = new Date(c);
+  calLoadAndRender();
+}
+
+// ISO-8601 week number (weeks start Monday; week 1 contains the first Thursday).
+function calISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
+  d.setUTCDate(d.getUTCDate() - dayNum + 3); // Thursday of this week
+  const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const fdn = (firstThu.getUTCDay() + 6) % 7;
+  firstThu.setUTCDate(firstThu.getUTCDate() - fdn + 3);
+  return 1 + Math.round((d - firstThu) / 604800000);
+}
+
+// Wheel over the grid/day view pages the period by one step (matching the view).
+// Agenda is exempt. When the body itself can scroll, we only page once the user
+// reaches the edge in the scroll direction, so internal scrolling still works.
+let _calWheelLock = false;
+function calWheel(ev) {
+  if (calState.view === 'agenda') return;
+  const el = ev.currentTarget;
+  const down = ev.deltaY > 0;
+  const atTop = el.scrollTop <= 0;
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+  if ((down && !atBottom) || (!down && !atTop)) return; // let it scroll first
+  ev.preventDefault();
+  if (_calWheelLock) return;
+  _calWheelLock = true;
+  calMove(down ? 1 : -1);
+  setTimeout(() => { _calWheelLock = false; }, 280);
+}
+
+// === Year → month picker (opens under the clicked year in the period label) ===
+let _calPicker = { mode: 'year', decade: 2020, year: 2020 };
+function calTogglePicker(ev) {
+  ev.stopPropagation();
+  const p = document.getElementById('cal-picker');
+  if (!p) return;
+  if (!p.classList.contains('hidden')) { calClosePicker(); return; }
+  _calPicker.year = calState.cursor.getFullYear();
+  _calPicker.decade = Math.floor(_calPicker.year / 10) * 10;
+  _calPicker.mode = 'year';
+  calRenderPicker();
+  p.classList.remove('hidden');
+  setTimeout(() => document.addEventListener('click', calPickerOutside), 0);
+}
+function calClosePicker() {
+  const p = document.getElementById('cal-picker');
+  if (p) p.classList.add('hidden');
+  document.removeEventListener('click', calPickerOutside);
+}
+function calPickerOutside(e) {
+  const p = document.getElementById('cal-picker');
+  if (p && !p.contains(e.target) && !e.target.classList.contains('cal-year-btn')) calClosePicker();
+}
+function calRenderPicker() {
+  const p = document.getElementById('cal-picker');
+  if (!p) return;
+  if (_calPicker.mode === 'year') {
+    const d0 = _calPicker.decade;
+    const curY = calState.cursor.getFullYear();
+    let cells = '';
+    for (let y = d0 - 1; y <= d0 + 10; y++) {
+      const out = (y < d0 || y > d0 + 9) ? 'cal-pick-out' : '';
+      const cur = y === curY ? 'cal-pick-cur' : '';
+      cells += `<div class="cal-pick-cell ${out} ${cur}" onclick="calPickYear(${y})">${y}</div>`;
+    }
+    p.innerHTML = `<div class="cal-pick-head">
+        <button class="btn-icon btn-sm" onclick="calPickerNav(-1)">&#8249;</button>
+        <span>${d0} – ${d0 + 9}</span>
+        <button class="btn-icon btn-sm" onclick="calPickerNav(1)">&#8250;</button>
+      </div>
+      <div class="cal-pick-grid cal-pick-years">${cells}</div>`;
+  } else {
+    const yr = _calPicker.year;
+    const mf = new Intl.DateTimeFormat(calLocale(), { month: 'short' });
+    const curY = calState.cursor.getFullYear(), curM = calState.cursor.getMonth();
+    let cells = '';
+    for (let m = 0; m < 12; m++) {
+      const cur = (yr === curY && m === curM) ? 'cal-pick-cur' : '';
+      cells += `<div class="cal-pick-cell ${cur}" onclick="calPickMonth(${m})">${esc(mf.format(new Date(yr, m, 1)))}</div>`;
+    }
+    p.innerHTML = `<div class="cal-pick-head">
+        <button class="btn-icon btn-sm" onclick="calPickerToYears()">&#8249;</button>
+        <span class="cal-pick-yr" onclick="calPickerToYears()">${yr}</span>
+        <button class="btn-icon btn-sm" style="visibility:hidden">&#8250;</button>
+      </div>
+      <div class="cal-pick-grid cal-pick-months">${cells}</div>`;
+  }
+}
+function calPickerNav(dir) { _calPicker.decade += dir * 10; calRenderPicker(); }
+function calPickYear(y) { _calPicker.year = y; _calPicker.mode = 'month'; calRenderPicker(); }
+function calPickerToYears() { _calPicker.mode = 'year'; _calPicker.decade = Math.floor(_calPicker.year / 10) * 10; calRenderPicker(); }
+function calPickMonth(m) {
+  const c = calState.cursor;
+  const day = Math.min(c.getDate(), 28); // keep day in range across months
+  calState.cursor = new Date(_calPicker.year, m, day);
+  calClosePicker();
   calLoadAndRender();
 }
 
@@ -433,25 +541,31 @@ function calEventsByDay() {
 
 function calRenderGrid(el) {
   const { start } = calPeriodRange();
-  const days = calState.view === 'week' ? 7 : 42;
+  const weeks = calState.view === 'week' ? 1 : 6;
   const byDay = calEventsByDay();
   const todayKey = calDayKeyLocal(new Date());
   const curMonth = calState.cursor.getMonth();
-  let html = `<div class="cal-grid cal-grid-${calState.view}">`;
+  let html = `<div class="cal-grid cal-grid-${calState.view} cal-grid-wk">`;
+  html += `<div class="cal-wd cal-wk-corner">${esc(t('calWkShort') || '')}</div>`;
   calWeekdayNames().forEach((w, i) => { html += `<div class="cal-wd ${i >= 5 ? 'cal-wd-weekend' : ''}">${esc(w)}</div>`; });
-  for (let i = 0; i < days; i++) {
-    const d = new Date(start); d.setDate(start.getDate() + i);
-    const key = calDayKeyLocal(d);
-    const out = calState.view === 'month' && d.getMonth() !== curMonth ? 'cal-out' : '';
-    const today = key === todayKey ? 'cal-today' : '';
-    const weekend = (d.getDay() === 0 || d.getDay() === 6) ? 'cal-weekend' : '';
-    const evs = byDay[key] || [];
-    html += `<div class="cal-cell ${out} ${today} ${weekend}" onclick="calCellClick('${key}')" ondragover="event.preventDefault()" ondrop="calDrop(event,'${key}')">
-      <div class="cal-cell-date">${d.getDate()}</div>
-      <div class="cal-cell-events">
-        ${evs.map(e => calEventChip(e)).join('')}
-      </div>
-    </div>`;
+  for (let wk = 0; wk < weeks; wk++) {
+    const weekStart = new Date(start); weekStart.setDate(start.getDate() + wk * 7);
+    const wkNum = calISOWeek(weekStart);
+    html += `<div class="cal-wk-num" title="${escAttr(t('calWeek') + ' ' + wkNum)}">${wkNum}</div>`;
+    for (let dn = 0; dn < 7; dn++) {
+      const d = new Date(start); d.setDate(start.getDate() + wk * 7 + dn);
+      const key = calDayKeyLocal(d);
+      const out = calState.view === 'month' && d.getMonth() !== curMonth ? 'cal-out' : '';
+      const today = key === todayKey ? 'cal-today' : '';
+      const weekend = (d.getDay() === 0 || d.getDay() === 6) ? 'cal-weekend' : '';
+      const evs = byDay[key] || [];
+      html += `<div class="cal-cell ${out} ${today} ${weekend}" onclick="calCellClick('${key}')" ondragover="event.preventDefault()" ondrop="calDrop(event,'${key}')">
+        <div class="cal-cell-date">${d.getDate()}</div>
+        <div class="cal-cell-events">
+          ${evs.map(e => calEventChip(e)).join('')}
+        </div>
+      </div>`;
+    }
   }
   html += `</div>`;
   el.innerHTML = html;
