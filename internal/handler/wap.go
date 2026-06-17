@@ -45,7 +45,7 @@ func (h *Handler) handleWapLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.SetCookie(w, &http.Cookie{
-			Name:     sessionCookie,
+			Name:     h.cookieName,
 			Value:    token,
 			Path:     "/",
 			MaxAge:   sessionMaxAgeSec,

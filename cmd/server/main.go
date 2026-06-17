@@ -38,6 +38,7 @@ func main() {
 		}
 	}
 	h := handler.New(store, dir)
+	h.SetInstanceID(*addr)
 	if *verbose {
 		h.SetVerbose(true)
 		log.Println("verbose logging enabled")

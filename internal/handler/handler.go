@@ -125,6 +125,7 @@ type Handler struct {
 	verbose      bool
 	tgBot        *TelegramBot
 	dataDir      string
+	cookieName   string // session cookie name; per-instance to avoid cross-port clobbering
 	oidcProvider *auth.OIDCProvider
 	oidcMu       sync.Mutex           // protects oidcStates
 	oidcStates   map[string]time.Time // CSRF state tokens for OIDC
@@ -140,7 +141,7 @@ type Handler struct {
 // live; the caller derives it (for SQLite, the database file's directory; for
 // Postgres, a dedicated -data-dir since the db path is a URL).
 func New(store *db.Store, dataDir string) *Handler {
-	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: dataDir, oidcStates: make(map[string]time.Time), sse: newSSEHub()}
+	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: dataDir, cookieName: sessionCookie, oidcStates: make(map[string]time.Time), sse: newSSEHub()}
 	h.loadMailOutboundConfig()
 	h.routes()
 	h.initTelegramBot()
@@ -148,6 +149,27 @@ func New(store *db.Store, dataDir string) *Handler {
 	go h.runCalendarReminders()
 	go h.runICSSync()
 	return h
+}
+
+// SetInstanceID derives a per-instance session cookie name from the listen
+// address. Browsers scope cookies by host but NOT by port (RFC 6265), so
+// multiple instances on the same host/IP would otherwise share — and clobber —
+// the single "kanban_session" cookie: logging into one invalidates the others.
+// Suffixing with the port keeps each instance's session independent.
+func (h *Handler) SetInstanceID(addr string) {
+	id := addr
+	if _, port, err := net.SplitHostPort(addr); err == nil && port != "" {
+		id = port
+	}
+	id = strings.Map(func(r rune) rune {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			return r
+		}
+		return '_'
+	}, id)
+	if id != "" {
+		h.cookieName = sessionCookie + "_" + id
+	}
 }
 
 func (h *Handler) SetVerbose(v bool) {
@@ -208,7 +230,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check session cookie
-	cookie, err := r.Cookie(sessionCookie)
+	cookie, err := r.Cookie(h.cookieName)
 	if err != nil || cookie.Value == "" {
 		if strings.HasPrefix(path, "/api/") {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -221,7 +243,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	user, err := h.store.ValidateSession(cookie.Value)
 	if err != nil {
 		// Invalid/expired session
-		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1})
+		http.SetCookie(w, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1})
 		if strings.HasPrefix(path, "/api/") {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 		} else {
@@ -301,7 +323,7 @@ func (h *Handler) currentUser(r *http.Request) *model.User {
 		return user
 	}
 	// Fallback for public routes that bypass ServeHTTP auth
-	cookie, err := r.Cookie(sessionCookie)
+	cookie, err := r.Cookie(h.cookieName)
 	if err != nil {
 		return nil
 	}
@@ -1792,7 +1814,7 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
+		Name:     h.cookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   sessionMaxAgeSec,
@@ -1847,7 +1869,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
+		Name:     h.cookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   sessionMaxAgeSec,
@@ -1862,11 +1884,11 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	cookie, err := r.Cookie(sessionCookie)
+	cookie, err := r.Cookie(h.cookieName)
 	if err == nil {
 		h.store.DeleteSession(cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1})
 	jsonResp(w, map[string]string{"status": "ok"})
 }
 
@@ -2756,7 +2778,7 @@ func (h *Handler) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
+		Name:     h.cookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   sessionMaxAgeSec,
