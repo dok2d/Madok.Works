@@ -7,9 +7,25 @@ The server (`cmd/server/main.go`) accepts the following flags:
 | Flag         | Description                                                       | Default           |
 |--------------|-----------------------------------------------------------------|-------------------|
 | `-addr`      | Server address and port                                         | `:8080`           |
-| `-db`        | Path to SQLite DB file                                          | `/data/kanban.db` |
+| `-db`        | Database: a SQLite file path **or** a `postgres://…`/`postgresql://…` URL | `/data/kanban.db` |
+| `-data-dir`  | Directory for on-disk artifacts (backups); defaults to the SQLite file's directory, or `/data` for Postgres | `` (auto)         |
 | `-verbose`   | Verbose logging                                                | `false`           |
 | `-smtp-addr` | Inbound SMTP listen address (e.g. `:25`); empty disables it     | `` (disabled)     |
+
+### External database (PostgreSQL)
+
+The backend is chosen by the `-db` value: a file path → SQLite (default), a
+`postgres://user:pass@host:5432/dbname` URL → PostgreSQL. When using a Postgres
+URL, set `-data-dir` so the backups directory has a home (defaults to `/data`).
+The schema is created automatically on startup. The JSON export/backup format is
+identical for both backends, so a SQLite backup can be restored into Postgres and
+vice versa.
+
+Example:
+
+```
+kanban-server -db "postgres://kanban:secret@localhost:5432/kanban" -data-dir /var/lib/kanban
+```
 
 ## kanban.sh Flags
 
