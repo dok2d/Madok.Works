@@ -256,16 +256,19 @@ function wikiRenderPageView(el) {
   wikiEnsureLLM();
 }
 
-// wikiEnsureLLM fetches the LLM-integration status once; if enabled, it reveals
-// the Summary button by re-rendering the (non-edit) page view.
+// wikiEnsureLLM refreshes the LLM-integration status on each page view. If the
+// value changed (e.g. an admin just enabled it), it re-renders so the Summary
+// button appears/disappears. Re-rendering calls this again, but with the value
+// now unchanged it won't loop.
 async function wikiEnsureLLM() {
-  if (wikiState.llmChecked) return;
-  wikiState.llmChecked = true;
   try {
     const r = await api('/api/integrations/llm/status');
-    wikiState.llmEnabled = !!r.enabled;
-  } catch { wikiState.llmEnabled = false; }
-  if (wikiState.llmEnabled && wikiState.page && wikiState.mode !== 'edit') wikiRenderMain();
+    const en = !!r.enabled;
+    if (en !== wikiState.llmEnabled) {
+      wikiState.llmEnabled = en;
+      if (wikiState.page && wikiState.mode !== 'edit') wikiRenderMain();
+    }
+  } catch { /* leave previous state */ }
 }
 
 // wikiSummarize requests (or fetches the cached) LLM summary for the page.
