@@ -1,0 +1,65 @@
+# Preconfigured podman-compose: the kanban app on its PostgreSQL backend, plus
+# a Postgres server — reachable from the LAN through a browser.
+#
+# All published ports live in the reserved 10010-10020 range (see .env).
+#
+#   cd deploy
+#   podman-compose up -d --build
+#   # then open http://<THIS-HOST-LAN-IP>:10010  (first visit = create admin)
+#
+#   podman-compose logs -f app        # follow app logs
+#   podman-compose down               # stop (keeps data volumes)
+#   podman-compose down -v            # stop and WIPE the database + backups
+#
+# The app image is the repo's Containerfile; we only override its command to
+# point at Postgres instead of the default SQLite file.
+
+services:
+  db:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${PGUSER:-kanban}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-kanban}
+      POSTGRES_DB: ${PGDATABASE:-kanban}
+    volumes:
+      - kanban-pgdata:/var/lib/postgresql/data
+    ports:
+      # Optional: direct DB access from the LAN (psql/clients). Drop this line
+      # to keep Postgres reachable only by the app container.
+      - "${DB_PORT:-10011}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-kanban} -d ${PGDATABASE:-kanban}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+      dockerfile: Containerfile
+    command:
+      - "-addr"
+      - ":8080"
+      - "-db"
+      - "postgres://${PGUSER:-kanban}:${PGPASSWORD:-kanban}@db:5432/${PGDATABASE:-kanban}?sslmode=disable"
+      - "-data-dir"
+      - "/data"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Browser: http://<THIS-HOST-LAN-IP>:10010
+      - "${APP_PORT:-10010}:8080"
+    volumes:
+      # Backups (auto + manual) land here.
+      - kanban-appdata:/data
+    # The image's built-in HEALTHCHECK starts a second server process; disable it
+    # here. Liveness is covered by restart + the DB healthcheck dependency.
+    healthcheck:
+      test: ["NONE"]
+    restart: unless-stopped
+
+volumes:
+  kanban-pgdata:
+  kanban-appdata:
