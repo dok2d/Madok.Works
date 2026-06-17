@@ -32,8 +32,25 @@ Find the host's LAN IP with `ip -4 addr` / `hostname -I` (Linux) and make sure
 the firewall allows inbound TCP on the published ports (e.g.
 `sudo firewall-cmd --add-port=10010/tcp` or the `ufw` equivalent).
 
-**First visit** prompts you to create the admin account; everything is stored in
-Postgres.
+**First visit** shows the setup page. The app starts on SQLite, so the page
+includes a **"Use external PostgreSQL"** toggle. Tick it and enter the bundled
+db service's connection details:
+
+| Field        | Value                          |
+|--------------|--------------------------------|
+| Host         | `db`                           |
+| Port         | `5432`                         |
+| Database     | `kanban` (PGDATABASE in .env)  |
+| User         | `kanban` (PGUSER)              |
+| Password     | `kanban` (PGPASSWORD)          |
+
+Click **Test connection**, then create the admin. The choice is saved to
+`/data/db.json` and the app restarts onto Postgres (you stay logged in). If you
+leave the toggle off, the app simply runs on SQLite inside the `kanban-appdata`
+volume and the `db` service goes unused.
+
+> To skip the chooser and run on Postgres from the very first start, use the
+> `-db` URL form in `podman-compose.yml` (commented there).
 
 ## Manage
 

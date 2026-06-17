@@ -38,11 +38,18 @@ services:
     build:
       context: ..
       dockerfile: Containerfile
+    # Start on SQLite so the first-run setup page shows the "use external
+    # PostgreSQL" chooser. Point it at the bundled db service with:
+    #   host: db   port: 5432   database/user/password: see .env (kanban/kanban)
+    # The choice is saved to /data/db.json and the app restarts onto Postgres.
+    #
+    # To skip the chooser and force Postgres from the start instead, replace the
+    # command below with the -db URL form:
+    #   - "-db"
+    #   - "postgres://${PGUSER:-kanban}:${PGPASSWORD:-kanban}@db:5432/${PGDATABASE:-kanban}?sslmode=disable"
     command:
       - "-addr"
       - ":8080"
-      - "-db"
-      - "postgres://${PGUSER:-kanban}:${PGPASSWORD:-kanban}@db:5432/${PGDATABASE:-kanban}?sslmode=disable"
       - "-data-dir"
       - "/data"
     depends_on:
