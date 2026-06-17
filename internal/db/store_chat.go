@@ -18,7 +18,7 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 		(SELECT COUNT(*) FROM chat_members m2 WHERE m2.channel_id = c.id),
 		COALESCE(m.last_read_id, -1),
 		COALESCE((SELECT MAX(id) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), 0),
-		COALESCE((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), '') AS last_at,
+		COALESCE(CAST((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0) AS TEXT), '') AS last_at,
 		COALESCE((SELECT msg.text FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
 		COALESCE((SELECT COALESCE(u2.username,'') FROM chat_messages msg LEFT JOIN users u2 ON u2.id = msg.author_id WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), '')
 		FROM chat_channels c
@@ -230,8 +230,13 @@ func (s *Store) RemoveChatMember(channelID, userID int64) error {
 // MarkChatRead stores the highest message id the user has seen, joining the
 // channel implicitly for public channels.
 func (s *Store) MarkChatRead(channelID, userID, lastID int64) error {
+	// Portable monotonic max: SQLite has scalar MAX(a,b) but Postgres' MAX is an
+	// aggregate (and the bare column is ambiguous in DO UPDATE), so use CASE with
+	// the existing value qualified by the table name.
 	_, err := s.db.Exec(`INSERT INTO chat_members(channel_id, user_id, last_read_id) VALUES(?,?,?)
-		ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_id = MAX(last_read_id, excluded.last_read_id)`,
+		ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_id =
+			CASE WHEN excluded.last_read_id > chat_members.last_read_id
+			     THEN excluded.last_read_id ELSE chat_members.last_read_id END`,
 		channelID, userID, lastID)
 	return err
 }
@@ -243,7 +248,7 @@ func (s *Store) MarkChatRead(channelID, userID, lastID int64) error {
 // catch-up). Results are always in ascending id order.
 // chatMsgCols is the shared projection for message rows (incl. reply/pin state).
 const chatMsgCols = `m.id, m.channel_id, m.author_id, COALESCE(u.username,''), m.text, m.created_at,
-	COALESCE(m.edited_at,''), m.deleted, COALESCE(m.reply_to,0), m.pinned, COALESCE(m.pinned_at,''), COALESCE(m.kind,'')`
+	COALESCE(CAST(m.edited_at AS TEXT),''), m.deleted, COALESCE(m.reply_to,0), m.pinned, COALESCE(CAST(m.pinned_at AS TEXT),''), COALESCE(m.kind,'')`
 
 // scanChatMsg scans a row produced by chatMsgCols.
 func scanChatMsg(sc interface{ Scan(...any) error }) (model.ChatMessage, error) {

@@ -1,22 +1,57 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"kanban/internal/model"
 )
 
-// newTestStore opens a fresh migrated SQLite database in a temp dir.
+// pgSchemaSeq gives each PG-backed test store a unique schema so multiple stores
+// in one test (and successive tests) stay isolated.
+var pgSchemaSeq int64
+
+// newTestStore opens a fresh migrated database. By default it uses a temp SQLite
+// file. If KANBAN_TEST_PG_URL is set, it runs against that PostgreSQL instead,
+// each store in its own freshly-created schema (via the search_path runtime
+// param) so stores are fully isolated.
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := New(filepath.Join(t.TempDir(), "test.db"))
+	path := filepath.Join(t.TempDir(), "test.db")
+	if base := os.Getenv("KANBAN_TEST_PG_URL"); base != "" {
+		schema := fmt.Sprintf("test_%d", atomic.AddInt64(&pgSchemaSeq, 1))
+		pgExec(t, base, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+		pgExec(t, base, "CREATE SCHEMA "+schema)
+		t.Cleanup(func() { pgExec(t, base, "DROP SCHEMA IF EXISTS "+schema+" CASCADE") })
+		sep := "&"
+		if !strings.Contains(base, "?") {
+			sep = "?"
+		}
+		path = base + sep + "search_path=" + schema
+	}
+	s, err := New(path)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+func pgExec(t *testing.T, url, q string) {
+	t.Helper()
+	d, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatalf("open pg: %v", err)
+	}
+	defer d.Close()
+	if _, err := d.Exec(q); err != nil {
+		t.Fatalf("pg exec %q: %v", q, err)
+	}
 }
 
 func mustUser(t *testing.T, s *Store, name string) int64 {

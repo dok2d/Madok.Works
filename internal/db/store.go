@@ -54,6 +54,9 @@ func parseTime(s string) time.Time {
 		"2006-01-02T15:04:05",
 		time.RFC3339,
 		time.RFC3339Nano,
+		// Postgres CAST(timestamptz AS text), e.g. "2026-06-17 09:42:50.659588+00".
+		"2006-01-02 15:04:05.999999-07",
+		"2006-01-02 15:04:05-07",
 	} {
 		if t, err := time.Parse(layout, s); err == nil {
 			return t
@@ -1246,7 +1249,7 @@ func (s *Store) batchTaskTags(taskIDs []int64) (map[int64][]model.Tag, error) {
 
 // taskCommentsTree returns comments as a tree (top-level + nested replies).
 func (s *Store) taskCommentsTree(taskID int64) []model.Comment {
-	rows, err := s.db.Query(`SELECT c.id, c.task_id, COALESCE(c.parent_id,0), c.text, c.created_at, COALESCE(c.updated_at,''),
+	rows, err := s.db.Query(`SELECT c.id, c.task_id, COALESCE(c.parent_id,0), c.text, c.created_at, COALESCE(CAST(c.updated_at AS TEXT),''),
 		COALESCE(c.author_id,0), COALESCE(u.username,'')
 		FROM comments c LEFT JOIN users u ON c.author_id=u.id
 		WHERE c.task_id=? ORDER BY c.created_at`, taskID)
@@ -2547,8 +2550,8 @@ func (s *Store) DatabaseChecksum() string {
 		checksum += fmt.Sprintf("%s:%d:%d;", t, cnt, maxID)
 	}
 	var lastTask, lastComment string
-	s.db.QueryRow("SELECT COALESCE(MAX(updated_at),'') FROM tasks").Scan(&lastTask)
-	s.db.QueryRow("SELECT COALESCE(MAX(updated_at),'') FROM comments").Scan(&lastComment)
+	s.db.QueryRow("SELECT COALESCE(CAST(MAX(updated_at) AS TEXT),'') FROM tasks").Scan(&lastTask)
+	s.db.QueryRow("SELECT COALESCE(CAST(MAX(updated_at) AS TEXT),'') FROM comments").Scan(&lastComment)
 	checksum += fmt.Sprintf("lt:%s;lc:%s", lastTask, lastComment)
 	return checksum
 }

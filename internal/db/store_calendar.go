@@ -110,13 +110,15 @@ func expandOccurrencesEx(start time.Time, rruleStr string, exdates []time.Time, 
 
 func (s *Store) ListCalendars(userID int64, isAdmin bool) ([]model.Calendar, error) {
 	where := "c.visibility = 'shared' OR c.owner_id = ?"
+	args := []any{userID}
 	if isAdmin {
 		where = "1=1"
+		args = nil // no placeholder in this branch; passing userID would error on pgx
 	}
 	rows, err := s.db.Query(`SELECT c.id, c.name, c.color, c.owner_id, c.visibility, c.created_at, COALESCE(u.username,'')
 		FROM calendars c LEFT JOIN users u ON u.id = c.owner_id
 		WHERE `+where+`
-		ORDER BY c.name COLLATE NOCASE`, userID)
+		ORDER BY c.name COLLATE NOCASE`, args...)
 	if err != nil {
 		return nil, err
 	}
