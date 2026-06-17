@@ -713,6 +713,7 @@ async function wikiRenderHistory(el) {
   let revs = [];
   try { revs = await api('/api/wiki/pages/' + p.id + '/revisions'); } catch (e) { /* ignore */ }
   wikiState.revisions = revs;
+  wikiState.diffSel = [];
   el.innerHTML = `
     ${wikiBreadcrumbs()}
     <div class="wiki-page-header">
@@ -721,14 +722,88 @@ async function wikiRenderHistory(el) {
     </div>
     <div class="wiki-history">
       <div class="wiki-rev-list">
+        <div class="wiki-rev-comparebar">
+          <button class="btn btn-primary btn-sm" id="wiki-diff-btn" disabled onclick="wikiCompareRevisions()">&#8646; ${t('wikiCompare')}</button>
+          <span class="wiki-rev-comparehint">${t('wikiCompareHint')}</span>
+        </div>
         ${revs.map(r => `<div class="wiki-rev-item ${wikiState.viewingRev === r.id ? 'active' : ''}" onclick="wikiViewRevision(${r.id})">
-          <div><b>v${r.rev_no}</b> ${r.rev_no === p.rev_no ? `<span class="wiki-rev-current">${t('wikiCurrent')}</span>` : ''}</div>
+          <div class="wiki-rev-row1">
+            <input type="checkbox" class="wiki-rev-cb" title="${t('wikiCompare')}" onclick="event.stopPropagation()" onchange="wikiToggleDiffSelect(${r.id}, this)">
+            <b>v${r.rev_no}</b> ${r.rev_no === p.rev_no ? `<span class="wiki-rev-current">${t('wikiCurrent')}</span>` : ''}
+          </div>
           <div class="wiki-rev-meta">${esc(r.author_name || '?')} &middot; ${fmtDate(r.created_at)}</div>
           ${r.comment ? `<div class="wiki-rev-comment">${esc(r.comment)}</div>` : ''}
         </div>`).join('')}
       </div>
       <div class="wiki-rev-view" id="wiki-rev-view"><div class="wiki-empty">${t('wikiPickRevision')}</div></div>
     </div>`;
+}
+
+// wikiToggleDiffSelect tracks up to two revisions selected for comparison.
+function wikiToggleDiffSelect(revId, cb) {
+  const sel = wikiState.diffSel || (wikiState.diffSel = []);
+  if (cb.checked) {
+    sel.push(revId);
+    if (sel.length > 2) {
+      const drop = sel.shift();
+      document.querySelectorAll('.wiki-rev-cb').forEach(el => {
+        if (el.getAttribute('onchange').includes('(' + drop + ',')) el.checked = false;
+      });
+    }
+  } else {
+    const i = sel.indexOf(revId);
+    if (i >= 0) sel.splice(i, 1);
+  }
+  const btn = document.getElementById('wiki-diff-btn');
+  if (btn) btn.disabled = sel.length !== 2;
+}
+
+// wikiRevText prefers the markdown source for a readable diff, falling back to
+// the plain-text content of older revisions that predate stored markdown.
+function wikiRevText(rev) {
+  if (rev.content_md && rev.content_md.trim()) return rev.content_md;
+  return new DOMParser().parseFromString(rev.content || '', 'text/html').body.textContent || '';
+}
+
+// wikiLineDiff computes a line-level LCS diff: ['ctx'|'add'|'del', text].
+function wikiLineDiff(aText, bText) {
+  const a = aText.split('\n'), b = bText.split('\n');
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push(['ctx', a[i]]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push(['del', a[i]]); i++; }
+    else { out.push(['add', b[j]]); j++; }
+  }
+  while (i < n) out.push(['del', a[i++]]);
+  while (j < m) out.push(['add', b[j++]]);
+  return out;
+}
+
+async function wikiCompareRevisions() {
+  const sel = wikiState.diffSel || [];
+  if (sel.length !== 2) return;
+  const view = document.getElementById('wiki-rev-view');
+  try {
+    const [r1, r2] = await Promise.all(sel.map(id => api('/api/wiki/revisions/' + id)));
+    // Order older → newer so additions read as "what the newer version added".
+    const [from, to] = r1.rev_no <= r2.rev_no ? [r1, r2] : [r2, r1];
+    document.querySelectorAll('.wiki-rev-item').forEach(el => el.classList.remove('active'));
+    const diff = wikiLineDiff(wikiRevText(from), wikiRevText(to));
+    const changed = diff.some(d => d[0] !== 'ctx');
+    const body = diff.map(([k, txt]) => {
+      const sym = k === 'add' ? '+' : k === 'del' ? '−' : ' ';
+      return `<div class="wiki-diff-line wiki-diff-${k}"><span class="wiki-diff-sym">${sym}</span><span class="wiki-diff-txt">${esc(txt) || ' '}</span></div>`;
+    }).join('');
+    view.innerHTML = `
+      <div class="wiki-rev-view-head">${t('wikiCompare')}: <b>v${from.rev_no}</b> &rarr; <b>v${to.rev_no}</b></div>
+      ${changed ? `<div class="wiki-diff">${body}</div>` : `<div class="wiki-empty">${t('wikiNoChanges')}</div>`}`;
+  } catch (e) { alert(e.message); }
 }
 
 async function wikiViewRevision(revId) {
