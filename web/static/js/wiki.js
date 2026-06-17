@@ -349,6 +349,7 @@ const WIKI_TOOLBAR = [
   { act: 'image', label: '&#128247;', key: 'tbImage' },
   { act: 'table', label: '&#9638;', key: 'tbTable' },
   { act: 'callout', label: '&#128161;', key: 'tbCallout' },
+  { act: 'spoiler', label: '&#9656;', key: 'tbSpoiler' },
   { act: 'subpages', label: '&#9776;', key: 'tbSubpages' },
 ];
 
@@ -605,6 +606,7 @@ function wikiTbAction(act, anchor) {
     case 'image': return wikiMdImagePick();
     case 'table': return wikiMdTablePick(anchor);
     case 'callout': return wikiMdCalloutPick(anchor);
+    case 'spoiler': return wikiMdSpoiler();
     case 'subpages': return wikiMdSubpagesPick(anchor);
   }
 }
@@ -692,6 +694,17 @@ function wikiMdCalloutPick(anchor) {
     ta.setRangeText('\n<div class="wiki-' + k + '">\n\n' + (selText || '…') + '\n\n</div>\n', s, e, 'end');
     ta.focus(); wikiMdChanged();
   });
+}
+
+// wikiMdSpoiler inserts a collapsible <details> block. marked passes it through
+// as an HTML block (like callouts) and the inner blank lines let its body be
+// parsed as markdown; the sanitizer already whitelists details/summary.
+function wikiMdSpoiler() {
+  const ta = wikiMdTa(); if (!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd, sel = ta.value.slice(s, e);
+  const block = '\n<details>\n<summary>' + t('tbSpoilerTitle') + '</summary>\n\n' + (sel || '…') + '\n\n</details>\n';
+  ta.setRangeText(block, s, e, 'end');
+  ta.focus(); wikiMdChanged();
 }
 
 function escHtmlText(s) {

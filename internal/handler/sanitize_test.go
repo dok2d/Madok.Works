@@ -45,6 +45,7 @@ func TestSanitizeHTMLKeepsSafeMarkup(t *testing.T) {
 		{`<pre><code class="language-go">f()</code></pre>`, `<pre><code class="language-go">f()</code></pre>`},
 		{`<table><tr><td colspan="2">c</td></tr></table>`, `<table><tr><td colspan="2">c</td></tr></table>`},
 		{`<div class="wiki-info">i</div>`, `<div class="wiki-info">i</div>`},
+		{`<details><summary>More</summary><p>hidden</p></details>`, `<details><summary>More</summary><p>hidden</p></details>`},
 		{`<div class="wiki-subpages"></div>`, `<div class="wiki-subpages"></div>`},
 		{`<div class="wiki-subpages wiki-subpages-tree"></div>`, `<div class="wiki-subpages wiki-subpages-tree"></div>`},
 		{"plain & <text>", "plain &amp; "},
