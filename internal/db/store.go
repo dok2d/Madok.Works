@@ -2407,6 +2407,12 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 
 	// Import users if present (for full restore)
 	if len(data.Users) > 0 {
+		// Service tables reference users(id); clear them first so DELETE FROM users
+		// doesn't hit a foreign-key violation (Postgres enforces FKs immediately,
+		// and a failed-but-ignored statement would poison the whole transaction).
+		if err := clearEcosystem(tx); err != nil {
+			return err
+		}
 		tx.Exec("DELETE FROM sessions")
 		tx.Exec("DELETE FROM notifications")
 		tx.Exec("DELETE FROM activity_log")

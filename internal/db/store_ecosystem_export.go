@@ -64,16 +64,27 @@ func (s *Store) exportEcosystem() map[string][]map[string]any {
 	return eco
 }
 
+// clearEcosystem deletes all service-table rows in child-before-parent order so
+// foreign keys stay satisfied. It is also used by ImportAll to drop these rows
+// before deleting users (the service tables reference users(id)) — Postgres
+// enforces FKs immediately, so the order matters there.
+func clearEcosystem(tx *dbTx) error {
+	for i := len(ecosystemTables) - 1; i >= 0; i-- {
+		if _, err := tx.Exec("DELETE FROM " + ecosystemTables[i]); err != nil {
+			return fmt.Errorf("clear %s: %w", ecosystemTables[i], err)
+		}
+	}
+	return nil
+}
+
 // importEcosystem clears and restores the service tables inside an existing
 // transaction. SQLite's column affinity coerces JSON float64 ids back to integers.
 func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 	if len(eco) == 0 {
 		return nil
 	}
-	for i := len(ecosystemTables) - 1; i >= 0; i-- {
-		if _, err := tx.Exec("DELETE FROM " + ecosystemTables[i]); err != nil {
-			return fmt.Errorf("clear %s: %w", ecosystemTables[i], err)
-		}
+	if err := clearEcosystem(tx); err != nil {
+		return err
 	}
 	for _, tbl := range ecosystemTables {
 		rows := eco[tbl]
