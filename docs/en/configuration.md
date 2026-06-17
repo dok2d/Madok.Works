@@ -27,6 +27,14 @@ Example:
 kanban-server -db "postgres://kanban:secret@localhost:5432/kanban" -data-dir /var/lib/kanban
 ```
 
+**Choosing the DB on first run.** When the server starts on SQLite (the default),
+the first-run setup page offers a "use external PostgreSQL" toggle with connection
+fields and a "Test connection" button. If chosen, the settings are saved to
+`<data-dir>/db.json` and the server restarts on PostgreSQL (you stay logged in).
+At startup the DB is resolved as: explicit `-db postgres://` flag > saved
+`db.json` > SQLite path. The chooser is hidden when already running on Postgres
+(e.g. a compose stack that passes a URL in `-db`).
+
 ## kanban.sh Flags
 
 For `run` and `deploy` commands:
