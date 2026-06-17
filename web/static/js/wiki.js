@@ -461,6 +461,7 @@ function wikiRenderEditor(el) {
     ${wikiBreadcrumbs()}
     <input class="wiki-title-input" id="wiki-title-input" value="${escAttr(p.title)}" maxlength="300">
     ${toolbar}
+    <label class="wiki-sync-toggle"><input type="checkbox" id="wiki-sync-cb"> ${t('wikiSyncScroll')}</label>
     <div class="wiki-md-split">
       <textarea class="wiki-md-input" id="wiki-md" placeholder="# Markdown…">${esc(md)}</textarea>
       <div class="wiki-md-preview md-content" id="wiki-md-preview"></div>
@@ -477,6 +478,16 @@ function wikiRenderEditor(el) {
   const ta = document.getElementById('wiki-md');
   ta.addEventListener('input', () => { wikiState.dirty = true; wikiMdPreview(); });
   ta.addEventListener('paste', wikiHandlePaste);
+  const prev = document.getElementById('wiki-md-preview');
+  wikiSetupScrollSync(ta, prev);
+  const syncCb = document.getElementById('wiki-sync-cb');
+  if (syncCb) {
+    syncCb.checked = wikiScrollSyncOn();
+    syncCb.addEventListener('change', () => {
+      localStorage.setItem('wiki-scroll-sync', syncCb.checked ? '1' : '0');
+      if (syncCb.checked) wikiSyncScroll(ta, prev); // align immediately on enable
+    });
+  }
   document.getElementById('wiki-toolbar').addEventListener('mousedown', e => {
     const btn = e.target.closest('.wiki-tb-btn');
     if (!btn) return;
@@ -521,6 +532,34 @@ function wikiMdPreview() {
   prev.innerHTML = wikiSanitizePreview(wikiMdToHtml(ta.value));
   wikiFillSubpageTocs(prev, wikiState.page ? wikiState.page.id : null);
   if (typeof highlightCode === 'function') highlightCode();
+  // Re-align the preview to the editor's current viewport after re-render so the
+  // line being edited stays in view.
+  wikiSyncScroll(ta, prev);
+}
+
+// === Editor ⇄ preview scroll sync ===
+// Proportional, bidirectional, with a one-frame lock so the programmatic scroll
+// of the target doesn't echo back and cause jitter.
+let wikiScrollLock = false;
+function wikiScrollSyncOn() { return localStorage.getItem('wiki-scroll-sync') === '1'; }
+function wikiSyncScroll(src, dst) {
+  if (!wikiScrollSyncOn() || wikiScrollLock || !src || !dst) return;
+  const sMax = src.scrollHeight - src.clientHeight;
+  const dMax = dst.scrollHeight - dst.clientHeight;
+  if (sMax <= 0 || dMax <= 0) return;
+  wikiScrollLock = true;
+  dst.scrollTop = (src.scrollTop / sMax) * dMax;
+  requestAnimationFrame(() => { wikiScrollLock = false; });
+}
+function wikiSetupScrollSync(ta, prev) {
+  if (!ta || !prev) return;
+  ta.addEventListener('scroll', () => wikiSyncScroll(ta, prev));
+  prev.addEventListener('scroll', () => wikiSyncScroll(prev, ta));
+  // After a keystroke or caret move the textarea keeps the caret visible itself;
+  // mirror its viewport into the preview so the edited spot shows on both sides.
+  const follow = () => wikiSyncScroll(ta, prev);
+  ta.addEventListener('keyup', follow);
+  ta.addEventListener('click', follow);
 }
 function wikiMdChanged() { wikiState.dirty = true; wikiMdPreview(); }
 function wikiMdWrap(before, after) {
