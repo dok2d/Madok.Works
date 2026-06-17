@@ -249,6 +249,7 @@ function wikiRenderPageView(el) {
     </div>
     <div class="wiki-meta">v${p.rev_no} &middot; ${t('wikiEditedBy')} ${esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
     <div class="wiki-content md-content">${p.content || `<p style="color:var(--fg3)">${t('wikiEmptyPage')}</p>`}</div>`;
+  wikiFillSubpageTocs(el.querySelector('.wiki-content'), p.id);
   highlightCode();
 }
 
@@ -273,13 +274,50 @@ const WIKI_TOOLBAR = [
   { act: 'image', label: '&#128247;', key: 'tbImage' },
   { act: 'table', label: '&#9638;', key: 'tbTable' },
   { act: 'callout', label: '&#128161;', key: 'tbCallout' },
+  { act: 'subpages', label: '&#9776;', key: 'tbSubpages' },
 ];
 
 // wikiMdToHtml converts markdown to HTML via the bundled marked (falls back to
 // escaped text). The server sanitizes the result on save.
 function wikiMdToHtml(md) {
-  if (typeof marked !== 'undefined' && marked.parse) return marked.parse(md || '');
-  return '<p>' + escHtmlText(md || '') + '</p>';
+  const html = (typeof marked !== 'undefined' && marked.parse) ? marked.parse(md || '') : '<p>' + escHtmlText(md || '') + '</p>';
+  return wikiInjectSubpageMarkers(html);
+}
+
+// wikiInjectSubpageMarkers turns the [[subpages]] / [[subpages:tree]] tokens into
+// an empty placeholder div. The list is intentionally NOT baked in here: it is
+// filled live on every render (wikiFillSubpageTocs) so it never goes stale when
+// child pages are added, renamed, or removed.
+function wikiInjectSubpageMarkers(html) {
+  const repl = (_, mode) => `<div class="wiki-subpages${mode ? ' wiki-subpages-tree' : ''}"></div>`;
+  return html
+    .replace(/<p>\s*\[\[\s*subpages(\s*:\s*tree)?\s*\]\]\s*<\/p>/gi, repl)
+    .replace(/\[\[\s*subpages(\s*:\s*tree)?\s*\]\]/gi, repl);
+}
+
+// wikiFillSubpageTocs replaces every .wiki-subpages placeholder inside `container`
+// with a live list of `pageId`'s child pages (nested for the :tree variant).
+function wikiFillSubpageTocs(container, pageId) {
+  if (!container) return;
+  const placeholders = container.querySelectorAll('.wiki-subpages');
+  if (!placeholders.length) return;
+  const byParent = {};
+  for (const p of wikiState.tree) {
+    const k = p.parent_id || 0;
+    (byParent[k] = byParent[k] || []).push(p);
+  }
+  const renderList = (parent, deep) => {
+    const kids = byParent[parent] || [];
+    if (!kids.length) return '';
+    return '<ul class="wiki-toc-list">' + kids.map(k =>
+      `<li><a class="wiki-toc-link" href="/wiki/page/${k.id}" onclick="navigateTo('/wiki/page/${k.id}');return false;">${esc(k.title)}</a>${deep ? renderList(k.id, true) : ''}</li>`
+    ).join('') + '</ul>';
+  };
+  placeholders.forEach(ph => {
+    const deep = ph.classList.contains('wiki-subpages-tree');
+    const html = pageId ? renderList(pageId, deep) : '';
+    ph.innerHTML = html || `<span class="wiki-toc-empty">${t('wikiNoSubpages')}</span>`;
+  });
 }
 
 // wikiSanitizePreview strips active content from rendered HTML before it goes into
@@ -406,6 +444,7 @@ function wikiMdPreview() {
   const ta = wikiMdTa(), prev = document.getElementById('wiki-md-preview');
   if (!ta || !prev) return;
   prev.innerHTML = wikiSanitizePreview(wikiMdToHtml(ta.value));
+  wikiFillSubpageTocs(prev, wikiState.page ? wikiState.page.id : null);
   if (typeof highlightCode === 'function') highlightCode();
 }
 function wikiMdChanged() { wikiState.dirty = true; wikiMdPreview(); }
@@ -452,7 +491,18 @@ function wikiTbAction(act, anchor) {
     case 'image': return wikiMdImagePick();
     case 'table': return wikiMdTablePick(anchor);
     case 'callout': return wikiMdCalloutPick(anchor);
+    case 'subpages': return wikiMdSubpagesPick(anchor);
   }
+}
+
+function wikiMdSubpagesPick(anchor) {
+  const opts = [['', 'tbSubpagesDirect'], [':tree', 'tbSubpagesTree']];
+  const pop = wikiPopover(anchor, `<div class="wiki-callout-list">${opts.map(([m, lab]) => `<button class="wiki-callout-opt" data-m="${m}">${t(lab)}</button>`).join('')}</div>`);
+  pop.querySelectorAll('.wiki-callout-opt').forEach(b => b.onclick = () => {
+    const m = b.dataset.m;
+    wikiClosePopover();
+    wikiMdInsert('\n\n[[subpages' + m + ']]\n\n');
+  });
 }
 
 function wikiMdCodeBlock() {

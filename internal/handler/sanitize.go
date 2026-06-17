@@ -41,6 +41,7 @@ var wikiVoidTags = map[string]bool{"br": true, "hr": true, "img": true, "input":
 // префикс language-.
 var wikiAllowedClasses = map[string]bool{
 	"wiki-info": true, "wiki-warn": true, "wiki-note": true, "wiki-success": true, // callout panels
+	"wiki-subpages": true, "wiki-subpages-tree": true, // subpage table-of-contents placeholder (filled live on render)
 	"task-list": true, "task-item": true,
 	"hljs": true,
 }
