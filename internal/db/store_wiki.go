@@ -454,3 +454,30 @@ func stripTags(s string) string {
 	}
 	return strings.TrimSpace(b.String())
 }
+
+// GetWikiSummary returns the cached LLM summary for a specific page revision.
+func (s *Store) GetWikiSummary(pageID int64, revNo int) (string, bool) {
+	var summary string
+	err := s.db.QueryRow(`SELECT summary FROM wiki_summaries WHERE page_id=? AND rev_no=?`, pageID, revNo).Scan(&summary)
+	if err != nil {
+		return "", false
+	}
+	return summary, true
+}
+
+// SaveWikiSummary caches an LLM summary for a page revision (idempotent upsert).
+func (s *Store) SaveWikiSummary(pageID int64, revNo int, summary, model string) error {
+	_, err := s.db.Exec(`INSERT INTO wiki_summaries(page_id, rev_no, summary, model) VALUES(?,?,?,?)
+		ON CONFLICT(page_id, rev_no) DO UPDATE SET summary=excluded.summary, model=excluded.model`,
+		pageID, revNo, summary, model)
+	return err
+}
+
+// WikiPagePlainText returns the page's content as plain text (markdown source if
+// present, else HTML stripped) — the input for summarization.
+func WikiPagePlainText(p *model.WikiPage) string {
+	if strings.TrimSpace(p.ContentMd) != "" {
+		return p.ContentMd
+	}
+	return stripTags(p.Content)
+}

@@ -370,6 +370,8 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, revs)
 	case "restore":
 		h.handleWikiPageRestore(w, r, user, page, role)
+	case "summary":
+		h.handleWikiPageSummary(w, r, page)
 	default:
 		http.NotFound(w, r)
 	}

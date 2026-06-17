@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 type dbConn struct {
 	sdb *sql.DB
 	d   dialect
+	dsn string // original DSN/path (for sanitized connection info)
 }
 
 func (c *dbConn) Exec(q string, args ...any) (sql.Result, error) {
@@ -112,6 +114,35 @@ func IsPostgresURL(s string) bool { return isPostgresURL(s) }
 
 // IsPostgres reports whether this store is backed by PostgreSQL.
 func (s *Store) IsPostgres() bool { return s.db.d == dialectPostgres }
+
+// ConnInfo returns sanitized connection details for display (never the password).
+func (s *Store) ConnInfo() map[string]string {
+	if s.db.d != dialectPostgres {
+		path := s.db.dsn
+		if i := strings.IndexByte(path, '?'); i >= 0 {
+			path = path[:i]
+		}
+		return map[string]string{"backend": "sqlite", "path": path}
+	}
+	info := map[string]string{"backend": "postgres"}
+	if u, err := url.Parse(s.db.dsn); err == nil {
+		host := u.Hostname()
+		if host == "" {
+			host = u.Query().Get("host") // unix-socket style ?host=/path
+		}
+		port := u.Port()
+		if port == "" {
+			port = "5432"
+		}
+		info["host"] = host
+		info["port"] = port
+		info["database"] = strings.TrimPrefix(u.Path, "/")
+		if u.User != nil {
+			info["user"] = u.User.Username()
+		}
+	}
+	return info
+}
 
 // PingDSN opens a short-lived connection to a Postgres DSN and verifies it is
 // reachable. Used by the first-run setup to validate user-entered credentials

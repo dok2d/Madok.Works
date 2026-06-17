@@ -233,6 +233,7 @@ function wikiRenderPageView(el) {
       <h1 class="wiki-title">${esc(p.title)}</h1>
       <div class="wiki-actions">
         ${wikiCanEdit() ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('/wiki/page/${p.id}/edit')">${t('wikiEdit')}</button>` : ''}
+        ${wikiState.llmEnabled ? `<button class="btn btn-ghost btn-sm" onclick="wikiSummarize(${p.id})">&#10024; ${t('wikiSummary')}</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="navigateTo('/wiki/page/${p.id}/history')">${t('wikiHistory')}</button>
         ${wikiCanEdit() ? `<div class="wiki-menu-wrap">
           <button class="btn btn-ghost btn-sm" onclick="wikiToggleMenu(event)">&#8943;</button>
@@ -248,9 +249,40 @@ function wikiRenderPageView(el) {
       </div>
     </div>
     <div class="wiki-meta">v${p.rev_no} &middot; ${t('wikiEditedBy')} ${esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
+    <div id="wiki-summary-panel"></div>
     <div class="wiki-content md-content">${p.content || `<p style="color:var(--fg3)">${t('wikiEmptyPage')}</p>`}</div>`;
   wikiFillSubpageTocs(el.querySelector('.wiki-content'), p.id);
   highlightCode();
+  wikiEnsureLLM();
+}
+
+// wikiEnsureLLM fetches the LLM-integration status once; if enabled, it reveals
+// the Summary button by re-rendering the (non-edit) page view.
+async function wikiEnsureLLM() {
+  if (wikiState.llmChecked) return;
+  wikiState.llmChecked = true;
+  try {
+    const r = await api('/api/integrations/llm/status');
+    wikiState.llmEnabled = !!r.enabled;
+  } catch { wikiState.llmEnabled = false; }
+  if (wikiState.llmEnabled && wikiState.page && wikiState.mode !== 'edit') wikiRenderMain();
+}
+
+// wikiSummarize requests (or fetches the cached) LLM summary for the page.
+async function wikiSummarize(pageId) {
+  const panel = document.getElementById('wiki-summary-panel');
+  if (!panel) return;
+  panel.innerHTML = `<div class="wiki-summary"><div class="wiki-summary-head">&#10024; ${t('wikiSummary')}</div><div class="wiki-summary-body">${t('wikiSummarizing')}</div></div>`;
+  try {
+    const r = await api('/api/wiki/pages/' + pageId + '/summary', 'POST');
+    panel.innerHTML = `<div class="wiki-summary">
+      <div class="wiki-summary-head">&#10024; ${t('wikiSummary')}${r.cached ? ` <span class="wiki-summary-cached">${t('wikiSummaryCached')}</span>` : ''}</div>
+      <div class="wiki-summary-body md-content">${wikiSanitizePreview(wikiMdToHtml(r.summary || ''))}</div>
+    </div>`;
+    if (typeof highlightCode === 'function') highlightCode();
+  } catch (e) {
+    panel.innerHTML = `<div class="wiki-summary wiki-summary-err">${esc(e.message)}</div>`;
+  }
 }
 
 // === WYSIWYG editor ===

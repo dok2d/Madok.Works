@@ -453,6 +453,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/settings/timezone", h.handleTimezoneSettings)
 	h.mux.HandleFunc("/api/settings/app", h.handleAppSettings)
 	h.mux.HandleFunc("/api/settings/sso", h.handleSSOSettings)
+	h.mux.HandleFunc("/api/settings/llm", h.handleLLMSettings)
+	h.mux.HandleFunc("/api/settings/llm/test", h.handleLLMTest)
+	h.mux.HandleFunc("/api/integrations/llm/status", h.handleLLMStatus)
+	h.mux.HandleFunc("/api/integrations/db-info", h.handleDBInfo)
 
 	h.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 

@@ -95,7 +95,7 @@ func New(path string) (*Store, error) {
 		d.SetMaxIdleConns(5)
 		d.SetConnMaxLifetime(time.Hour)
 	}
-	s := &Store{db: &dbConn{sdb: d, d: dia}}
+	s := &Store{db: &dbConn{sdb: d, d: dia, dsn: dsn}}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -419,6 +419,16 @@ func (s *Store) migrate() error {
 			occurrence_start TEXT NOT NULL DEFAULT '',
 			sent INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Cached LLM summaries of wiki pages, keyed to the page revision so an edit
+		// (new rev_no) recomputes while older revisions keep their cached summary.
+		`CREATE TABLE IF NOT EXISTS wiki_summaries (
+			page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+			rev_no INTEGER NOT NULL,
+			summary TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (page_id, rev_no)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_folders_user ON mail_folders(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_rules_user ON mail_rules(user_id, position)`,
