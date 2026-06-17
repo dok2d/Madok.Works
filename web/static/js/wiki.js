@@ -271,20 +271,60 @@ async function wikiEnsureLLM() {
   } catch { /* leave previous state */ }
 }
 
-// wikiSummarize requests (or fetches the cached) LLM summary for the page.
+// wikiSummaryPanelOpen renders into the summary panel if the user is still on
+// the same page (so background polling never clobbers another view).
+function wikiSummaryPanelOpen(pageId) {
+  if (!wikiState.page || wikiState.page.id !== pageId || wikiState.mode !== 'view') return null;
+  return document.getElementById('wiki-summary-panel');
+}
+function wikiSummaryShow(pageId, bodyHtml, cached, isErr) {
+  const panel = wikiSummaryPanelOpen(pageId);
+  if (!panel) return;
+  panel.innerHTML = `<div class="wiki-summary${isErr ? ' wiki-summary-err' : ''}">
+    <div class="wiki-summary-head">&#10024; ${t('wikiSummary')}${cached ? ` <span class="wiki-summary-cached">${t('wikiSummaryCached')}</span>` : ''}</div>
+    <div class="wiki-summary-body md-content">${bodyHtml}</div></div>`;
+  if (typeof highlightCode === 'function') highlightCode();
+}
+
+// wikiSummarize starts (or fetches the cached) LLM summary. Generation runs in
+// the background on the server, so leaving the page doesn't cancel it — the
+// result is cached and shown on return. The client just polls for display.
 async function wikiSummarize(pageId) {
   const panel = document.getElementById('wiki-summary-panel');
   if (!panel) return;
-  panel.innerHTML = `<div class="wiki-summary"><div class="wiki-summary-head">&#10024; ${t('wikiSummary')}</div><div class="wiki-summary-body">${t('wikiSummarizing')}</div></div>`;
+  wikiSummaryShow(pageId, t('wikiSummarizing'), false, false);
   try {
     const r = await api('/api/wiki/pages/' + pageId + '/summary', 'POST');
-    panel.innerHTML = `<div class="wiki-summary">
-      <div class="wiki-summary-head">&#10024; ${t('wikiSummary')}${r.cached ? ` <span class="wiki-summary-cached">${t('wikiSummaryCached')}</span>` : ''}</div>
-      <div class="wiki-summary-body md-content">${wikiSanitizePreview(wikiMdToHtml(r.summary || ''))}</div>
-    </div>`;
-    if (typeof highlightCode === 'function') highlightCode();
+    if (r.status === 'ready') {
+      wikiSummaryShow(pageId, wikiSanitizePreview(wikiMdToHtml(r.summary || '')), r.cached, false);
+    } else if (r.status === 'error') {
+      wikiSummaryShow(pageId, esc(r.error || ''), false, true);
+    } else {
+      wikiPollSummary(pageId);
+    }
   } catch (e) {
-    panel.innerHTML = `<div class="wiki-summary wiki-summary-err">${esc(e.message)}</div>`;
+    wikiSummaryShow(pageId, esc(e.message), false, true);
+  }
+}
+
+// wikiPollSummary checks the server every few seconds until the background
+// summary is ready. It stops if the user navigates away; server-side generation
+// continues regardless and the result stays cached.
+async function wikiPollSummary(pageId) {
+  await new Promise(r => setTimeout(r, 3000));
+  if (!wikiSummaryPanelOpen(pageId)) return;
+  try {
+    const r = await api('/api/wiki/pages/' + pageId + '/summary');
+    if (r.status === 'ready') {
+      wikiSummaryShow(pageId, wikiSanitizePreview(wikiMdToHtml(r.summary || '')), r.cached, false);
+    } else if (r.status === 'error') {
+      wikiSummaryShow(pageId, esc(r.error || ''), false, true);
+    } else if (r.status === 'pending') {
+      wikiPollSummary(pageId);
+    }
+    // status "none": nothing running and no cache — stop quietly.
+  } catch (e) {
+    wikiSummaryShow(pageId, esc(e.message), false, true);
   }
 }
 
