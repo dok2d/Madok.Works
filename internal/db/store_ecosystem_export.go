@@ -1,8 +1,8 @@
 package db
 
 import (
-	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -66,7 +66,7 @@ func (s *Store) exportEcosystem() map[string][]map[string]any {
 
 // importEcosystem clears and restores the service tables inside an existing
 // transaction. SQLite's column affinity coerces JSON float64 ids back to integers.
-func importEcosystem(tx *sql.Tx, eco map[string][]map[string]any) error {
+func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 	if len(eco) == 0 {
 		return nil
 	}
@@ -76,7 +76,12 @@ func importEcosystem(tx *sql.Tx, eco map[string][]map[string]any) error {
 		}
 	}
 	for _, tbl := range ecosystemTables {
-		for _, row := range eco[tbl] {
+		rows := eco[tbl]
+		// Insert in ascending id order so self-referential rows (wiki_pages.parent_id,
+		// chat_messages.reply_to) see their parent first — Postgres enforces FKs
+		// immediately. Rows without an id column keep their original order.
+		sort.SliceStable(rows, func(a, b int) bool { return rowID(rows[a]) < rowID(rows[b]) })
+		for _, row := range rows {
 			cols := make([]string, 0, len(row))
 			ph := make([]string, 0, len(row))
 			vals := make([]any, 0, len(row))
@@ -95,4 +100,18 @@ func importEcosystem(tx *sql.Tx, eco map[string][]map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// rowID extracts the numeric "id" of an exported row (0 if absent). JSON decoding
+// yields float64; direct dumps yield int64.
+func rowID(row map[string]any) float64 {
+	switch v := row["id"].(type) {
+	case float64:
+		return v
+	case int64:
+		return float64(v)
+	case int:
+		return float64(v)
+	}
+	return 0
 }

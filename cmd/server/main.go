@@ -9,13 +9,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
-	dbPath := flag.String("db", "/data/kanban.db", "sqlite database path")
+	dbPath := flag.String("db", "/data/kanban.db", "database: a SQLite file path, or a postgres://… / postgresql://… URL")
+	dataDir := flag.String("data-dir", "", "directory for on-disk artifacts like backups (defaults to the SQLite file's directory, or /data for Postgres)")
 	verbose := flag.Bool("verbose", false, "enable verbose logging")
 	smtpAddr := flag.String("smtp-addr", "", "optional inbound SMTP listen address (e.g. :25); empty disables mail receiving")
 	flag.Parse()
@@ -26,7 +29,15 @@ func main() {
 	}
 	defer store.Close()
 
-	h := handler.New(store, *dbPath)
+	dir := *dataDir
+	if dir == "" {
+		if strings.HasPrefix(*dbPath, "postgres://") || strings.HasPrefix(*dbPath, "postgresql://") {
+			dir = "/data"
+		} else {
+			dir = filepath.Dir(*dbPath)
+		}
+	}
+	h := handler.New(store, dir)
 	if *verbose {
 		h.SetVerbose(true)
 		log.Println("verbose logging enabled")

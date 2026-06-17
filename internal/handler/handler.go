@@ -136,8 +136,11 @@ type Handler struct {
 	dkimKey        *rsa.PrivateKey
 }
 
-func New(store *db.Store, dbPath string) *Handler {
-	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: filepath.Dir(dbPath), oidcStates: make(map[string]time.Time), sse: newSSEHub()}
+// New builds the HTTP handler. dataDir is where on-disk artifacts (backups)
+// live; the caller derives it (for SQLite, the database file's directory; for
+// Postgres, a dedicated -data-dir since the db path is a URL).
+func New(store *db.Store, dataDir string) *Handler {
+	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: dataDir, oidcStates: make(map[string]time.Time), sse: newSSEHub()}
 	h.loadMailOutboundConfig()
 	h.routes()
 	h.initTelegramBot()

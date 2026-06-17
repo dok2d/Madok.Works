@@ -42,7 +42,7 @@ func collectFileRefs(text string, refImages, refFiles map[int64]bool) {
 }
 
 type Store struct {
-	db      *sql.DB
+	db      *dbConn
 	verbose bool
 }
 
@@ -70,13 +70,29 @@ func (s *Store) logf(format string, args ...any) {
 	}
 }
 
+// New opens a Store. The path selects the backend: a postgres://… (or
+// postgresql://…) URL uses PostgreSQL; anything else is treated as a SQLite
+// file path. SQLite is the default and unchanged from before.
 func New(path string) (*Store, error) {
-	d, err := sql.Open("sqlite3", fmt.Sprintf("%s?_journal_mode=WAL&_busy_timeout=%d&_foreign_keys=on", path, sqliteBusyTimeout))
+	dia := dialectSQLite
+	driver, dsn := "sqlite3", fmt.Sprintf("%s?_journal_mode=WAL&_busy_timeout=%d&_foreign_keys=on", path, sqliteBusyTimeout)
+	if isPostgresURL(path) {
+		dia, driver, dsn = dialectPostgres, "pgx", path
+	}
+	d, err := sql.Open(driver, dsn)
 	if err != nil {
 		return nil, err
 	}
-	d.SetMaxOpenConns(1)
-	s := &Store{db: d}
+	if dia == dialectSQLite {
+		// SQLite + WAL is single-writer; one connection avoids "database is
+		// locked" and keeps the read-all-rows-before-follow-up pattern valid.
+		d.SetMaxOpenConns(1)
+	} else {
+		d.SetMaxOpenConns(10)
+		d.SetMaxIdleConns(5)
+		d.SetConnMaxLifetime(time.Hour)
+	}
+	s := &Store{db: &dbConn{sdb: d, d: dia}}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -429,7 +445,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id)`,
 	}
 	for _, q := range stmts {
-		if _, err := s.db.Exec(q); err != nil {
+		if _, err := s.db.Exec(translateDDL(s.db.d, q)); err != nil {
 			// A legacy DB may have a table from an older schema that lacks a column
 			// a new index references. Skip such an index rather than aborting startup;
 			// the column itself is added via the alters pass below where applicable.
@@ -486,7 +502,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE files ADD COLUMN compressed INTEGER NOT NULL DEFAULT 0",
 	}
 	for _, q := range alters {
-		s.db.Exec(q) // ignore "duplicate column" errors
+		s.db.Exec(translateDDL(s.db.d, q)) // ignore "duplicate column" errors
 	}
 
 	// create indexes that depend on ALTER TABLE columns
@@ -538,7 +554,7 @@ func (s *Store) ListColumns() ([]model.Column, error) {
 }
 
 func (s *Store) CreateColumn(name string) (int64, error) {
-	r, err := s.db.Exec(
+	id, err := s.db.ExecInsert(
 		"INSERT INTO columns(name,position) VALUES(?, (SELECT COALESCE(MAX(position),0)+1 FROM columns))",
 		name,
 	)
@@ -546,7 +562,6 @@ func (s *Store) CreateColumn(name string) (int64, error) {
 		s.logf("CreateColumn(%q) error: %v", name, err)
 		return 0, err
 	}
-	id, _ := r.LastInsertId()
 	s.logf("CreateColumn(%q) -> id=%d", name, id)
 	return id, nil
 }
@@ -632,11 +647,7 @@ func (s *Store) GetEpic(id int64) (*model.Epic, error) {
 }
 
 func (s *Store) CreateEpic(name, color string) (int64, error) {
-	r, err := s.db.Exec("INSERT INTO epics(name,color) VALUES(?,?)", name, color)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
+	return s.db.ExecInsert("INSERT INTO epics(name,color) VALUES(?,?)", name, color)
 }
 
 func (s *Store) UpdateEpic(id int64, name, color, description string) error {
@@ -692,11 +703,7 @@ func (s *Store) CreateSprint(name, startDate, endDate, status string) (int64, er
 	if status == "" {
 		status = "planning"
 	}
-	r, err := s.db.Exec("INSERT INTO sprints(name,start_date,end_date,status) VALUES(?,?,?,?)", name, startDate, endDate, status)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
+	return s.db.ExecInsert("INSERT INTO sprints(name,start_date,end_date,status) VALUES(?,?,?,?)", name, startDate, endDate, status)
 }
 
 func (s *Store) UpdateSprint(id int64, name, startDate, endDate, status string) error {
@@ -874,11 +881,7 @@ func (s *Store) ListTags() ([]model.Tag, error) {
 }
 
 func (s *Store) CreateTag(name, color string) (int64, error) {
-	r, err := s.db.Exec("INSERT INTO tags(name,color) VALUES(?,?)", name, color)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
+	return s.db.ExecInsert("INSERT INTO tags(name,color) VALUES(?,?)", name, color)
 }
 
 func (s *Store) DeleteTag(id int64) error {
@@ -1029,15 +1032,14 @@ func (s *Store) CreateTask(title, desc, todo, projectURL string, colID int64, ep
 	if err := tx.QueryRow("SELECT COALESCE(MAX(position),0) FROM tasks WHERE column_id=?", colID).Scan(&maxPos); err != nil {
 		return 0, fmt.Errorf("get max position: %w", err)
 	}
-	r, err := tx.Exec(`INSERT INTO tasks(title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline)
+	id, err := tx.ExecInsert(`INSERT INTO tasks(title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?)`, title, desc, todo, projectURL, colID, epicID, sprintID, assigneeID, maxPos+1, priority, deadline)
 	if err != nil {
 		s.logf("CreateTask error: %v", err)
 		return 0, err
 	}
-	id, _ := r.LastInsertId()
 	for _, tid := range tagIDs {
-		if _, err := tx.Exec("INSERT OR IGNORE INTO task_tags(task_id,tag_id) VALUES(?,?)", id, tid); err != nil {
+		if _, err := tx.Exec("INSERT INTO task_tags(task_id,tag_id) VALUES(?,?) ON CONFLICT DO NOTHING", id, tid); err != nil {
 			return 0, err
 		}
 	}
@@ -1064,7 +1066,7 @@ func (s *Store) UpdateTask(id int64, title, desc, todo, projectURL string, colID
 		return err
 	}
 	for _, tid := range tagIDs {
-		if _, err := tx.Exec("INSERT OR IGNORE INTO task_tags(task_id,tag_id) VALUES(?,?)", id, tid); err != nil {
+		if _, err := tx.Exec("INSERT INTO task_tags(task_id,tag_id) VALUES(?,?) ON CONFLICT DO NOTHING", id, tid); err != nil {
 			return err
 		}
 	}
@@ -1085,12 +1087,12 @@ func (s *Store) DeleteTask(id int64) error {
 // --- Comments ---
 
 func (s *Store) AddComment(taskID int64, text string, parentID *int64, authorID *int64) (int64, error) {
-	r, err := s.db.Exec("INSERT INTO comments(task_id,text,parent_id,author_id) VALUES(?,?,?,?)", taskID, text, parentID, authorID)
+	id, err := s.db.ExecInsert("INSERT INTO comments(task_id,text,parent_id,author_id) VALUES(?,?,?,?)", taskID, text, parentID, authorID)
 	if err != nil {
 		return 0, err
 	}
 	s.db.Exec("UPDATE tasks SET updated_at=datetime('now') WHERE id=?", taskID)
-	return r.LastInsertId()
+	return id, nil
 }
 
 func (s *Store) UpdateComment(id int64, text string) error {
@@ -1110,7 +1112,7 @@ func (s *Store) DeleteComment(id int64) error {
 	return tx.Commit()
 }
 
-func (s *Store) deleteCommentTreeTx(tx *sql.Tx, id int64, maxDepth int) error {
+func (s *Store) deleteCommentTreeTx(tx *dbTx, id int64, maxDepth int) error {
 	if maxDepth <= 0 {
 		// Safety: just delete this node, don't recurse further
 		_, err := tx.Exec("DELETE FROM comments WHERE id=?", id)
@@ -1316,11 +1318,7 @@ func (s *Store) taskCommentsTree(taskID int64) []model.Comment {
 // --- Images ---
 
 func (s *Store) SaveImage(data []byte, mime string) (int64, error) {
-	r, err := s.db.Exec("INSERT INTO images(data,mime) VALUES(?,?)", data, mime)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
+	return s.db.ExecInsert("INSERT INTO images(data,mime) VALUES(?,?)", data, mime)
 }
 
 func (s *Store) GetImage(id int64) ([]byte, string, error) {
@@ -1382,12 +1380,8 @@ func maybeCompress(mime string, data []byte) ([]byte, int) {
 
 func (s *Store) SaveFile(filename string, data []byte, mime string) (int64, error) {
 	stored, compressed := maybeCompress(mime, data)
-	r, err := s.db.Exec("INSERT INTO files(filename,data,mime,size,compressed) VALUES(?,?,?,?,?)",
+	return s.db.ExecInsert("INSERT INTO files(filename,data,mime,size,compressed) VALUES(?,?,?,?,?)",
 		filename, stored, mime, len(data), compressed)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
 }
 
 func (s *Store) GetFile(id int64) ([]byte, string, string, error) {
@@ -1844,7 +1838,7 @@ func (s *Store) SetTaskDependencies(taskID int64, dependsOnIDs []int64) error {
 		if s.wouldCreateCycle(tx, taskID, depID) {
 			continue // skip — would create circular dependency
 		}
-		if _, err := tx.Exec("INSERT OR IGNORE INTO task_dependencies(task_id,depends_on_id) VALUES(?,?)", taskID, depID); err != nil {
+		if _, err := tx.Exec("INSERT INTO task_dependencies(task_id,depends_on_id) VALUES(?,?) ON CONFLICT DO NOTHING", taskID, depID); err != nil {
 			return err
 		}
 	}
@@ -1853,12 +1847,12 @@ func (s *Store) SetTaskDependencies(taskID int64, dependsOnIDs []int64) error {
 
 // wouldCreateCycle checks if adding taskID->depID would create a cycle
 // by checking if depID already transitively depends on taskID.
-func (s *Store) wouldCreateCycle(tx *sql.Tx, taskID, depID int64) bool {
+func (s *Store) wouldCreateCycle(tx *dbTx, taskID, depID int64) bool {
 	visited := map[int64]bool{}
 	return s.reachable(tx, depID, taskID, visited, maxRecursionDepth)
 }
 
-func (s *Store) reachable(tx *sql.Tx, from, target int64, visited map[int64]bool, maxDepth int) bool {
+func (s *Store) reachable(tx *dbTx, from, target int64, visited map[int64]bool, maxDepth int) bool {
 	if from == target {
 		return true
 	}
@@ -1940,11 +1934,7 @@ func (s *Store) CreateUser(username, password string, role string) (int64, error
 	if role == "admin" {
 		isAdmin = 1
 	}
-	r, err := s.db.Exec("INSERT INTO users(username,password_hash,is_admin,role) VALUES(?,?,?,?)", username, hash, isAdmin, role)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
+	return s.db.ExecInsert("INSERT INTO users(username,password_hash,is_admin,role) VALUES(?,?,?,?)", username, hash, isAdmin, role)
 }
 
 func (s *Store) AuthenticateUser(username, password string) (*model.User, error) {
@@ -2137,14 +2127,13 @@ func (s *Store) FindOrCreateSSOUser(provider, externalID, username, role string)
 	placeholder, _ := auth.GenerateToken()
 	placeholderHash, _ := auth.HashPassword(placeholder)
 
-	r, err := s.db.Exec(
+	id, err := s.db.ExecInsert(
 		"INSERT INTO users(username,password_hash,is_admin,role,auth_provider,external_id) VALUES(?,?,?,?,?,?)",
 		username, placeholderHash, isAdmin, role, provider, externalID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create SSO user: %w", err)
 	}
-	id, _ := r.LastInsertId()
 	return &model.User{
 		ID:       id,
 		Username: username,
@@ -2264,12 +2253,8 @@ func (s *Store) ClearResetCode(userID int64) error {
 // --- Notifications ---
 
 func (s *Store) CreateNotification(userID int64, typ, text string, taskID *int64) (int64, error) {
-	r, err := s.db.Exec("INSERT INTO notifications(user_id,type,text,task_id) VALUES(?,?,?,?)",
+	return s.db.ExecInsert("INSERT INTO notifications(user_id,type,text,task_id) VALUES(?,?,?,?)",
 		userID, typ, text, taskID)
-	if err != nil {
-		return 0, err
-	}
-	return r.LastInsertId()
 }
 
 func (s *Store) ListNotifications(userID int64, limit int) ([]model.Notification, error) {
@@ -2317,7 +2302,7 @@ func (s *Store) MarkAllNotificationsRead(userID int64) error {
 // --- Task Subscriptions ---
 
 func (s *Store) SubscribeToTask(taskID, userID int64) error {
-	_, err := s.db.Exec("INSERT OR IGNORE INTO task_subscriptions(task_id,user_id) VALUES(?,?)", taskID, userID)
+	_, err := s.db.Exec("INSERT INTO task_subscriptions(task_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING", taskID, userID)
 	return err
 }
 
@@ -2439,7 +2424,7 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 	if len(data.Settings) > 0 {
 		tx.Exec("DELETE FROM app_settings")
 		for _, st := range data.Settings {
-			tx.Exec("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)", st.Key, st.Value)
+			tx.Exec("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", st.Key, st.Value)
 		}
 	}
 
@@ -2476,7 +2461,7 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 			return fmt.Errorf("import task: %w", err)
 		}
 		for _, tag := range t.Tags {
-			tx.Exec("INSERT OR IGNORE INTO task_tags(task_id,tag_id) VALUES(?,?)", t.ID, tag.ID)
+			tx.Exec("INSERT INTO task_tags(task_id,tag_id) VALUES(?,?) ON CONFLICT DO NOTHING", t.ID, tag.ID)
 		}
 	}
 	// Import comments
@@ -2491,12 +2476,12 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 
 	// Import dependencies
 	for _, d := range data.Dependencies {
-		tx.Exec("INSERT OR IGNORE INTO task_dependencies(task_id,depends_on_id) VALUES(?,?)", d.TaskID, d.DependsOnID)
+		tx.Exec("INSERT INTO task_dependencies(task_id,depends_on_id) VALUES(?,?) ON CONFLICT DO NOTHING", d.TaskID, d.DependsOnID)
 	}
 
 	// Import subscriptions
 	for _, sub := range data.Subscriptions {
-		tx.Exec("INSERT OR IGNORE INTO task_subscriptions(task_id,user_id) VALUES(?,?)", sub.TaskID, sub.UserID)
+		tx.Exec("INSERT INTO task_subscriptions(task_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING", sub.TaskID, sub.UserID)
 	}
 
 	// Import files (re-compress compressible blobs on the way in).
@@ -2522,10 +2507,34 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 		return err
 	}
 
-	// Reset SQLite auto-increment counters to avoid ID conflicts
-	tx.Exec("DELETE FROM sqlite_sequence")
+	// Reset auto-increment/identity counters so future inserts don't collide
+	// with the explicit ids we just restored.
+	s.resetSequences(tx)
 
 	return tx.Commit()
+}
+
+// resetSequences re-syncs id generators after an explicit-id bulk import. For
+// SQLite it clears sqlite_sequence; for Postgres it sets each IDENTITY sequence
+// to MAX(id) (is_called=true when the table has rows, so nextval = MAX(id)+1).
+func (s *Store) resetSequences(tx *dbTx) {
+	if s.db.d != dialectPostgres {
+		tx.Exec("DELETE FROM sqlite_sequence")
+		return
+	}
+	tables := []string{
+		"columns", "epics", "tags", "tasks", "comments", "images", "files", "sprints",
+		"users", "notifications", "activity_log",
+		"wiki_spaces", "wiki_pages", "wiki_revisions",
+		"chat_channels", "chat_messages", "chat_reactions", "chat_attachments",
+		"calendars", "calendar_events", "calendar_reminders", "calendar_subscriptions", "calendar_sub_events",
+		"mail_messages", "mail_box", "mail_attachments", "mail_folders", "mail_rules", "mail_audit", "mail_aliases",
+	}
+	for _, t := range tables {
+		tx.Exec(`SELECT setval(pg_get_serial_sequence('` + t + `','id'),
+			(SELECT COALESCE(MAX(id),1) FROM ` + t + `),
+			(SELECT COUNT(*) > 0 FROM ` + t + `))`)
+	}
 }
 
 // DatabaseChecksum returns a quick checksum based on row counts and max IDs to detect changes.

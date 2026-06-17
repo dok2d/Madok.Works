@@ -129,12 +129,11 @@ func (s *Store) CreateChatChannel(name, topic, chType string, createdBy int64, m
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO chat_channels(name, topic, type, created_by) VALUES(?,?,?,?)`,
+	id, err := tx.ExecInsert(`INSERT INTO chat_channels(name, topic, type, created_by) VALUES(?,?,?,?)`,
 		name, topic, chType, createdBy)
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
 	seen := map[int64]bool{createdBy: true}
 	if _, err := tx.Exec(`INSERT INTO chat_members(channel_id, user_id) VALUES(?,?)`, id, createdBy); err != nil {
 		return 0, err
@@ -144,7 +143,7 @@ func (s *Store) CreateChatChannel(name, topic, chType string, createdBy int64, m
 			continue
 		}
 		seen[uid] = true
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO chat_members(channel_id, user_id) VALUES(?,?)`, id, uid); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat_members(channel_id, user_id) VALUES(?,?) ON CONFLICT DO NOTHING`, id, uid); err != nil {
 			return 0, err
 		}
 	}
@@ -173,11 +172,10 @@ func (s *Store) GetOrCreateDM(userA, userB int64) (int64, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO chat_channels(name, type, created_by) VALUES('', 'dm', ?)`, userA)
+	id, err = tx.ExecInsert(`INSERT INTO chat_channels(name, type, created_by) VALUES('', 'dm', ?)`, userA)
 	if err != nil {
 		return 0, err
 	}
-	id, _ = res.LastInsertId()
 	if _, err := tx.Exec(`INSERT INTO chat_members(channel_id, user_id) VALUES(?,?),(?,?)`, id, userA, id, userB); err != nil {
 		return 0, err
 	}
@@ -220,7 +218,7 @@ func (s *Store) ListChatMembers(channelID int64) ([]model.WikiSpaceMember, error
 }
 
 func (s *Store) AddChatMember(channelID, userID int64) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO chat_members(channel_id, user_id) VALUES(?,?)`, channelID, userID)
+	_, err := s.db.Exec(`INSERT INTO chat_members(channel_id, user_id) VALUES(?,?) ON CONFLICT DO NOTHING`, channelID, userID)
 	return err
 }
 
@@ -283,13 +281,13 @@ func (s *Store) ListChatMessages(channelID int64, beforeID, afterID int64, limit
 			SELECT `+chatMsgCols+`
 			FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
 			WHERE m.channel_id = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?
-		) ORDER BY id`, channelID, beforeID, limit)
+		) sub ORDER BY id`, channelID, beforeID, limit)
 	default:
 		rows, err = s.db.Query(`SELECT * FROM (
 			SELECT `+chatMsgCols+`
 			FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
 			WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT ?
-		) ORDER BY id`, channelID, limit)
+		) sub ORDER BY id`, channelID, limit)
 	}
 	if err != nil {
 		return nil, err
@@ -511,12 +509,11 @@ func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts [
 	if replyTo > 0 {
 		replyArg = replyTo
 	}
-	res, err := tx.Exec(`INSERT INTO chat_messages(channel_id, author_id, text, reply_to) VALUES(?,?,?,?)`,
+	id, err := tx.ExecInsert(`INSERT INTO chat_messages(channel_id, author_id, text, reply_to) VALUES(?,?,?,?)`,
 		channelID, authorID, text, replyArg)
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	for _, a := range atts {
 		if a.FileID <= 0 {
 			continue
@@ -536,11 +533,10 @@ func (s *Store) CreateChatMessage(channelID, authorID int64, text string, atts [
 // CreateSystemMessage inserts a system message (no author). `text` is a machine
 // code the frontend localizes, e.g. "join|alice", "rename|New name".
 func (s *Store) CreateSystemMessage(channelID int64, text string) (*model.ChatMessage, error) {
-	res, err := s.db.Exec(`INSERT INTO chat_messages(channel_id, author_id, text, kind) VALUES(?, NULL, ?, 'system')`, channelID, text)
+	id, err := s.db.ExecInsert(`INSERT INTO chat_messages(channel_id, author_id, text, kind) VALUES(?, NULL, ?, 'system')`, channelID, text)
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return s.GetChatMessage(id)
 }
 
@@ -652,6 +648,6 @@ func (s *Store) TotalChatUnread(userID int64) int {
 		SELECT (SELECT COUNT(*) FROM chat_messages msg
 			WHERE msg.channel_id = m.channel_id AND msg.id > m.last_read_id AND msg.deleted = 0
 			AND COALESCE(msg.author_id,0) != m.user_id) AS cnt
-		FROM chat_members m WHERE m.user_id = ?)`, userID).Scan(&total)
+		FROM chat_members m WHERE m.user_id = ?) sub`, userID).Scan(&total)
 	return total
 }

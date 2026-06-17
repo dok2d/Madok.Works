@@ -68,13 +68,8 @@ func (s *Store) CreateSubscription(userID int64, name, url, color string) (int64
 	if color == "" {
 		color = "#0ea5e9"
 	}
-	res, err := s.db.Exec(`INSERT INTO calendar_subscriptions(user_id, name, url, color) VALUES(?,?,?,?)`,
+	return s.db.ExecInsert(`INSERT INTO calendar_subscriptions(user_id, name, url, color) VALUES(?,?,?,?)`,
 		userID, name, url, color)
-	if err != nil {
-		return 0, err
-	}
-	id, _ := res.LastInsertId()
-	return id, nil
 }
 
 func (s *Store) DeleteSubscription(id, userID int64) error {

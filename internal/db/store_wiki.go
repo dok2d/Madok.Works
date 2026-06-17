@@ -81,15 +81,15 @@ func (s *Store) CreateWikiSpace(key, name, description, visibility string, creat
 	if visibility != "restricted" {
 		visibility = "open"
 	}
-	res, err := s.db.Exec(`INSERT INTO wiki_spaces(key, name, description, visibility, created_by) VALUES(?,?,?,?,?)`,
+	id, err := s.db.ExecInsert(`INSERT INTO wiki_spaces(key, name, description, visibility, created_by) VALUES(?,?,?,?,?)`,
 		key, name, description, visibility, createdBy)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
+		if isUniqueViolation(err) {
 			return 0, fmt.Errorf("space key %q already exists", key)
 		}
 		return 0, err
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 func (s *Store) UpdateWikiSpace(id int64, name, description, visibility string) error {
@@ -195,12 +195,8 @@ func (s *Store) CreateWikiPage(spaceID int64, parentID *int64, title, content, c
 	var pos int
 	s.db.QueryRow(`SELECT COALESCE(MAX(position),-1)+1 FROM wiki_pages WHERE space_id=? AND COALESCE(parent_id,0)=COALESCE(?,0)`,
 		spaceID, parentID).Scan(&pos)
-	res, err := s.db.Exec(`INSERT INTO wiki_pages(space_id, parent_id, title, content, content_md, position, created_by, updated_by)
+	pageID, err := s.db.ExecInsert(`INSERT INTO wiki_pages(space_id, parent_id, title, content, content_md, position, created_by, updated_by)
 		VALUES(?,?,?,?,?,?,?,?)`, spaceID, parentID, title, content, contentMd, pos, author, author)
-	if err != nil {
-		return 0, err
-	}
-	pageID, err := res.LastInsertId()
 	if err != nil {
 		return 0, err
 	}

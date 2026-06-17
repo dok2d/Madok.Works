@@ -63,12 +63,8 @@ func (s *Store) CreateMailRule(userID int64, r model.MailRule) (int64, error) {
 	if r.MatchType != "any" {
 		r.MatchType = "all"
 	}
-	res, err := s.db.Exec(`INSERT INTO mail_rules(user_id, name, enabled, match_type, conditions, actions, position)
+	return s.db.ExecInsert(`INSERT INTO mail_rules(user_id, name, enabled, match_type, conditions, actions, position)
 		VALUES(?,?,?,?,?,?,?)`, userID, strings.TrimSpace(r.Name), en, r.MatchType, string(cond), string(act), r.Position)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
 }
 
 func (s *Store) UpdateMailRule(id, userID int64, r model.MailRule) error {
@@ -226,11 +222,10 @@ func (s *Store) CreateAlias(userID int64, localpart string, primary bool) (int64
 		p = 1
 		tx.Exec(`UPDATE mail_aliases SET is_primary=0 WHERE user_id=?`, userID)
 	}
-	res, err := tx.Exec(`INSERT INTO mail_aliases(user_id, localpart, is_primary) VALUES(?,?,?)`, userID, localpart, p)
+	id, err := tx.ExecInsert(`INSERT INTO mail_aliases(user_id, localpart, is_primary) VALUES(?,?,?)`, userID, localpart, p)
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
 	return id, tx.Commit()
 }
 
@@ -327,11 +322,7 @@ func (s *Store) CreateMailFolder(userID int64, name string) (int64, error) {
 	if mailSystemFolders[strings.ToLower(name)] {
 		return 0, fmt.Errorf("reserved folder name")
 	}
-	res, err := s.db.Exec(`INSERT INTO mail_folders(user_id, name) VALUES(?,?)`, userID, name)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	return s.db.ExecInsert(`INSERT INTO mail_folders(user_id, name) VALUES(?,?)`, userID, name)
 }
 
 func (s *Store) RenameMailFolder(id, userID int64, name string) error {
@@ -396,12 +387,11 @@ func (s *Store) SendInternalMail(fromUserID int64, fromName string, toUserIDs []
 	}
 	defer tx.Rollback()
 
-	res, err := tx.Exec(`INSERT INTO mail_messages(thread_id, from_user_id, from_name, to_addrs, cc_addrs, subject, body_text, body_html, in_reply_to)
+	id, err := tx.ExecInsert(`INSERT INTO mail_messages(thread_id, from_user_id, from_name, to_addrs, cc_addrs, subject, body_text, body_html, in_reply_to)
 		VALUES(?,?,?,?,?,?,?,?,?)`, threadID, fromUserID, fromName, toAddrs, ccAddrs, subject, bodyText, bodyHTML, inReplyTo)
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
 	if threadID == 0 {
 		if _, err := tx.Exec(`UPDATE mail_messages SET thread_id = ? WHERE id = ?`, id, id); err != nil {
 			return 0, err
@@ -443,12 +433,11 @@ func (s *Store) DeliverInbound(toUserIDs []int64, fromName, fromAddr, toAddrs, s
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO mail_messages(thread_id, from_user_id, from_name, from_addr, to_addrs, subject, body_text, body_html, spam_score)
+	id, err := tx.ExecInsert(`INSERT INTO mail_messages(thread_id, from_user_id, from_name, from_addr, to_addrs, subject, body_text, body_html, spam_score)
 		VALUES(0, NULL, ?, ?, ?, ?, ?, ?, ?)`, fromName, fromAddr, toAddrs, subject, bodyText, bodyHTML, spamScore)
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
 	if _, err := tx.Exec(`UPDATE mail_messages SET thread_id = ? WHERE id = ?`, id, id); err != nil {
 		return 0, err
 	}

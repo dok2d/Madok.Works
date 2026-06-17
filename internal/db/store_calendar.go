@@ -158,12 +158,8 @@ func (s *Store) CreateCalendar(name, color string, ownerID int64, visibility str
 	if color == "" {
 		color = "#6366f1"
 	}
-	res, err := s.db.Exec(`INSERT INTO calendars(name, color, owner_id, visibility) VALUES(?,?,?,?)`,
+	return s.db.ExecInsert(`INSERT INTO calendars(name, color, owner_id, visibility) VALUES(?,?,?,?)`,
 		name, color, ownerID, visibility)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
 }
 
 func (s *Store) UpdateCalendar(id int64, name, color, visibility string) error {
@@ -253,7 +249,7 @@ func (s *Store) SetEventReminders(eventID int64, reminders []model.CalendarRemin
 // MarkReminderSent records that a specific occurrence reminder has fired.
 // Returns true only on the first call for that (event,lead,occurrence).
 func (s *Store) MarkReminderSent(eventID int64, leadMin int, occ string) bool {
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO calendar_reminders(event_id, lead_min, channel, occurrence_start, sent) VALUES(?,?,'',?,1)`, eventID, leadMin, occ)
+	res, err := s.db.Exec(`INSERT INTO calendar_reminders(event_id, lead_min, channel, occurrence_start, sent) VALUES(?,?,'',?,1) ON CONFLICT DO NOTHING`, eventID, leadMin, occ)
 	if err != nil {
 		return false
 	}
@@ -337,12 +333,11 @@ func (s *Store) CreateCalendarEvent(e *model.CalendarEvent, createdBy int64) (*m
 	if e.AllDay {
 		allDay = 1
 	}
-	res, err := s.db.Exec(`INSERT INTO calendar_events(calendar_id, title, description, location, start_utc, end_utc, all_day, rrule, created_by)
+	id, err := s.db.ExecInsert(`INSERT INTO calendar_events(calendar_id, title, description, location, start_utc, end_utc, all_day, rrule, created_by)
 		VALUES(?,?,?,?,?,?,?,?,?)`, e.CalendarID, e.Title, e.Description, e.Location, start, end, allDay, strings.TrimSpace(e.RRule), createdBy)
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	s.SetEventReminders(id, e.Reminders)
 	return s.GetCalendarEvent(id)
 }
