@@ -1210,7 +1210,7 @@ function setTheme(name) {
 (function initTheme() { setTheme(localStorage.getItem('kanban-theme') || 'dark'); })();
 
 // === Font size ===
-function getFontSize() { return parseInt(localStorage.getItem('kanban-font-size') || '14'); }
+function getFontSize() { return parseInt(localStorage.getItem('kanban-font-size') || '18'); }
 function setFontSize(px) {
   px = Math.max(10, Math.min(22, px));
   localStorage.setItem('kanban-font-size', px);

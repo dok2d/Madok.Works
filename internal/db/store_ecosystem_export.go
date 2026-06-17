@@ -88,6 +88,16 @@ func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 	}
 	for _, tbl := range ecosystemTables {
 		rows := eco[tbl]
+		if len(rows) == 0 {
+			continue
+		}
+		// Only insert columns that actually exist in the current table, so a backup
+		// from a slightly different schema version (renamed/removed columns) imports
+		// instead of aborting the whole restore.
+		valid, err := tableColumns(tx, tbl)
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", tbl, err)
+		}
 		// Insert in ascending id order so self-referential rows (wiki_pages.parent_id,
 		// chat_messages.reply_to) see their parent first — Postgres enforces FKs
 		// immediately. Rows without an id column keep their original order.
@@ -97,6 +107,9 @@ func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 			ph := make([]string, 0, len(row))
 			vals := make([]any, 0, len(row))
 			for c, v := range row {
+				if !valid[c] {
+					continue // column not in the current schema — skip it
+				}
 				cols = append(cols, c)
 				ph = append(ph, "?")
 				vals = append(vals, v)
@@ -111,6 +124,26 @@ func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// tableColumns returns the set of a table's column names. It uses rows.Columns()
+// on a no-row query, so it works on both SQLite and Postgres without any
+// dialect-specific introspection SQL.
+func tableColumns(tx *dbTx, table string) (map[string]bool, error) {
+	rows, err := tx.Query("SELECT * FROM " + table + " LIMIT 0")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		set[c] = true
+	}
+	return set, nil
 }
 
 // rowID extracts the numeric "id" of an exported row (0 if absent). JSON decoding
