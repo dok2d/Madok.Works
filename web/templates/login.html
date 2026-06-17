@@ -46,6 +46,20 @@ body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',san
       <label for="password2">Подтверждение пароля</label>
       <input type="password" id="password2" autocomplete="new-password">
     </div>
+    <div id="db-setup" style="display:none;margin:14px 0;padding-top:14px;border-top:1px solid var(--bg4)">
+      <label style="display:flex;align-items:center;gap:8px;color:var(--fg2);font-size:.85rem;cursor:pointer">
+        <input type="checkbox" id="db-external" onchange="toggleDbFields()" style="width:auto;margin:0"> Использовать внешний PostgreSQL
+      </label>
+      <div id="db-fields" style="display:none;margin-top:12px">
+        <div class="field"><label for="db-host">Хост</label><input type="text" id="db-host" placeholder="db или 192.168.1.10"></div>
+        <div class="field"><label for="db-port">Порт</label><input type="text" id="db-port" placeholder="5432"></div>
+        <div class="field"><label for="db-name">База данных</label><input type="text" id="db-name" placeholder="kanban"></div>
+        <div class="field"><label for="db-user">Пользователь</label><input type="text" id="db-user" placeholder="kanban"></div>
+        <div class="field"><label for="db-pass">Пароль БД</label><input type="password" id="db-pass" autocomplete="off"></div>
+        <button class="btn" type="button" onclick="testDb()" style="background:var(--bg3);color:var(--fg)">Проверить подключение</button>
+        <div class="setup-note" id="db-test-status" style="margin-top:8px"></div>
+      </div>
+    </div>
     <button class="btn" id="submit-btn" onclick="submit()">Войти</button>
     <div class="error" id="error"></div>
     <div id="forgot-link" style="text-align:center;margin-top:12px">
@@ -104,9 +118,40 @@ async function checkSetup() {
         document.getElementById('setup-note').style.display = '';
         document.getElementById('password-confirm-field').style.display = '';
         document.getElementById('password').autocomplete = 'new-password';
+        // Offer an external DB only if we're not already running on Postgres.
+        try {
+          const info = await (await fetch('/api/setup/info')).json();
+          if (info.can_choose_db) document.getElementById('db-setup').style.display = '';
+        } catch {}
       }
     }
   } catch {}
+}
+
+const dbVal = id => document.getElementById(id).value.trim();
+function dbPayload() {
+  return {
+    db_host: dbVal('db-host'), db_port: dbVal('db-port'), db_name: dbVal('db-name'),
+    db_user: dbVal('db-user'), db_password: document.getElementById('db-pass').value
+  };
+}
+function toggleDbFields() {
+  document.getElementById('db-fields').style.display =
+    document.getElementById('db-external').checked ? '' : 'none';
+}
+async function testDb() {
+  const el = document.getElementById('db-test-status');
+  el.style.color = 'var(--fg3)';
+  el.textContent = 'Проверка…';
+  try {
+    const r = await fetch('/api/setup/test-db', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(dbPayload())
+    });
+    const d = await r.json();
+    if (d.ok) { el.style.color = '#22c55e'; el.textContent = '✓ Подключение успешно'; }
+    else { el.style.color = 'var(--red)'; el.textContent = '✗ ' + (d.error || 'ошибка подключения'); }
+  } catch (e) { el.style.color = 'var(--red)'; el.textContent = '✗ ' + e.message; }
 }
 
 async function submit() {
@@ -130,14 +175,32 @@ async function submit() {
       errorEl.textContent = 'Пароль минимум 6 символов';
       return;
     }
+    const payload = {username, password};
+    const ext = document.getElementById('db-external');
+    if (ext && ext.checked) {
+      Object.assign(payload, dbPayload(), {db_external: true});
+      if (!payload.db_host || !payload.db_name || !payload.db_user) {
+        errorEl.textContent = 'Заполните хост, базу и пользователя PostgreSQL';
+        return;
+      }
+    }
     try {
       const r = await fetch('/api/auth/setup', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username, password})
+        body: JSON.stringify(payload)
       });
       if (!r.ok) {
         errorEl.textContent = await r.text();
+        return;
+      }
+      let data = {};
+      try { data = await r.json(); } catch {}
+      if (data.restarting) {
+        document.getElementById('subtitle').textContent = 'Применение настроек…';
+        errorEl.style.color = 'var(--accent2)';
+        errorEl.textContent = 'Подключение к PostgreSQL сохранено. Перезапуск сервера…';
+        setTimeout(() => location.href = '/', 3500);
         return;
       }
       location.href = '/';

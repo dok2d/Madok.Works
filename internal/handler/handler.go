@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -201,6 +202,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Public paths: login page, login API, static assets, setup
 	path := r.URL.Path
 	if path == "/login" || path == "/api/auth/login" || path == "/api/auth/setup" ||
+		path == "/api/setup/info" || path == "/api/setup/test-db" ||
 		path == "/api/auth/reset-request" || path == "/api/auth/reset-confirm" ||
 		path == "/api/auth/sso/config" ||
 		path == "/api/auth/oidc/login" || path == "/api/auth/oidc/callback" ||
@@ -339,6 +341,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/auth/login", h.handleLogin)
 	h.mux.HandleFunc("/api/auth/logout", h.handleLogout)
 	h.mux.HandleFunc("/api/auth/setup", h.handleSetup)
+	h.mux.HandleFunc("/api/setup/info", h.handleSetupInfo)
+	h.mux.HandleFunc("/api/setup/test-db", h.handleSetupTestDB)
 	h.mux.HandleFunc("/api/auth/me", h.handleAuthMe)
 	h.mux.HandleFunc("/api/auth/reset-request", h.handleResetRequest)
 	h.mux.HandleFunc("/api/auth/reset-confirm", h.handleResetConfirm)
@@ -1792,8 +1796,14 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		DBExternal bool   `json:"db_external"`
+		DBHost     string `json:"db_host"`
+		DBPort     string `json:"db_port"`
+		DBName     string `json:"db_name"`
+		DBUser     string `json:"db_user"`
+		DBPassword string `json:"db_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -1803,6 +1813,44 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username required, password min 6 chars", http.StatusBadRequest)
 		return
 	}
+
+	// First-run choice of an external PostgreSQL: provision it (connect +
+	// migrate + create the admin there), persist the choice, then restart so the
+	// whole process runs on it. Ignored if we're already on Postgres.
+	if req.DBExternal && !h.store.IsPostgres() {
+		dsn := buildPostgresDSN(req.DBHost, req.DBPort, req.DBName, req.DBUser, req.DBPassword)
+		newStore, err := db.New(dsn)
+		if err != nil {
+			http.Error(w, "cannot initialize PostgreSQL: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		id, err := newStore.CreateUser(req.Username, req.Password, "admin")
+		if err != nil {
+			newStore.Close()
+			http.Error(w, "create admin in PostgreSQL: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		token, err := newStore.CreateSession(id)
+		if err != nil {
+			newStore.Close()
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := writeDBConfig(h.dataDir, dsn); err != nil {
+			newStore.Close()
+			http.Error(w, "cannot persist DB config: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		newStore.Close()
+		http.SetCookie(w, &http.Cookie{
+			Name: h.cookieName, Value: token, Path: "/",
+			MaxAge: sessionMaxAgeSec, HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		})
+		jsonResp(w, map[string]any{"status": "ok", "user_id": id, "restarting": true})
+		h.scheduleRestart()
+		return
+	}
+
 	id, err := h.store.CreateUser(req.Username, req.Password, "admin")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1822,6 +1870,71 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 	jsonResp(w, map[string]any{"status": "ok", "user_id": id})
+}
+
+// handleSetupInfo tells the first-run page whether setup is needed and whether
+// the operator may still choose an external database (only meaningful before any
+// user exists and when not already running on Postgres).
+func (h *Handler) handleSetupInfo(w http.ResponseWriter, r *http.Request) {
+	cnt, _ := h.store.UserCount()
+	backend := "sqlite"
+	if h.store.IsPostgres() {
+		backend = "postgres"
+	}
+	jsonResp(w, map[string]any{
+		"needs_setup":   cnt == 0,
+		"can_choose_db": cnt == 0 && !h.store.IsPostgres(),
+		"backend":       backend,
+	})
+}
+
+// handleSetupTestDB validates user-entered PostgreSQL credentials during
+// first-run setup, before they are committed.
+func (h *Handler) handleSetupTestDB(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if cnt, _ := h.store.UserCount(); cnt > 0 {
+		http.Error(w, "setup already completed", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		DBHost     string `json:"db_host"`
+		DBPort     string `json:"db_port"`
+		DBName     string `json:"db_name"`
+		DBUser     string `json:"db_user"`
+		DBPassword string `json:"db_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	dsn := buildPostgresDSN(req.DBHost, req.DBPort, req.DBName, req.DBUser, req.DBPassword)
+	if err := db.PingDSN(dsn); err != nil {
+		jsonResp(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	jsonResp(w, map[string]any{"ok": true})
+}
+
+// scheduleRestart re-execs the process shortly after responding, so a database
+// reconfiguration chosen at first-run setup takes effect process-wide. Re-exec
+// (rather than os.Exit) works with or without an external supervisor — including
+// as container PID 1 — and re-reads the persisted DB config on the way up.
+func (h *Handler) scheduleRestart() {
+	go func() {
+		time.Sleep(750 * time.Millisecond)
+		exe, err := os.Executable()
+		if err != nil {
+			log.Printf("[setup] restart: cannot locate executable: %v", err)
+			return
+		}
+		log.Printf("[setup] database reconfigured; restarting to apply")
+		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+			log.Fatalf("[setup] restart failed: %v", err)
+		}
+	}()
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {

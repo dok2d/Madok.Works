@@ -1,8 +1,11 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 )
@@ -102,4 +105,27 @@ func isUniqueViolation(err error) bool {
 // isPostgresURL reports whether the -db value selects the Postgres backend.
 func isPostgresURL(s string) bool {
 	return strings.HasPrefix(s, "postgres://") || strings.HasPrefix(s, "postgresql://")
+}
+
+// IsPostgresURL is the exported form, for callers outside this package.
+func IsPostgresURL(s string) bool { return isPostgresURL(s) }
+
+// IsPostgres reports whether this store is backed by PostgreSQL.
+func (s *Store) IsPostgres() bool { return s.db.d == dialectPostgres }
+
+// PingDSN opens a short-lived connection to a Postgres DSN and verifies it is
+// reachable. Used by the first-run setup to validate user-entered credentials
+// before committing to them.
+func PingDSN(dsn string) error {
+	if !isPostgresURL(dsn) {
+		return fmt.Errorf("not a postgres URL")
+	}
+	d, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return d.PingContext(ctx)
 }

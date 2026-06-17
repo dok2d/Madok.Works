@@ -23,12 +23,7 @@ func main() {
 	smtpAddr := flag.String("smtp-addr", "", "optional inbound SMTP listen address (e.g. :25); empty disables mail receiving")
 	flag.Parse()
 
-	store, err := db.New(*dbPath)
-	if err != nil {
-		log.Fatalf("db init: %v", err)
-	}
-	defer store.Close()
-
+	// Resolve the data directory first (it may hold a persisted DB choice).
 	dir := *dataDir
 	if dir == "" {
 		if strings.HasPrefix(*dbPath, "postgres://") || strings.HasPrefix(*dbPath, "postgresql://") {
@@ -37,6 +32,16 @@ func main() {
 			dir = filepath.Dir(*dbPath)
 		}
 	}
+
+	// Effective DB: explicit postgres:// flag > a DSN persisted by first-run
+	// setup (<data-dir>/db.json) > the -db value as a SQLite path.
+	dsn := handler.ResolveDSN(*dbPath, dir)
+	store, err := db.New(dsn)
+	if err != nil {
+		log.Fatalf("db init: %v", err)
+	}
+	defer store.Close()
+
 	h := handler.New(store, dir)
 	h.SetInstanceID(*addr)
 	if *verbose {
