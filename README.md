@@ -1,23 +1,29 @@
-# Kanban — Personal Task Board
+# Madok.Works — Kanban-centred Team Workspace
 
 [Русская версия](README.RUS.md)
 
-Self-hosted team workspace built around a Kanban board, now a small **ecosystem**: board + wiki, chat, calendar and mail under one interface, one binary and one SQLite file.
+**Madok.Works** is a self-hosted team workspace built around a Kanban board, now a full **ecosystem**: projects with their own board + wiki, chat, calls, calendar and mail under one interface, one binary and one SQLite file (PostgreSQL optional).
+
+## Projects
+
+The top level is a **Project** — a self-contained container with its own Kanban board, wiki spaces and calendars. A default project ("General") exists out of the box; create more from the project selector in the header. Projects have open or restricted visibility and per-project roles (admin/editor/viewer). Tasks are numbered per project as **KEY-123**, and tags are scoped per project. Project moderation lives in **Settings → Board → Projects**. The calendar is cross-project so deadlines and sprints from every project line up on one timeline.
 
 ## Ecosystem services
 
-Beyond the Kanban board, optional services share the same auth, roles, notifications, search, themes and i18n. From the **Services** tab, an admin can enable/disable each service (the board included) and reorder them in the service rail; a disabled service is blocked server-side, not just hidden. Each service adds its own contextual selectors to the header (kanban-style), and a single global search lets you pick which service to search, defaulting to the current one.
+Beyond the Kanban board, optional services share the same auth, roles, notifications, search, themes and i18n. From the **Services** tab, an admin can enable/disable each service (the board included) and reorder them in the service rail; a disabled service is blocked server-side, not just hidden. Each service adds its own contextual selectors to the header (kanban-style), and a single global **multi-term search** (every term must match) spans tasks, comments, wiki, chat, calendar and mail, with a filter to scope to one service.
 
-- **Wiki** — Confluence-style spaces with a page tree, a Markdown editor with a formatting toolbar, revision history and per-space roles (admin/editor/viewer).
-- **Chat** — Telegram-style messaging: bubbles, avatars, reactions, replies, pins, a typing indicator and read receipts (ticks) in DMs, plus a contacts list. Public channels, private groups and direct messages with live updates (SSE), @-mentions, search and unread badges.
-- **Calendar** — private/shared calendars, recurring events (RRULE), month/week/day/agenda views, reminders, an overlay of task deadlines & sprints, and read-only subscriptions to external ICS/iCal feeds (e.g. Google Calendar).
+- **Wiki** — Confluence-style spaces with a page tree, a Markdown editor with a formatting toolbar, revision history and per-space roles (admin/editor/viewer). Includes @mentions, `[[wiki links]]` with backlinks, auto-anchor heading links, `[[toc]]`, task links, comments with reactions, page templates, embedded draw.io diagrams (bundled) and Markdown/PDF export.
+- **Chat** — Telegram-style messaging: bubbles, avatars, reactions, replies, pins, a typing indicator and read receipts (ticks) in DMs, plus a contacts list. Public channels, **read-only channels**, **private groups** (with a member picker) and direct messages with live updates (SSE), @-mentions, emoji picker, Markdown and image paste with lightbox, **notification sound with per-channel mute**, search and unread badges.
+- **Calls** — built-in **WebRTC** voice/video: 1:1 and small-group mesh calls signalled over SSE+POST, a ring UI, mute and camera toggles, and the ability to invite anyone mid-call. Uses a built-in STUN server plus an optional self-hosted TURN (coturn) configured in settings.
+- **Calendar** — private/shared calendars, recurring events (RRULE), month/week/day/agenda views, reminders, a cross-project overlay of task deadlines & sprints, and read-only subscriptions to external ICS/iCal feeds (e.g. Google Calendar).
 - **Mail** — internal mail between users out of the box: folders in the header, two-pane view, threads, attachments, search, distribution rules, anti-spam and aliases. Optional inbound SMTP receiving via `-smtp-addr`, plus external send/DKIM configured in the Mail server settings (see docs).
 
 ## Why this project
 
-- **Minimal dependencies** — Go + SQLite at the core (single `mattn/go-sqlite3`); the mail stack adds a small, self-contained SMTP/MIME library set. No Redis, no Postgres, no message queue.
+- **Minimal dependencies** — Go + SQLite at the core (single `mattn/go-sqlite3`); the mail stack adds a small, self-contained SMTP/MIME library set. No Redis, no message queue. PostgreSQL is supported but optional.
 - **One command to run** — `./kanban.sh build && ./kanban.sh run`, open browser
-- **Batteries included** — sprints, epics, tags, file attachments, Markdown, comments with @mentions, search (text + regex), drag-and-drop, Telegram notifications
+- **Batteries included** — projects, sprints, epics, per-project tags, file attachments, Markdown, comments with @mentions, multi-term search (text + regex), drag-and-drop, Telegram notifications, **2FA (TOTP)**, audit log
+- **Integrations** — Git (GitHub/GitLab/Gitea) webhooks link commits/branches/MRs to tasks by KEY-123/#123 and can auto-move tasks on merge; project-aware Telegram bot
 - **Hardened by default** — rootless Podman, read-only FS, all capabilities dropped, 127.0.0.1 only
 - **Works offline** — all static assets bundled, no external CDN calls
 - **8 themes, 10 languages** — dark/light/ocean/forest/nord/dracula/solarized/spacedust, from English to Arabic
@@ -30,7 +36,11 @@ Beyond the Kanban board, optional services share the same auth, roles, notificat
 # → http://127.0.0.1:8080
 ```
 
-First launch opens the admin setup page. Create an account and start using the board immediately.
+First launch opens the admin setup page. Create an account and start using the board immediately. SQLite is the default; to use PostgreSQL instead, pass a connection string (or choose it on the first-run setup):
+
+```bash
+./kanban.sh run -db postgres://user:pass@localhost/madok
+```
 
 To deploy on a server with TLS behind nginx:
 
@@ -42,40 +52,45 @@ To deploy on a server with TLS behind nginx:
 
 | Area | What you get |
 |------|-------------|
+| Projects | Top-level multi-project containers, each with its own board, wiki and calendars; per-project roles; tasks keyed as KEY-123 |
 | Board | Columns with drag-and-drop, inline editing, priorities, deadlines |
 | Planning | Sprints (plan → active → done), epics with color coding and progress |
 | Collaboration | Nested comments, @mentions, task subscriptions, activity feed |
-| Organization | Tags, dependencies (blocks / depends on), TODO checklists |
-| Search | Plaintext and regex across tasks, comments, tags, and epics |
+| Organization | Per-project tags, dependencies (blocks / depends on), TODO checklists |
+| Search | Multi-term plaintext and regex across tasks, comments, wiki, chat, calendar and mail, with per-service scope |
 | Files | Attachments, image paste (Ctrl+V), Markdown with syntax highlighting |
-| Notifications | In-app + Telegram bot (assignments, mentions, updates) |
-| Access control | Three roles: Admin, User, Read-only; per-space wiki roles |
-| Ecosystem | Wiki, Chat, Calendar, Mail — toggleable and reorderable services in one UI |
+| Notifications | In-app + project-aware Telegram bot (assignments, mentions, updates) |
+| Integrations | Git (GitHub/GitLab/Gitea) webhooks linking commits/branches/MRs to tasks, auto-move on merge |
+| Security | 2FA (TOTP, opt-in), audit log, three roles: Admin, User, Read-only; per-space wiki roles |
+| Ecosystem | Wiki, Chat, Calls (WebRTC), Calendar, Mail — toggleable and reorderable services in one UI |
 | Settings | Single settings page with role-based tabs, opened from the service rail |
 | Data | JSON export/import (incl. ecosystem services), scheduled backups via `./kanban.sh backup` |
 | Customization | App name / branding, 8 themes, 10 languages, adjustable font size, timezone selector |
 
 ## Comparison
 
-| | **Kanban** | Trello | Jira | Notion | WeKan | Planka |
+| | **Madok.Works** | Trello | Jira | Notion | WeKan | Planka |
 |---|---|---|---|---|---|---|
 | Free & open source | **Yes, MIT** | Freemium | Freemium | Freemium | Yes, MIT | No (Fair Use) |
 | Self-hosted | **Yes** | No | Data Center ($) | No | Yes | Yes |
-| External dependencies | **None** (SQLite) | — | Postgres, Elasticsearch, etc. | — | MongoDB | Postgres, Redis |
+| External dependencies | **None** (SQLite; Postgres optional) | — | Postgres, Elasticsearch, etc. | — | MongoDB | Postgres, Redis |
 | Setup time | **~1 min** | — | Hours | — | ~15 min | ~10 min |
+| Multi-project | **Yes** | Yes | Yes | Yes | Yes | Yes |
 | Sprints & epics | **Yes** | No | Yes | Basic | No | No |
+| Chat & calls (WebRTC) | **Yes** | No | No | No | No | No |
+| Git integration | **Yes** | Yes | Yes | Partial | No | No |
 | Telegram notifications | **Yes** | No | No | No | No | Yes |
 | Offline / air-gapped | **Yes** | No | Yes (DC) | Partial | Partial | Yes |
 | Resource usage | **~30 MB RAM** | — | 4+ GB RAM | — | ~400 MB | ~150 MB |
 | Themes | **8** | 2 | 1 | 2 | 3 | 1 |
 | Languages | **10** | 20+ | 20+ | ~15 | 100+ | 20+ |
 
-Kanban is not trying to replace Jira for a 500-person company. It is built for individuals and small teams who want a fast, private, self-hosted board that works out of the box without infrastructure overhead.
+Madok.Works is not trying to replace Jira for a 500-person company. It is built for individuals and small teams who want a fast, private, self-hosted workspace that works out of the box without infrastructure overhead.
 
 ## Stack
 
 - **Go 1.22** — stdlib `net/http`, no framework
-- **SQLite** — single `mattn/go-sqlite3` dependency
+- **SQLite** — single `mattn/go-sqlite3` dependency (PostgreSQL optional via `-db postgres://…`)
 - **Vanilla JS** — no React, no Vue, no build step
 - **Podman** — rootless container with security hardening
 

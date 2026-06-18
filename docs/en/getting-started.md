@@ -19,9 +19,24 @@ Open your browser at `http://127.0.0.1:8080`.
 
 ## First Launch
 
-On the first visit, you will see an administrator creation form. Enter a username and password — this will be the main account with full access.
+On the first visit, you will see the **administrator setup page**. Enter a username and password — this will be the main account with full access. The page also has:
 
-After creating the administrator, you will land on an empty kanban board. Get started:
+- A **language/flag picker** that sets the new admin's interface language and the **default language** for everyone created afterwards (each user can change their own later).
+- An optional **"use external PostgreSQL"** toggle with connection fields and a "Test connection" button. Leave it off to use the built-in SQLite database; turn it on to point the instance at an external PostgreSQL server (see [Configuration](configuration.md)).
+
+After creating the administrator, a one-time **onboarding wizard** appears with three options:
+
+- **Personal use** — kanban, calendar and wiki on; chat and mail off.
+- **Team work** — pick which services to enable.
+- **Restore from backup** — rebuild the instance from a backup file (via Import).
+
+The wizard is followed by a short, skippable **guided tour** of the projects selector, service rail, search and settings. (Admins can replay the wizard later from Settings → Site.)
+
+### Projects
+
+The instance ships with a default **"General"** project (key `GEN`). Create more projects from the **project selector in the header** or under **Settings → Board → Projects**. Each project has its own board, wiki and calendars.
+
+Once on a board, get started:
 
 1. **Create columns** — e.g., "To Do", "In Progress", "Done"
 2. **Add tasks** — click "+" in the desired column

@@ -1,6 +1,6 @@
-# Kanban Documentation
+# Madok.Works Documentation
 
-A minimalist self-hosted kanban board with sprints, epics, tags, comments, notifications, Telegram integration, and drag-and-drop.
+A minimalist self-hosted collaboration suite built around a kanban board with sprints, epics, tags, comments, notifications, Telegram integration, and drag-and-drop, plus projects, wiki, chat, calls, calendar, and mail.
 
 ## Table of Contents
 
@@ -14,4 +14,4 @@ A minimalist self-hosted kanban board with sprints, epics, tags, comments, notif
 8. [Security](security.md) — container hardening, encryption, data protection
 9. [REST API](api.md) — complete endpoint reference
 10. [Themes & Localization](themes-and-i18n.md) — themes, languages, font size
-11. [Ecosystem Services](ecosystem.md) — wiki, chat, calendar, mail
+11. [Ecosystem Services](ecosystem.md) — projects, wiki, chat, calls, calendar, mail

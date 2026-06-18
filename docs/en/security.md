@@ -39,6 +39,23 @@ All database queries use prepared statements.
 - MIME type validation
 - Dangerous extensions blocked: `.exe`, `.bat`, `.js`, `.html`, `.svg`, etc.
 
+## Git Webhooks
+
+Inbound git events are received at `/api/integrations/git/webhook/{repoID}` and verified per provider:
+
+- **GitHub / Gitea** — HMAC-SHA256 over the raw request body, compared against the `X-Hub-Signature-256` (GitHub) / `X-Gitea-Signature` (Gitea) header using a per-repository shared secret
+- **GitLab** — the `X-Gitlab-Token` header is matched against the configured shared secret
+
+If the configured secret is empty, verification is **skipped** — only use this for trusted/LAN setups. The request body is read with a size cap to bound resource use.
+
+## Calls
+
+Audio/video calls use **WebRTC**:
+
+- Media is **peer-to-peer** — the server only relays signaling (over SSE + POST) and never sees the media streams
+- A **STUN** server is built in for NAT discovery
+- For reliable connectivity behind restrictive NAT/firewalls, a self-hosted **TURN** server (coturn) can be configured (see [Deployment](deployment.md))
+
 ## nginx
 
 The nginx configuration includes:

@@ -36,6 +36,44 @@ Administrators can:
 
 Restrictions: administrators cannot change their own role and cannot delete themselves.
 
+## Two-Factor Authentication (2FA / TOTP)
+
+2FA is opt-in per user and managed under **Settings → Account**.
+
+### Enrollment
+
+1. Open Settings → Account and start 2FA enrollment
+2. The server returns an `otpauth://` URL (and the raw secret) — add it to an authenticator app (Google Authenticator, Aegis, FreeOTP, etc.) by scanning the QR code or entering the secret manually
+3. Confirm enrollment by entering a current 6-digit code from the app
+4. The server issues one-time **recovery codes** — store them safely; each code works once if you lose access to the authenticator
+
+### Login with 2FA
+
+When 2FA is enabled, login becomes a two-step flow:
+
+1. The user submits username and password as usual
+2. The login response returns `{ "totp_required": true }` instead of completing the session
+3. The client resends the request with the code: `{ "code": "123456" }` (a valid TOTP code or a recovery code)
+
+## Multi-Project Access Model
+
+Access to content is organized around **Projects**. A Project is a container with its own **members** and **roles**:
+
+| Project role | Capabilities within the project |
+|--------------|---------------------------------|
+| **Admin**    | Manage the project, its members and settings |
+| **Editor**   | Create and edit content |
+| **Viewer**   | Read-only access |
+
+Each project has a **visibility** setting:
+
+- **Open** — implicitly available to all users; users who are not explicit members get read-only (viewer) access
+- **Restricted** — only listed members can access the project
+
+**Global admins** have access to every project regardless of membership or visibility.
+
+This access model gates the project-scoped features: the **kanban board**, **wiki spaces**, and **project calendars**.
+
 ## Password Recovery
 
 Available for users with a linked Telegram account:

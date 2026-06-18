@@ -1,12 +1,33 @@
 # Ecosystem Services
 
-The Kanban board is one of several services in a small self-hosted ecosystem. All
-services share the same authentication, roles, notifications, global search,
-themes and localization, and are reached from the **app rail** (left/bottom bar).
+The Kanban board is one of several services in the **Madok.Works** self-hosted
+ecosystem (compact mark **MW**). All services share the same authentication, roles,
+notifications, global search, themes and localization, and are reached from the
+**app rail** (left/bottom bar).
 
 Admins enable or disable each service (including the **Kanban board itself**) and
-change their order in **Settings → Services**. A disabled service is hidden from
-the UI and unavailable on the server (its API returns `403`/`404`).
+change their order in **Settings → Services** — every service is toggleable. A
+disabled service is hidden from the UI and unavailable on the server (its API
+returns `403`/`404`).
+
+Madok.Works runs on its built-in database out of the box, with an optional
+**PostgreSQL** backend (`-db postgres://…`) for larger deployments.
+
+## Projects
+
+A **Project** is the top-level container that scopes the **kanban board**, **wiki**
+and **calendars** that belong to it. Out of the box there is a default **"General"**
+project, and admins can create more.
+
+- **Visibility:** each project is `open` (all users) or `restricted` (members only).
+- **Roles** within a project: `admin` / `editor` / `viewer`.
+- **Per-project task keys:** tasks are numbered `KEY-123` using the project's key, so
+  numbers stay unique and meaningful across projects. Tags are per-project too.
+- **Project selector in the header** switches the active project; the kanban board and
+  wiki spaces shown depend on the selected project.
+- **The calendar is cross-project** — it spans all projects you can see rather than
+  being scoped to one.
+- Project creation and moderation live in **Settings → Board → Projects**.
 
 ## Wiki
 
@@ -23,6 +44,8 @@ A Confluence-style documentation service.
   callouts.
 - **Revision history** per page with view and restore. Both the markdown source and
   the sanitized HTML are stored.
+- **Auto-anchor heading links:** every heading gets a stable anchor; hovering a
+  heading shows a **#** you can click to copy a direct link to that section.
 - There is no separate wiki search — the shared **global search** is used.
 
 ## Chat
@@ -32,6 +55,13 @@ Real-time messaging, modeled closely on Telegram.
 - **Public channels**, private **groups**, and one-to-one **direct messages**. The
   DM section lists every other user as a contact up front; clicking one starts a
   conversation.
+- **Private group creation** with a **member picker** — choose exactly who joins when
+  you create the group.
+- **Read-only channels:** a channel can be marked read-only so that only its
+  **designated writers** (plus the creator and admins) can post, while everyone else
+  reads along.
+- **Notifications:** a global **notification-sound toggle**, plus **per-channel mute**
+  for **1 hour / 8 hours / forever**.
 - **Messages**: text and attachments (files and inline images), editing, deleting,
   and **@mentions** (in-app + Telegram notifications).
 - **Replies** (quoting) with a jump to the original message.
@@ -51,6 +81,19 @@ Real-time messaging, modeled closely on Telegram.
   by last-message date.
 - Live updates over Server-Sent Events; unread badges on the app rail. There is no
   separate chat search — the shared **global search** is used.
+
+### Calls
+
+Voice and video calls run in the browser over **WebRTC**.
+
+- **1:1 and small-group calls** using a mesh topology (each participant connects
+  directly to the others).
+- A **ring UI** for incoming calls, with in-call controls to **mute** and toggle the
+  **camera**.
+- **Invite anyone mid-call** to join an ongoing call.
+- Signaling goes over the existing SSE + POST channel. A **STUN** server is built in;
+  an optional **self-hosted TURN** server (e.g. coturn) can be configured for relaying
+  through stricter NATs/firewalls.
 
 ## Calendar
 

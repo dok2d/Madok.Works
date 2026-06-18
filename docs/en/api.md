@@ -2,12 +2,14 @@
 
 All endpoints return JSON. Authentication (session cookie) is required, except for `/api/auth/setup` on first launch and the login page.
 
+Most list endpoints are project-scoped: pass `?project=<id>` to select the active project. Tasks carry a per-project `number` and are shown as `KEY-<number>`.
+
 ## Authentication
 
 | Method | Path                      | Description                             |
 |--------|---------------------------|-----------------------------------------|
 | POST   | `/api/auth/setup`         | Create the first administrator          |
-| POST   | `/api/auth/login`         | Log in                                  |
+| POST   | `/api/auth/login`         | Log in (optional `{code}` for 2FA; returns `{totp_required:true}` when a second step is needed) |
 | POST   | `/api/auth/logout`        | Log out                                 |
 | GET    | `/api/auth/me`            | Current user info                       |
 | POST   | `/api/auth/reset-request` | Password reset request (via Telegram)   |
@@ -25,6 +27,30 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 | PUT    | `/api/users/:id` | Update role/password        |
 | DELETE | `/api/users/:id` | Delete user                 |
 
+## Two-Factor Authentication (TOTP)
+
+| Method | Path               | Description                                              |
+|--------|--------------------|----------------------------------------------------------|
+| GET    | `/api/2fa/status`  | Whether 2FA is enabled (`{enabled}`)                     |
+| POST   | `/api/2fa/setup`   | Begin enrollment → `{secret, uri}` (provisioning URI)    |
+| POST   | `/api/2fa/enable`  | Confirm code `{code}` → `{recovery_codes}`               |
+| POST   | `/api/2fa/disable` | Disable 2FA `{code}`                                     |
+
+## Projects
+
+| Method | Path                          | Description                                       |
+|--------|-------------------------------|---------------------------------------------------|
+| GET    | `/api/projects`               | List accessible projects                          |
+| POST   | `/api/projects`               | Create project: `{name, description, visibility}` |
+| GET    | `/api/projects/{id}`          | Project details                                   |
+| PUT    | `/api/projects/{id}`          | Update project (project admin)                    |
+| DELETE | `/api/projects/{id}`          | Delete project (project admin)                    |
+| GET    | `/api/projects/{id}/members`  | Project members                                   |
+| POST   | `/api/projects/{id}/members`  | Add member                                        |
+| DELETE | `/api/projects/{id}/members`  | Remove member                                     |
+
+Other resources are scoped to the active project via `?project=<id>`.
+
 ## Board & Tasks
 
 | Method | Path               | Description                                           |
@@ -36,6 +62,7 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 | PUT    | `/api/tasks/:id`   | Update task                                           |
 | DELETE | `/api/tasks/:id`   | Delete task                                           |
 | POST   | `/api/tasks/move`  | Move task between columns                             |
+| GET    | `/api/tasks/:id/gitevents` | Linked git activity for a task                |
 
 ## Columns
 
@@ -119,8 +146,8 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 |--------|--------------------------|----------------------------------------------|
 | GET    | `/api/settings/timezone` | Current timezone                             |
 | POST   | `/api/settings/timezone` | Set timezone                                 |
-| GET    | `/api/settings/app`      | App name / branding (`{name}`)               |
-| POST   | `/api/settings/app`      | Set app name (admin)                         |
+| GET    | `/api/settings/app`      | Branding: `{name, default_lang, wap_enabled}` |
+| POST   | `/api/settings/app`      | Set app name, default language, WAP toggle: `{name, lang, wap}` (admin) |
 | GET    | `/api/settings/sso`      | LDAP/OIDC settings (admin)                   |
 | POST   | `/api/settings/sso`      | Save LDAP/OIDC settings (admin)              |
 
@@ -187,10 +214,12 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 | GET    | `/api/chat/channels`                    | List user's channels/groups/DMs                   |
 | POST   | `/api/chat/channels`                    | Create channel/group: `{name, topic, type, members}` |
 | GET    | `/api/chat/channels/:id`                | Channel info                                      |
-| PUT    | `/api/chat/channels/:id`                | Rename / set topic                                |
+| PUT    | `/api/chat/channels/:id`                | Rename / set topic / toggle `{read_only}`         |
 | DELETE | `/api/chat/channels/:id`                | Delete channel                                    |
+| POST   | `/api/chat/channels/:id/mute`           | Mute channel: `{until}` (0 = forever, else unix seconds) |
+| DELETE | `/api/chat/channels/:id/mute`           | Unmute channel                                    |
 | GET    | `/api/chat/channels/:id/members`        | Channel members                                   |
-| POST   | `/api/chat/channels/:id/members`        | Add member: `{user_id}`                           |
+| POST   | `/api/chat/channels/:id/members`        | Add member / set write permission: `{user_id, can_write}` |
 | DELETE | `/api/chat/channels/:id/members`        | Remove member (`?user_id=`)                       |
 | GET    | `/api/chat/channels/:id/messages`       | Messages (`before`, `after`, `limit`)             |
 | POST   | `/api/chat/channels/:id/messages`       | Post message: `{text, attachments, reply_to}`     |
@@ -206,6 +235,28 @@ All endpoints return JSON. Authentication (session cookie) is required, except f
 | GET    | `/api/chat/search?q=...`                | Search messages                                   |
 | GET    | `/api/chat/unread`                      | Unread counter                                    |
 | GET    | `/api/chat/events`                      | Event stream (SSE)                                |
+
+## Calls (WebRTC signaling)
+
+Media is peer-to-peer; the server only relays signaling.
+
+| Method | Path                 | Description                                                                 |
+|--------|----------------------|-----------------------------------------------------------------------------|
+| GET    | `/api/calls/events`  | SSE stream of call signals                                                  |
+| POST   | `/api/calls/signal`  | Relay a signal: `{to, kind, call_id, channel_id, members, payload}` (kinds: `invite`/`accept`/`decline`/`cancel`/`offer`/`answer`/`ice`/`hangup`) |
+| GET    | `/api/calls/config`  | ICE servers: `{iceServers:[...]}` (STUN + optional TURN)                    |
+| GET    | `/api/calls/turn`    | TURN config (admin): `{turn_url, turn_user, turn_cred}`                      |
+| POST   | `/api/calls/turn`    | Save TURN config (admin): `{url, user, cred}`                               |
+
+## Git Integration
+
+| Method | Path                                       | Description                                                   |
+|--------|--------------------------------------------|---------------------------------------------------------------|
+| GET    | `/api/integrations/git/repos`              | List linked repositories (project-scoped via `?project=`)     |
+| POST   | `/api/integrations/git/repos`              | Link a repository (admin)                                     |
+| PUT    | `/api/integrations/git/repos/{id}`         | Update repository (admin)                                     |
+| DELETE | `/api/integrations/git/repos/{id}`         | Unlink repository (admin)                                     |
+| POST   | `/api/integrations/git/webhook/{repoID}`   | Public inbound webhook (verified by per-provider signature/secret: GitHub/Gitea HMAC-SHA256, GitLab token) |
 
 ## Calendar
 

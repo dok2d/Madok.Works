@@ -79,6 +79,24 @@ Deploy generates an nginx configuration (`/etc/nginx/sites-available/kanban`) wi
 - Reverse proxy to the container (127.0.0.1)
 - Request body limit: 2 MB
 
+## Database
+
+By default the application uses **SQLite** (stored in the data volume). For larger or multi-instance deployments you can point it at **PostgreSQL**:
+
+```bash
+./kanban.sh run -db "postgres://user:pass@host:5432/kanban?sslmode=disable"
+```
+
+When using a URL-based database (PostgreSQL), set `-data-dir` so file backups and uploaded attachments still have a local location.
+
+## TURN Server (coturn) for Calls
+
+WebRTC calls work peer-to-peer with the built-in STUN server. For reliable calls when participants are behind restrictive NAT or firewalls, deploy a self-hosted **TURN** server (coturn) as a separate service. Once it is running, set the TURN credentials in **Settings → Integrations**. No change to the application container is required.
+
+## WAP Interface
+
+An optional lightweight **WAP** interface is available but is **off by default**. Leave it disabled unless you specifically need it.
+
 ## systemd (Quadlet)
 
 Quadlet files are used to manage the container via systemd:
@@ -106,4 +124,4 @@ The container is built in multiple stages (multi-stage build):
 2. **Builder** — compiling the Go application (static binary with CGO)
 3. **Runtime** — minimal Debian image with a non-privileged user
 
-All static assets are served from the container — no external CDNs are used.
+All static assets are served from the container — no external CDNs are used. The image also bundles draw.io assets and the front-end assets so the application works fully offline. Nothing extra is needed for the features above, except a separate **coturn** service if you need calls across NAT.

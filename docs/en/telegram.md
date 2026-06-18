@@ -30,13 +30,17 @@ To unlink, use the "Unlink Telegram" button in your profile.
 
 ## Bot Commands
 
+The bot is **project-aware**: it works across all projects you can access.
+
 | Command              | Description                                    |
 |----------------------|------------------------------------------------|
-| `/tasks`             | List of tasks assigned to you                  |
-| `/tasks mine`        | Only tasks where you are the assignee          |
-| `/task N`            | Details of task #N with recent comments        |
+| `/tasks`             | Tasks across all projects you can access, each prefixed with its project `[KEY]` |
+| `/tasks mine`        | Only tasks across all projects where you are the assignee |
+| `/task N`            | Details of task #N with recent comments (the view shows the task's project) |
 | `/comment N text`    | Add a comment to task #N                       |
 | `/help`              | List of available commands                     |
+
+Column selection and move actions use the columns of the task's own project. The bot welcome message and branding use the configured app name (Madok.Works by default).
 
 ## Notifications
 

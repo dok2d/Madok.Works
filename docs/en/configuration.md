@@ -76,11 +76,11 @@ All settings live on a **single Settings page**, opened from the gear at the bot
 |--------------|-----------------------------------------------|-----------------------------------------------------------------|
 | General      | Everyone                                       | Theme, language, font size, timezone                            |
 | Mail         | When mail is enabled (except read-only users)  | Per-user mail distribution rules; mailbox/alias management (admin) |
-| Integrations | Admins and users with Telegram configured      | Telegram and SSO                                                |
-| Board        | Admins only                                    | Columns, epics, sprints, tags                                   |
+| Integrations | Admins and users with Telegram configured      | Telegram, SSO, Calls/TURN, Git repositories, LLM               |
+| Board        | Admins only                                    | Columns, epics, sprints, tags, projects                        |
 | Users        | Admins only                                    | User management                                                 |
 | Services     | Admins only                                    | Enable/disable and reorder services                            |
-| Site         | Admins only                                    | Application name (branding)                                     |
+| Site         | Admins only                                    | Application name (branding), default interface language, WAP toggle |
 | Mail server  | Admins only                                    | Sending domain, DKIM selector and key, DNS TXT record, audit   |
 | Data         | Admins only                                    | Export/import and backups                                       |
 
@@ -107,12 +107,32 @@ POST /api/settings/timezone
 
 ### Application Name (branding)
 
-The "Site" tab (admins only) sets the application name. It changes the browser tab title, the name in the header and on the login page, and is used in backup file names and the caption of the daily Telegram backup. Defaults to "Kanban".
+The "Site" tab (admins only) sets the application name. Defaults to **Madok.Works**. The full name is used in the browser tab title, on the login page, in backup file names and the caption of the daily Telegram backup. The header logo shows the **initials** of the name (e.g. "Madok.Works" → "MW"), not the full string.
 
 ```
 POST /api/settings/app
 {"name": "Acme Hub"}
 ```
+
+### Default interface language
+
+Also on the "Site" tab (admins only): the default interface language is the language **new users start in**; each user can change their own afterwards on the "General" tab. The default is also chosen at first admin registration via the language/flag picker on the setup page (see [Getting Started](getting-started.md)). The same `POST /api/settings/app` request carries an optional `lang` field (one of the 10 supported language codes).
+
+### WAP interface (legacy phones)
+
+The "Site" tab has an optional **"Enable WAP interface (legacy phones)"** toggle, **off by default**. When on, a minimal WML interface is exposed at `/wap/` for very old devices. When off, all `/wap/*` routes return 404.
+
+### Calls / TURN
+
+On the "Integrations" tab (admins only), **Calls (WebRTC)** configures a TURN server: **TURN URL**, **TURN username** and **TURN credential**. STUN is built-in; a self-hosted TURN server (e.g. coturn) is recommended for reliable voice/video calls across NAT and firewalls. The media stays peer-to-peer.
+
+### Git repositories
+
+On the "Integrations" tab (admins only), **Git repositories** connects GitHub/GitLab/Gitea repositories **per project**. For each repository you set the provider (github/gitlab/gitea), the owner/name, a webhook secret, and an optional **"on merge → move to column"** action. The page shows the **webhook URL** to paste into the provider's repository settings (along with the secret). Inbound webhooks link commits, branches and merge requests to tasks by `KEY-<n>` / `#<n>` references found in branch names and commit/MR text; a merged MR can auto-move the linked task to the configured column.
+
+### LLM (AI summaries and task generation)
+
+On the "Integrations" tab (admins only), the **LLM** section connects an OpenAI-compatible API (e.g. llama.cpp). Fields: **API base URL** (e.g. `http://host:8080/v1`), **model**, and an optional **API key**. "Enable" tests the connection (a GET to `{base}/models`) before turning it on. Once enabled it powers the **"Summary"** button on wiki pages and **"✨ Generate"** (description + TODO) in the task form.
 
 ### Services
 

@@ -2,12 +2,14 @@
 
 Все эндпоинты возвращают JSON. Требуется аутентификация (session cookie), кроме `/api/auth/setup` при первом запуске и страницы логина.
 
+Большинство списочных эндпоинтов привязаны к проекту: передайте `?project=<id>`, чтобы выбрать активный проект. Задачи имеют попроектный `number` и отображаются как `KEY-<number>`.
+
 ## Аутентификация
 
 | Метод | Путь                      | Описание                                |
 |-------|---------------------------|-----------------------------------------|
 | POST  | `/api/auth/setup`         | Создание первого администратора         |
-| POST  | `/api/auth/login`         | Вход                                    |
+| POST  | `/api/auth/login`         | Вход (опциональный `{code}` для 2FA; возвращает `{totp_required:true}`, когда нужен второй шаг) |
 | POST  | `/api/auth/logout`        | Выход                                   |
 | GET   | `/api/auth/me`            | Информация о текущем пользователе       |
 | POST  | `/api/auth/reset-request` | Запрос сброса пароля (через Telegram)   |
@@ -25,6 +27,30 @@
 | PUT    | `/api/users/:id` | Изменение роли/пароля       |
 | DELETE | `/api/users/:id` | Удаление пользователя       |
 
+## Двухфакторная аутентификация (TOTP)
+
+| Метод | Путь               | Описание                                                |
+|-------|--------------------|----------------------------------------------------------|
+| GET   | `/api/2fa/status`  | Включена ли 2FA (`{enabled}`)                            |
+| POST  | `/api/2fa/setup`   | Начало подключения → `{secret, uri}` (provisioning URI)  |
+| POST  | `/api/2fa/enable`  | Подтверждение кода `{code}` → `{recovery_codes}`         |
+| POST  | `/api/2fa/disable` | Отключение 2FA `{code}`                                  |
+
+## Проекты
+
+| Метод  | Путь                          | Описание                                          |
+|--------|-------------------------------|---------------------------------------------------|
+| GET    | `/api/projects`               | Список доступных проектов                         |
+| POST   | `/api/projects`               | Создание проекта: `{name, description, visibility}` |
+| GET    | `/api/projects/{id}`          | Детали проекта                                    |
+| PUT    | `/api/projects/{id}`          | Обновление проекта (админ проекта)                |
+| DELETE | `/api/projects/{id}`          | Удаление проекта (админ проекта)                  |
+| GET    | `/api/projects/{id}/members`  | Участники проекта                                 |
+| POST   | `/api/projects/{id}/members`  | Добавить участника                                |
+| DELETE | `/api/projects/{id}/members`  | Удалить участника                                 |
+
+Остальные ресурсы привязаны к активному проекту через `?project=<id>`.
+
 ## Доска и задачи
 
 | Метод  | Путь               | Описание                                              |
@@ -36,6 +62,7 @@
 | PUT    | `/api/tasks/:id`    | Обновление задачи                                     |
 | DELETE | `/api/tasks/:id`    | Удаление задачи                                       |
 | POST   | `/api/tasks/move`   | Перемещение задачи между колонками                    |
+| GET    | `/api/tasks/:id/gitevents` | Связанная git-активность по задаче             |
 
 ## Колонки
 
@@ -119,8 +146,8 @@
 |-------|--------------------------|------------------------------------------------|
 | GET   | `/api/settings/timezone` | Текущий часовой пояс                           |
 | POST  | `/api/settings/timezone` | Установка часового пояса                        |
-| GET   | `/api/settings/app`      | Имя приложения / брендинг (`{name}`)            |
-| POST  | `/api/settings/app`      | Установка имени приложения (admin)              |
+| GET   | `/api/settings/app`      | Брендинг: `{name, default_lang, wap_enabled}`   |
+| POST  | `/api/settings/app`      | Имя приложения, язык по умолчанию, переключатель WAP: `{name, lang, wap}` (admin) |
 | GET   | `/api/settings/sso`      | Настройки LDAP/OIDC (admin)                     |
 | POST  | `/api/settings/sso`      | Сохранение настроек LDAP/OIDC (admin)          |
 
@@ -187,10 +214,12 @@
 | GET    | `/api/chat/channels`                    | Список каналов/групп/DM пользователя              |
 | POST   | `/api/chat/channels`                    | Создание канала/группы: `{name, topic, type, members}` |
 | GET    | `/api/chat/channels/:id`                | Информация о канале                               |
-| PUT    | `/api/chat/channels/:id`                | Переименование/тема канала                        |
+| PUT    | `/api/chat/channels/:id`                | Переименование/тема/переключение `{read_only}`    |
 | DELETE | `/api/chat/channels/:id`                | Удаление канала                                   |
+| POST   | `/api/chat/channels/:id/mute`           | Отключить уведомления: `{until}` (0 = навсегда, иначе unix-секунды) |
+| DELETE | `/api/chat/channels/:id/mute`           | Включить уведомления                              |
 | GET    | `/api/chat/channels/:id/members`        | Участники канала                                  |
-| POST   | `/api/chat/channels/:id/members`        | Добавить участника: `{user_id}`                   |
+| POST   | `/api/chat/channels/:id/members`        | Добавить участника / задать право записи: `{user_id, can_write}` |
 | DELETE | `/api/chat/channels/:id/members`        | Удалить участника (`?user_id=`)                   |
 | GET    | `/api/chat/channels/:id/messages`       | Сообщения (`before`, `after`, `limit`)            |
 | POST   | `/api/chat/channels/:id/messages`       | Отправка сообщения: `{text, attachments, reply_to}` |
@@ -206,6 +235,28 @@
 | GET    | `/api/chat/search?q=...`                | Поиск по сообщениям                               |
 | GET    | `/api/chat/unread`                      | Счётчик непрочитанных                             |
 | GET    | `/api/chat/events`                      | Поток событий (SSE)                               |
+
+## Звонки (сигнализация WebRTC)
+
+Медиа передаётся peer-to-peer; сервер только ретранслирует сигнализацию.
+
+| Метод  | Путь                 | Описание                                                                    |
+|--------|----------------------|-----------------------------------------------------------------------------|
+| GET    | `/api/calls/events`  | SSE-поток сигналов звонка                                                    |
+| POST   | `/api/calls/signal`  | Ретрансляция сигнала: `{to, kind, call_id, channel_id, members, payload}` (kind: `invite`/`accept`/`decline`/`cancel`/`offer`/`answer`/`ice`/`hangup`) |
+| GET    | `/api/calls/config`  | ICE-серверы: `{iceServers:[...]}` (STUN + опционально TURN)                  |
+| GET    | `/api/calls/turn`    | Настройки TURN (admin): `{turn_url, turn_user, turn_cred}`                   |
+| POST   | `/api/calls/turn`    | Сохранить настройки TURN (admin): `{url, user, cred}`                        |
+
+## Интеграция с Git
+
+| Метод  | Путь                                       | Описание                                                      |
+|--------|--------------------------------------------|---------------------------------------------------------------|
+| GET    | `/api/integrations/git/repos`              | Список привязанных репозиториев (по проекту через `?project=`) |
+| POST   | `/api/integrations/git/repos`              | Привязать репозиторий (admin)                                 |
+| PUT    | `/api/integrations/git/repos/{id}`         | Обновить репозиторий (admin)                                  |
+| DELETE | `/api/integrations/git/repos/{id}`         | Отвязать репозиторий (admin)                                  |
+| POST   | `/api/integrations/git/webhook/{repoID}`   | Публичный входящий вебхук (проверка по подписи/секрету провайдера: GitHub/Gitea HMAC-SHA256, GitLab token) |
 
 ## Календарь
 
