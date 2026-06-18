@@ -215,6 +215,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Public paths: login page, login API, static assets, setup
 	path := r.URL.Path
+
+	// WAP (legacy phones) is opt-in; when disabled, hide all /wap/* routes.
+	if strings.HasPrefix(path, "/wap/") && !h.wapEnabled() {
+		http.NotFound(w, r)
+		return
+	}
+
 	if path == "/login" || path == "/api/auth/login" || path == "/api/auth/setup" ||
 		path == "/api/setup/info" || path == "/api/setup/test-db" ||
 		path == "/api/auth/reset-request" || path == "/api/auth/reset-confirm" ||
@@ -561,6 +568,12 @@ func (h *Handler) defaultLang() string {
 		return l
 	}
 	return "ru"
+}
+
+// wapEnabled reports whether the legacy WAP/WML interface (/wap/*) is exposed.
+// Opt-in via Settings → Site; off by default.
+func (h *Handler) wapEnabled() bool {
+	return h.store.GetSetting("wap_enabled") == "true"
 }
 
 // appSlug is a filesystem/URL-safe form of the app name (for backup filenames).
@@ -2914,7 +2927,7 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		jsonResp(w, map[string]string{"name": h.appName(), "default_lang": h.defaultLang()})
+		jsonResp(w, map[string]any{"name": h.appName(), "default_lang": h.defaultLang(), "wap_enabled": h.wapEnabled()})
 	case http.MethodPost:
 		if !user.IsAdmin {
 			http.Error(w, "admin only", http.StatusForbidden)
@@ -2923,6 +2936,7 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Name string `json:"name"`
 			Lang string `json:"lang"`
+			Wap  *bool  `json:"wap"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -2945,7 +2959,18 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		jsonResp(w, map[string]string{"status": "ok", "name": h.appName(), "default_lang": h.defaultLang()})
+		// WAP toggle is optional too (only when explicitly present in the body).
+		if req.Wap != nil {
+			val := "false"
+			if *req.Wap {
+				val = "true"
+			}
+			if err := h.store.SetSetting("wap_enabled", val); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		jsonResp(w, map[string]any{"status": "ok", "name": h.appName(), "default_lang": h.defaultLang(), "wap_enabled": h.wapEnabled()})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
