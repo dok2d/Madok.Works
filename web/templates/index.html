@@ -903,6 +903,7 @@ body.view-admin .header-actions .hdr-kanban-only{display:none}
 .ob-opt b{font-size:.95rem}
 .ob-opt span{font-size:.82rem;color:var(--fg3)}
 .ob-svc{display:block;margin:4px 0;font-size:.9rem}
+.ob-team-panel{margin:-4px 0 2px;padding:10px 14px;border:1px solid var(--accent);border-radius:var(--radius);background:var(--bg2)}
 #tour-overlay{position:fixed;inset:0;z-index:500;pointer-events:none}
 .tour-ring{position:fixed;border-radius:8px;box-shadow:0 0 0 3px var(--accent),0 0 0 9999px rgba(0,0,0,.6);transition:all .2s ease}
 .tour-pop{position:fixed;z-index:501;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:14px;pointer-events:auto;max-width:320px}
@@ -2187,11 +2188,11 @@ async function maybeShowOnboarding() {
     <div class="onboarding-opts">
       <button class="ob-opt" data-mode="personal"><b>${esc(t('obPersonal'))}</b><span>${esc(t('obPersonalHint'))}</span></button>
       <button class="ob-opt" data-mode="team"><b>${esc(t('obTeam'))}</b><span>${esc(t('obTeamHint'))}</span></button>
+      <div id="ob-team" class="ob-team-panel" style="display:none">
+        ${['kanban', 'wiki', 'chat', 'calendar', 'mail'].map(s => `<label class="ob-svc"><input type="checkbox" data-svc="${s}" checked> ${esc(t(s) || s)}</label>`).join('')}
+        <button class="btn btn-primary" style="margin-top:10px" onclick="obApply('team')">${esc(t('obApply'))}</button>
+      </div>
       <button class="ob-opt" data-mode="backup"><b>${esc(t('obBackup'))}</b><span>${esc(t('obBackupHint'))}</span></button>
-    </div>
-    <div id="ob-team" style="display:none;margin-top:12px">
-      ${['kanban', 'wiki', 'chat', 'calendar', 'mail'].map(s => `<label class="ob-svc"><input type="checkbox" data-svc="${s}" checked> ${esc(t(s) || s)}</label>`).join('')}
-      <button class="btn btn-primary" style="margin-top:10px" onclick="obApply('team')">${esc(t('obApply'))}</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
