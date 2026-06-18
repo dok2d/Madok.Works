@@ -282,7 +282,7 @@ func (h *Handler) runTelegramBot(token string) {
 
 			// Command: /help
 			if text == "/help" {
-				h.sendTelegramMessageWithKeyboard(token, chatID, "📋 Доступные команды:\n\n/tasks — все задачи\n/tasks mine — мои задачи\n/task N — просмотр задачи #N\n/comment N текст — комментарий к задаче #N\n/help — эта справка", h.mainMenuKeyboard())
+				h.sendTelegramMessageWithKeyboard(token, chatID, "📋 Доступные команды:\n\n/tasks — все задачи (по всем проектам)\n/tasks mine — мои задачи\n/task N — просмотр задачи #N\n/comment N текст — комментарий к задаче #N\n/help — эта справка", h.mainMenuKeyboard())
 				continue
 			}
 
@@ -374,7 +374,7 @@ func (h *Handler) handleTelegramCallback(token string, chatID int64, data string
 	case data == "tasks_mine":
 		h.handleTelegramTasks(token, chatID, true)
 	case data == "help":
-		h.sendTelegramMessageWithKeyboard(token, chatID, "📋 Доступные команды:\n\n/tasks — все задачи\n/tasks mine — мои задачи\n/task N — просмотр задачи #N\n/comment N текст — комментарий к задаче #N\n/help — эта справка", h.mainMenuKeyboard())
+		h.sendTelegramMessageWithKeyboard(token, chatID, "📋 Доступные команды:\n\n/tasks — все задачи (по всем проектам)\n/tasks mine — мои задачи\n/task N — просмотр задачи #N\n/comment N текст — комментарий к задаче #N\n/help — эта справка", h.mainMenuKeyboard())
 	case strings.HasPrefix(data, "task_"):
 		taskID, err := strconv.ParseInt(strings.TrimPrefix(data, "task_"), 10, 64)
 		if err == nil {
@@ -458,72 +458,55 @@ func (h *Handler) handleTelegramTasks(token string, chatID int64, onlyMine bool)
 		return
 	}
 
-	tasks, err := h.store.ListTasks(1)
+	// Project-aware: gather tasks across every project the user can access,
+	// labelling each with its project key.
+	projects, err := h.store.ListProjects(user.ID, user.IsAdmin)
 	if err != nil {
 		h.sendTelegramMessage(token, chatID, "❌ Ошибка загрузки задач.")
 		return
 	}
 
-	cols, _ := h.store.ListColumns(1)
-	colMap := make(map[int64]string)
-	for _, c := range cols {
-		colMap[c.ID] = c.Name
-	}
-
-	// Determine first (backlog) and last (done) columns
-	var firstColID, lastColID int64
-	if len(cols) > 0 {
-		firstColID = cols[0].ID
-		lastColID = cols[len(cols)-1].ID
-	}
-
-	// Sort tasks into groups: my active, other active, done, backlog
-	type taskGroup struct {
-		order int // 0=my active, 1=other active, 2=done, 3=backlog
-	}
-	taskOrder := func(t interface{ getAssigneeID() *int64; getColumnID() int64 }, assigneeID *int64, columnID int64) int {
-		if columnID == lastColID {
-			return 2 // done
-		}
-		if columnID == firstColID {
-			return 3 // backlog
-		}
-		if assigneeID != nil && *assigneeID == user.ID {
-			return 0 // my active
-		}
-		return 1 // other active
-	}
-	_ = taskOrder
-
-	// Filter and sort tasks
 	type sortableTask struct {
-		task  interface{}
 		order int
 		id    int64
 		title string
-		colID int64
+		col   string
+		pkey  string
 		prio  int
-		aID   *int64
 	}
 
 	var sorted []sortableTask
 	pnames := []string{"", "🔵", "🟢", "🟠", "🔴"}
 
-	for _, t := range tasks {
-		if onlyMine {
-			if t.AssigneeID == nil || *t.AssigneeID != user.ID {
+	for _, p := range projects {
+		tasks, err := h.store.ListTasks(p.ID)
+		if err != nil {
+			continue
+		}
+		cols, _ := h.store.ListColumns(p.ID)
+		colMap := make(map[int64]string)
+		for _, c := range cols {
+			colMap[c.ID] = c.Name
+		}
+		var firstColID, lastColID int64
+		if len(cols) > 0 {
+			firstColID = cols[0].ID
+			lastColID = cols[len(cols)-1].ID
+		}
+		for _, t := range tasks {
+			if onlyMine && (t.AssigneeID == nil || *t.AssigneeID != user.ID) {
 				continue
 			}
+			order := 1 // other active
+			if t.ColumnID == lastColID {
+				order = 2 // done
+			} else if t.ColumnID == firstColID {
+				order = 3 // backlog
+			} else if t.AssigneeID != nil && *t.AssigneeID == user.ID {
+				order = 0 // my active
+			}
+			sorted = append(sorted, sortableTask{order: order, id: t.ID, title: t.Title, col: colMap[t.ColumnID], pkey: p.Key, prio: t.Priority})
 		}
-		order := 1 // other active
-		if t.ColumnID == lastColID {
-			order = 2 // done
-		} else if t.ColumnID == firstColID {
-			order = 3 // backlog
-		} else if t.AssigneeID != nil && *t.AssigneeID == user.ID {
-			order = 0 // my active
-		}
-		sorted = append(sorted, sortableTask{order: order, id: t.ID, title: t.Title, colID: t.ColumnID, prio: t.Priority, aID: t.AssigneeID})
 	}
 
 	// Sort by order
@@ -543,8 +526,11 @@ func (h *Handler) handleTelegramTasks(token string, chatID int64, onlyMine bool)
 		if s.prio > 0 && s.prio < len(pnames) {
 			prio = pnames[s.prio] + " "
 		}
-		col := colMap[s.colID]
-		lines = append(lines, fmt.Sprintf("%s#%d %s [%s]", prio, s.id, s.title, col))
+		pfx := ""
+		if s.pkey != "" {
+			pfx = "[" + s.pkey + "] "
+		}
+		lines = append(lines, fmt.Sprintf("%s%s#%d %s [%s]", pfx, prio, s.id, s.title, s.col))
 
 		// Add inline button for each task (up to 30)
 		if len(buttons) < tgMaxInlineButtons {
@@ -595,7 +581,7 @@ func (h *Handler) handleTelegramTaskView(token string, chatID int64, taskID int6
 		return
 	}
 
-	cols, _ := h.store.ListColumns(1)
+	cols, _ := h.store.ListColumns(task.ProjectID)
 	colName := ""
 	for _, c := range cols {
 		if c.ID == task.ColumnID {
@@ -610,7 +596,11 @@ func (h *Handler) handleTelegramTaskView(token string, chatID int64, taskID int6
 		prio = pnames[task.Priority]
 	}
 
-	msg := fmt.Sprintf("📌 #%d %s\n\n📊 Колонка: %s\n⚡ Приоритет: %s", task.ID, task.Title, colName, prio)
+	projLine := ""
+	if p, e := h.store.GetProject(task.ProjectID, user.ID, user.IsAdmin); e == nil && p != nil {
+		projLine = fmt.Sprintf("📁 Проект: %s\n", p.Name)
+	}
+	msg := fmt.Sprintf("📌 #%d %s\n\n%s📊 Колонка: %s\n⚡ Приоритет: %s", task.ID, task.Title, projLine, colName, prio)
 
 	if task.Assignee != nil {
 		msg += fmt.Sprintf("\n👤 Исполнитель: %s", task.Assignee.Username)
@@ -683,7 +673,11 @@ func (h *Handler) handleTelegramTaskView(token string, chatID int64, taskID int6
 
 // showColumnSelection shows available columns to move a task to
 func (h *Handler) showColumnSelection(token string, chatID int64, taskID int64) {
-	cols, _ := h.store.ListColumns(1)
+	pid := int64(1)
+	if t, err := h.store.GetTask(taskID); err == nil {
+		pid = t.ProjectID
+	}
+	cols, _ := h.store.ListColumns(pid)
 	if len(cols) == 0 {
 		h.sendTelegramMessage(token, chatID, "❌ Нет колонок.")
 		return
@@ -730,7 +724,7 @@ func (h *Handler) handleTelegramMoveTask(token string, chatID int64, taskID int6
 		return
 	}
 
-	cols, _ := h.store.ListColumns(1)
+	cols, _ := h.store.ListColumns(task.ProjectID)
 	colName := ""
 	for _, c := range cols {
 		if c.ID == colID {
