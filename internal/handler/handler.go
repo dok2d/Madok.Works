@@ -186,6 +186,20 @@ func (h *Handler) logf(format string, args ...any) {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.logf("%s %s", r.Method, r.URL.Path)
+
+	// Self-hosted draw.io assets are embedded in an <iframe> by the wiki diagram
+	// editor. The app's default X-Frame-Options: DENY + strict CSP would block
+	// both the framing and draw.io's own scripts (it needs eval/blob/workers).
+	// Serve this path (public static) with relaxed, draw.io-friendly headers that
+	// still only allow same-origin framing.
+	if strings.HasPrefix(r.URL.Path, "/static/drawio/") {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("Content-Security-Policy", "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; worker-src 'self' blob:; frame-ancestors 'self'")
+		h.mux.ServeHTTP(w, r)
+		return
+	}
+
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
