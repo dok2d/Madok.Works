@@ -12,6 +12,7 @@
 <script src="/static/js/highlight.min.js"></script>
 <script src="/static/js/wiki.js"></script>
 <script src="/static/js/chat.js"></script>
+<script src="/static/js/calls.js"></script>
 <script src="/static/js/calendar.js"></script>
 <script src="/static/js/mail.js"></script>
 <script src="/static/js/admin.js"></script>
@@ -560,6 +561,25 @@ body.has-rail #app{margin-left:52px}
 .git-event a:hover{text-decoration:underline}
 .git-repo-row{padding:8px 0;border-bottom:1px solid var(--bg3)}
 .git-repo-row code{font-size:.72rem;word-break:break-all;color:var(--fg2)}
+/* Calls */
+.call-ring{position:fixed;top:16px;right:16px;z-index:1000}
+.call-ring-box{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius-lg);box-shadow:0 8px 32px rgba(0,0,0,.5);padding:16px;width:280px;text-align:center}
+.call-ring-ico{font-size:2rem;margin-bottom:6px}
+.call-ring-txt{margin-bottom:12px;color:var(--fg)}
+.call-ring-txt span{color:var(--fg3);font-size:.85rem}
+.call-ring-actions{display:flex;gap:8px;justify-content:center}
+.call-accept{background:#22c55e;color:#fff}
+.call-decline{background:var(--red);color:#fff}
+.call-ui{position:fixed;inset:0;z-index:990;background:rgba(10,11,18,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.call-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));width:100%;max-width:1000px;flex:1;align-content:center}
+.call-tile{position:relative;background:#000;border-radius:var(--radius-lg);overflow:hidden;aspect-ratio:4/3}
+.call-tile video{width:100%;height:100%;object-fit:cover;background:#000}
+.call-tile-name{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.55);color:#fff;font-size:.78rem;padding:2px 7px;border-radius:var(--radius)}
+.call-status{color:var(--fg2);margin:10px 0}
+.call-controls{display:flex;gap:14px}
+.call-ctl{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:1.3rem;background:var(--bg3);color:var(--fg)}
+.call-ctl:hover{background:var(--bg4)}
+.call-ctl.call-end{background:var(--red);color:#fff}
 .wiki-comments-section{max-width:860px;margin:28px 0 0;padding-top:14px;border-top:1px solid var(--bg4)}
 .wiki-comments-title{font-size:1rem;margin:6px 0 12px}
 .wiki-page-reactions{margin-bottom:14px}
@@ -1221,6 +1241,11 @@ body.has-rail .search-results{left:52px}
   <div class="sidebar-section" id="db-section" style="display:none">
     <h3 data-i18n="dbTitle"></h3>
     <div id="db-content"></div>
+  </div>
+  <div class="sidebar-section" id="calls-section" style="display:none">
+    <h3 data-i18n="callsTitle"></h3>
+    <div class="admin-note" data-i18n="callsHint"></div>
+    <div id="calls-turn-form"></div>
   </div>
   <div class="sidebar-section" id="git-section" style="display:none">
     <h3 data-i18n="gitTitle"></h3>
@@ -2144,6 +2169,8 @@ async function init() {
   // First-run UI runs independently so an error above can't suppress it.
   try { await maybeShowOnboarding(); } catch(e) { console.error('onboarding', e); }
   try { maybeStartTour(); } catch(e) { console.error('tour', e); }
+  // Global call-signaling stream so ringing works on any page.
+  try { if (typeof callInit === 'function' && isServiceEnabled('chat')) callInit(); } catch(e) { console.error('calls', e); }
 }
 
 // === First-run onboarding wizard (instance-level, admin-only, one-time) ===

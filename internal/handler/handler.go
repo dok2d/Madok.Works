@@ -448,6 +448,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/chat/search", h.handleChatSearch)
 	h.mux.HandleFunc("/api/chat/unread", h.handleChatUnread)
 	h.mux.HandleFunc("/api/chat/events", h.handleChatEvents)
+	h.mux.HandleFunc("/api/calls/events", h.handleCallEvents)
+	h.mux.HandleFunc("/api/calls/signal", h.handleCallSignal)
+	h.mux.HandleFunc("/api/calls/config", h.handleCallConfig)
+	h.mux.HandleFunc("/api/calls/turn", h.handleCallTurnSettings)
 
 	// Calendar
 	h.mux.HandleFunc("/api/calendar/calendars", h.handleCalendars)

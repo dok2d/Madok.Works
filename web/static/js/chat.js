@@ -436,9 +436,23 @@ function chatRenderMain() {
   chatRenderTyping();
 }
 
+async function chatCall(video) {
+  const c = chatState.channel;
+  if (!c) return;
+  let members = [];
+  if (c.type === 'dm') { if (c.peer_id) members = [c.peer_id]; }
+  else { try { const ms = await api(`/api/chat/channels/${c.id}/members`); members = ms.map(m => m.user_id); } catch (e) { /* ignore */ } }
+  if (typeof callStart === 'function') callStart(c.id, members, !!video);
+}
+
 function chatHeadActions(c) {
   // Sound + per-channel mute apply to every conversation, including DMs.
-  let h = `<button class="btn btn-ghost btn-sm" title="${t('chatSound')}" onclick="chatToggleSound()">${chatSoundOn() ? '&#128266;' : '&#128263;'}</button>`;
+  let h = '';
+  if (typeof callStart === 'function' && currentUser && currentUser.role !== 'readonly' && typeof RTCPeerConnection !== 'undefined') {
+    h += `<button class="btn btn-ghost btn-sm" title="${t('callAudio')}" onclick="chatCall(false)">&#128222;</button>`;
+    h += `<button class="btn btn-ghost btn-sm" title="${t('callVideo')}" onclick="chatCall(true)">&#127909;</button>`;
+  }
+  h += `<button class="btn btn-ghost btn-sm" title="${t('chatSound')}" onclick="chatToggleSound()">${chatSoundOn() ? '&#128266;' : '&#128263;'}</button>`;
   h += `<button class="btn btn-ghost btn-sm" title="${c.muted ? t('chatMuted') : t('chatMute')}" onclick="chatMuteMenu(event)">${c.muted ? '&#128277;' : '&#128276;'}</button>`;
   if (c.type === 'dm') return h;
   h += `<button class="btn btn-ghost btn-sm" onclick="chatMembersDialog()">${t('chatMembers')} (${c.member_count || 0})</button>`;
