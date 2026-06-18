@@ -90,7 +90,7 @@ const CHAT_I18N = {
     chatDeleteChannel: 'Delete channel', chatDeleteChannelConfirm: 'Delete this channel and all its messages?',
     chatNoUsers: 'No other users', chatDeleteMsgConfirm: 'Delete this message?',
     chatEditPrompt: 'Edit message:', chatAttach: 'Attach file',
-    chatReply: 'Reply', chatReact: 'React', chatPin: 'Pin', chatUnpin: 'Unpin',
+    chatReply: 'Reply', chatReact: 'React', chatPin: 'Pin', chatUnpin: 'Unpin', chatPinChannel: 'Pin to top',
     chatPinned: 'Pinned message', chatReplyingTo: 'Replying to', chatCancelReply: 'Cancel',
     chatOptions: 'Options',
     chatTyping: '%s is typing…', chatSysCreate: '%s created the chat', chatSysJoin: '%s joined',
@@ -110,7 +110,7 @@ const CHAT_I18N = {
     chatDeleteChannel: 'Удалить канал', chatDeleteChannelConfirm: 'Удалить канал и все его сообщения?',
     chatNoUsers: 'Нет других пользователей', chatDeleteMsgConfirm: 'Удалить сообщение?',
     chatEditPrompt: 'Изменить сообщение:', chatAttach: 'Прикрепить файл',
-    chatReply: 'Ответить', chatReact: 'Реакция', chatPin: 'Закрепить', chatUnpin: 'Открепить',
+    chatReply: 'Ответить', chatReact: 'Реакция', chatPin: 'Закрепить', chatUnpin: 'Открепить', chatPinChannel: 'Закрепить наверху',
     chatPinned: 'Закреплённое', chatReplyingTo: 'Ответ', chatCancelReply: 'Отмена',
     chatOptions: 'Опции',
     chatTyping: '%s печатает…', chatSysCreate: '%s создал(а) чат', chatSysJoin: '%s присоединился(ась)',
@@ -288,16 +288,26 @@ function chatListTime(s) {
   return d.toDateString() === now.toDateString() ? chatFmtTime(s) : chatTimeFmt(s, { day: '2-digit', month: '2-digit' });
 }
 
+async function chatTogglePin(id) {
+  try {
+    await api('/api/chat/channels/' + id + '/pinchannel', 'POST', {});
+    chatState.channels = await api('/api/chat/channels');
+    chatRenderChannelList();
+  } catch (e) { alert(e.message); }
+}
+
 // chatChannelRow renders one Telegram-style row: avatar + name/time + preview/badge.
 function chatChannelRow(c, label, onclick, extraCls) {
   const badge = c.unread > 0 ? `<span class="chat-ch-badge">${c.unread > 99 ? '99+' : c.unread}</span>` : '';
   const preview = chatListPreview(c);
+  const pin = `<button class="chat-ch-pin ${c.pinned ? 'pinned' : ''}" title="${escAttr(t('chatPinChannel'))}" onclick="event.stopPropagation();chatTogglePin(${c.id})">&#128204;</button>`;
   return `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''} ${extraCls || ''}" onclick="${onclick}">
     ${chatAvatar(label)}
     <div class="chat-ch-main">
-      <div class="chat-ch-line1"><span class="chat-ch-name">${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
+      <div class="chat-ch-line1"><span class="chat-ch-name">${c.pinned ? '<span class="chat-ch-pinmark">&#128204;</span> ' : ''}${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
       <div class="chat-ch-line2"><span class="chat-ch-preview">${preview}</span>${badge}</div>
     </div>
+    ${pin}
   </div>`;
 }
 function chatCanManage(c) {

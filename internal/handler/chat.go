@@ -172,6 +172,16 @@ func (h *Handler) handleChatChannelRoute(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		jsonResp(w, pins)
+	case "pinchannel":
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := h.store.ToggleChatPin(user.ID, ch.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
 	case "read":
 		h.handleChatRead(w, r, user, ch)
 	case "typing":

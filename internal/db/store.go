@@ -341,6 +341,18 @@ func (s *Store) migrate() error {
 			edited_at DATETIME,
 			deleted INTEGER NOT NULL DEFAULT 0
 		)`,
+		// Per-user pinned channels/DMs (sorted to the top of the chat list).
+		`CREATE TABLE IF NOT EXISTS chat_pins (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+			PRIMARY KEY (user_id, channel_id)
+		)`,
+		// Wiki page pins: per-user (user_id>0) and shared/space-wide (user_id=0).
+		`CREATE TABLE IF NOT EXISTS wiki_page_pins (
+			page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL,
+			PRIMARY KEY (page_id, user_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS chat_reactions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,

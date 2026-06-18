@@ -13,6 +13,18 @@ import (
 // ListChatChannels returns channels visible to the user: all public channels
 // plus private groups and DMs the user belongs to. Unread counts are computed
 // from chat_members.last_read_id (0 for public channels never joined).
+// ToggleChatPin pins/unpins a channel to the top of the user's chat list.
+func (s *Store) ToggleChatPin(userID, channelID int64) error {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM chat_pins WHERE user_id=? AND channel_id=?`, userID, channelID).Scan(&n)
+	if n > 0 {
+		_, err := s.db.Exec(`DELETE FROM chat_pins WHERE user_id=? AND channel_id=?`, userID, channelID)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO chat_pins(user_id, channel_id) VALUES(?,?) ON CONFLICT DO NOTHING`, userID, channelID)
+	return err
+}
+
 func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 	rows, err := s.db.Query(`SELECT c.id, c.name, c.topic, c.type, c.created_by, c.created_at,
 		(SELECT COUNT(*) FROM chat_members m2 WHERE m2.channel_id = c.id),
@@ -20,11 +32,12 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 		COALESCE((SELECT MAX(id) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), 0),
 		COALESCE(CAST((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0) AS TEXT), '') AS last_at,
 		COALESCE((SELECT msg.text FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
-		COALESCE((SELECT COALESCE(u2.username,'') FROM chat_messages msg LEFT JOIN users u2 ON u2.id = msg.author_id WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), '')
+		COALESCE((SELECT COALESCE(u2.username,'') FROM chat_messages msg LEFT JOIN users u2 ON u2.id = msg.author_id WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
+		CASE WHEN EXISTS(SELECT 1 FROM chat_pins p WHERE p.channel_id = c.id AND p.user_id = ?) THEN 1 ELSE 0 END AS pinned
 		FROM chat_channels c
 		LEFT JOIN chat_members m ON m.channel_id = c.id AND m.user_id = ?
 		WHERE c.type = 'channel' OR m.user_id IS NOT NULL
-		ORDER BY last_at DESC, c.name COLLATE NOCASE`, userID)
+		ORDER BY pinned DESC, last_at DESC, c.name COLLATE NOCASE`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -35,11 +48,13 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 	for rows.Next() {
 		var c model.ChatChannel
 		var lastRead, maxID int64
+		var pinned int
 		if err := rows.Scan(&c.ID, &c.Name, &c.Topic, &c.Type, &c.CreatedBy, &c.CreatedAt,
-			&c.MemberCount, &lastRead, &maxID, &c.LastMsgAt, &c.LastMsgText, &c.LastMsgFrom); err != nil {
+			&c.MemberCount, &lastRead, &maxID, &c.LastMsgAt, &c.LastMsgText, &c.LastMsgFrom, &pinned); err != nil {
 			rows.Close()
 			return nil, err
 		}
+		c.Pinned = pinned == 1
 		c.IsMember = lastRead >= 0
 		out = append(out, c)
 		lastReads = append(lastReads, lastRead)

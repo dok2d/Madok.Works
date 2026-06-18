@@ -193,6 +193,17 @@ func (h *Handler) handleWikiSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonResp(w, tpls)
+	case "pinned":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		pins, err := h.store.ListWikiPinnedPages(sp.ID, user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, pins)
 	case "diagrams":
 		switch r.Method {
 		case http.MethodGet:
@@ -627,6 +638,29 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 		h.handleWikiComments(w, r, user, page, role)
 	case "react":
 		h.handleWikiReact(w, r, user, "page", page.ID, role)
+	case "pin":
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Shared bool `json:"shared"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		pinUser := user.ID
+		if req.Shared {
+			if !wikiRoleAtLeast(role, "admin") {
+				http.Error(w, "space admin only", http.StatusForbidden)
+				return
+			}
+			pinUser = 0 // shared/space-wide pin
+		}
+		if err := h.store.ToggleWikiPagePin(page.ID, pinUser); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		mine, shared := h.store.WikiPagePinState(page.ID, user.ID)
+		jsonResp(w, map[string]bool{"pinned_by_me": mine, "pinned_shared": shared})
 	case "template":
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -838,6 +872,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 			page.Backlinks = bl
 		}
 		page.Reactions, _ = h.store.WikiReactions("page", page.ID, user.ID)
+		page.PinnedByMe, page.PinnedShared = h.store.WikiPagePinState(page.ID, user.ID)
 		jsonResp(w, page)
 	case http.MethodPut:
 		if !wikiRoleAtLeast(role, "editor") {

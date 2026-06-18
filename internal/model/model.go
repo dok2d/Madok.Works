@@ -199,7 +199,9 @@ type WikiPage struct {
 	UpdatedByName string `json:"updated_by_name,omitempty"`
 	// Populated only on the single-page view: [[link]] token -> resolved page id
 	// (0 = unresolved), and the pages that link to this one.
-	IsTemplate bool             `json:"is_template"`
+	IsTemplate   bool           `json:"is_template"`
+	PinnedByMe   bool           `json:"pinned_by_me"`
+	PinnedShared bool           `json:"pinned_shared"`
 	Links      map[string]int64 `json:"links,omitempty"`
 	TaskLinks  map[string]int64 `json:"task_links,omitempty"` // [[task:N]]/[[KEY-N]] token -> task id
 	Backlinks  []WikiPageRef    `json:"backlinks,omitempty"`
@@ -212,6 +214,7 @@ type WikiPageRef struct {
 	SpaceID  int64  `json:"space_id"`
 	SpaceKey string `json:"space_key"`
 	Title    string `json:"title"`
+	Shared   bool   `json:"shared,omitempty"` // pinned space-wide (vs. per-user)
 }
 
 // WikiDiagram is a draw.io diagram stored as editable XML plus a rendered PNG
@@ -276,6 +279,7 @@ type ChatChannel struct {
 	LastMsgText string `json:"last_msg_text,omitempty"`
 	LastMsgFrom string `json:"last_msg_from,omitempty"`
 	IsMember    bool   `json:"is_member"`
+	Pinned      bool   `json:"pinned"`
 	// For DM channels: the other participant
 	PeerID       *int64 `json:"peer_id,omitempty"`
 	PeerName     string `json:"peer_name,omitempty"`

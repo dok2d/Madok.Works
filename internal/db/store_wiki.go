@@ -331,6 +331,54 @@ func (s *Store) GetWikiPage(id int64) (*model.WikiPage, error) {
 	return &p, nil
 }
 
+// ToggleWikiPagePin pins/unpins a page for a user (userID>0) or space-wide
+// (userID==0, "shared" pin set by a space admin).
+func (s *Store) ToggleWikiPagePin(pageID, userID int64) error {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM wiki_page_pins WHERE page_id=? AND user_id=?`, pageID, userID).Scan(&n)
+	if n > 0 {
+		_, err := s.db.Exec(`DELETE FROM wiki_page_pins WHERE page_id=? AND user_id=?`, pageID, userID)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO wiki_page_pins(page_id, user_id) VALUES(?,?) ON CONFLICT DO NOTHING`, pageID, userID)
+	return err
+}
+
+// ListWikiPinnedPages returns a space's pinned pages for the user: shared pins
+// (user_id=0) first, then the user's own pins. Each ref notes whether it is shared.
+func (s *Store) ListWikiPinnedPages(spaceID, userID int64) ([]model.WikiPageRef, error) {
+	rows, err := s.db.Query(`SELECT p.id, p.space_id, sp.key, p.title, MIN(pin.user_id)
+		FROM wiki_page_pins pin
+		JOIN wiki_pages p ON p.id = pin.page_id
+		JOIN wiki_spaces sp ON sp.id = p.space_id
+		WHERE p.space_id = ? AND (pin.user_id = 0 OR pin.user_id = ?)
+		GROUP BY p.id, p.space_id, sp.key, p.title
+		ORDER BY MIN(pin.user_id), p.title COLLATE NOCASE`, spaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.WikiPageRef{}
+	for rows.Next() {
+		var r model.WikiPageRef
+		var minUser int64
+		if err := rows.Scan(&r.ID, &r.SpaceID, &r.SpaceKey, &r.Title, &minUser); err != nil {
+			return nil, err
+		}
+		r.Shared = minUser == 0
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// WikiPagePinState returns whether a page is pinned by the user and/or shared.
+func (s *Store) WikiPagePinState(pageID, userID int64) (mine bool, shared bool) {
+	var nm, ns int
+	s.db.QueryRow(`SELECT COUNT(*) FROM wiki_page_pins WHERE page_id=? AND user_id=?`, pageID, userID).Scan(&nm)
+	s.db.QueryRow(`SELECT COUNT(*) FROM wiki_page_pins WHERE page_id=? AND user_id=0`, pageID).Scan(&ns)
+	return nm > 0, ns > 0
+}
+
 // SetWikiPageTemplate marks/unmarks a page as a reusable template.
 func (s *Store) SetWikiPageTemplate(id int64, isTemplate bool) error {
 	v := 0

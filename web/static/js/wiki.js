@@ -83,8 +83,11 @@ async function renderWikiView() {
     localStorage.setItem('kanban-wiki-space', wikiState.spaceId);
     try { wikiState.tree = await api('/api/wiki/spaces/' + wikiState.spaceId + '/tree'); }
     catch (e) { wikiState.tree = []; }
+    try { wikiState.pinned = await api('/api/wiki/spaces/' + wikiState.spaceId + '/pinned'); }
+    catch (e) { wikiState.pinned = []; }
   } else {
     wikiState.tree = [];
+    wikiState.pinned = [];
   }
   wikiRenderLayout();
 }
@@ -147,8 +150,12 @@ function wikiRenderTree() {
     el.innerHTML = `<div class="wiki-empty">${t('wikiNoSpaces')}</div>`;
     return;
   }
+  const pins = wikiState.pinned || [];
+  const pinnedHtml = pins.length ? `<div class="wiki-pinned"><div class="wiki-pinned-hd">&#128204; ${t('wikiPinnedSection')}</div>${
+    pins.map(p => `<a href="/wiki/page/${p.id}" onclick="navigateTo('/wiki/page/${p.id}');return false;">${p.shared ? '&#128204; ' : ''}${esc(p.title)}</a>`).join('')
+  }</div>` : '';
   if (!wikiState.tree.length) {
-    el.innerHTML = `<div class="wiki-empty">${t('wikiNoPages')}</div>`;
+    el.innerHTML = pinnedHtml + `<div class="wiki-empty">${t('wikiNoPages')}</div>`;
     return;
   }
   const byParent = {};
@@ -173,7 +180,16 @@ function wikiRenderTree() {
       </div>`;
     }).join('');
   }
-  el.innerHTML = renderNodes(0, 0);
+  el.innerHTML = pinnedHtml + renderNodes(0, 0);
+}
+
+// wikiLoadPinned fetches the current space's pinned pages (shared + per-user) and
+// re-renders the tree's pinned section.
+async function wikiLoadPinned() {
+  if (!wikiState.spaceId) { wikiState.pinned = []; return; }
+  try { wikiState.pinned = await api('/api/wiki/spaces/' + wikiState.spaceId + '/pinned'); }
+  catch (e) { wikiState.pinned = []; }
+  wikiRenderTree();
 }
 
 // === Main panel ===
@@ -246,6 +262,8 @@ function wikiRenderPageView(el) {
             <a onclick="wikiIndentPage(${p.id})">&#8618; ${t('wikiIndent')}</a>
             <a onclick="wikiOutdentPage(${p.id})">&#8617; ${t('wikiOutdent')}</a>
             <a onclick="wikiToggleTemplate(${p.id})">&#128209; ${p.is_template ? t('wikiUnmarkTemplate') : t('wikiMarkTemplate')}</a>
+            <a onclick="wikiTogglePin(${p.id},false)">&#128204; ${p.pinned_by_me ? t('wikiUnpin') : t('wikiPin')}</a>
+            ${wikiRoleIsAdmin() ? `<a onclick="wikiTogglePin(${p.id},true)">&#128204; ${p.pinned_shared ? t('wikiUnpinShared') : t('wikiPinShared')}</a>` : ''}
             <a onclick="wikiDeletePage(${p.id})" style="color:var(--red)">${t('wikiDeletePage')}</a>
           </div>
         </div>` : ''}
@@ -1130,6 +1148,20 @@ async function wikiNewPage(parentId) {
     createWith(md);
   });
   document.body.appendChild(ov);
+}
+
+// wikiTogglePin pins/unpins the page for the user, or space-wide (shared=true,
+// space admins only), then refreshes the page view and the tree.
+async function wikiTogglePin(id, shared) {
+  try {
+    const r = await api('/api/wiki/pages/' + id + '/pin', 'POST', { shared: !!shared });
+    if (wikiState.page && wikiState.page.id === id) {
+      wikiState.page.pinned_by_me = r.pinned_by_me;
+      wikiState.page.pinned_shared = r.pinned_shared;
+    }
+    wikiRenderMain();
+    wikiLoadPinned();
+  } catch (e) { alert(e.message); }
 }
 
 // wikiToggleTemplate marks/unmarks the current page as a reusable template.
