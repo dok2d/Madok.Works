@@ -279,11 +279,13 @@ function wikiRenderPageView(el) {
     </div>` : ''}`;
   const contentEl = el.querySelector('.wiki-content');
   wikiFillSubpageTocs(contentEl, p.id);
+  wikiAddHeadingAnchors(contentEl);
   wikiFillToc(contentEl);
   wikiFillWikiLinks(contentEl, p.links, p.task_links);
   highlightCode();
   wikiEnsureLLM();
   wikiRenderCommentsSection(el, p);
+  wikiScrollToHash();
 }
 
 // === Page comments + reactions ===
@@ -550,6 +552,52 @@ function wikiFillWikiLinks(container, links, taskLinks) {
       node.parentNode.replaceChild(frag, node);
     }
   }
+}
+
+// wikiSlugify makes a URL-fragment-safe slug from heading text (Unicode-aware).
+function wikiSlugify(text) {
+  let s;
+  try { s = (text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-'); }
+  catch (e) { s = (text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'); }
+  return s.replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
+}
+
+// wikiAddHeadingAnchors gives every heading a stable id (deduped) and a hover
+// "#" link that scrolls to and copies a direct link to that section. Runs before
+// wikiFillToc so the generated TOC reuses the same ids.
+function wikiAddHeadingAnchors(container) {
+  if (!container) return;
+  const used = {};
+  container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+    if (h.querySelector('.wiki-anchor')) return;
+    const base = h.id || wikiSlugify(h.textContent);
+    let slug = base, n = 2;
+    while (used[slug]) slug = base + '-' + (n++);
+    used[slug] = true;
+    h.id = slug;
+    h.classList.add('wiki-h-anchored');
+    const a = document.createElement('a');
+    a.className = 'wiki-anchor';
+    a.href = '#' + slug;
+    a.title = t('wikiCopyAnchor');
+    a.textContent = '#';
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      h.scrollIntoView({ behavior: 'smooth' });
+      history.replaceState(null, '', location.pathname + location.search + '#' + slug);
+      const url = location.origin + location.pathname + location.search + '#' + slug;
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => { if (typeof toast === 'function') toast(t('wikiAnchorCopied'), 'success'); }).catch(() => {});
+    });
+    h.appendChild(a);
+  });
+}
+
+// wikiScrollToHash scrolls to the heading named by location.hash, if present.
+function wikiScrollToHash() {
+  if (!location.hash || location.hash.length < 2) return;
+  const id = decodeURIComponent(location.hash.slice(1));
+  const el = document.getElementById(id);
+  if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 60);
 }
 
 // wikiFillToc replaces a literal [[toc]] token with a generated table of contents
