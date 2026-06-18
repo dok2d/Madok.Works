@@ -267,6 +267,7 @@ func (h *Handler) handleProjectMembers(w http.ResponseWriter, r *http.Request, u
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		h.store.LogActivityP(user.ID, "project_member", nil, &p.ID, h.userName(req.UserID)+" → "+req.Role)
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodDelete:
 		if !projectRoleAtLeast(role, "admin") {
@@ -282,6 +283,7 @@ func (h *Handler) handleProjectMembers(w http.ResponseWriter, r *http.Request, u
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		h.store.LogActivityP(user.ID, "project_member_remove", nil, &p.ID, h.userName(uid))
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

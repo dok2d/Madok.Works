@@ -2434,6 +2434,7 @@ func (h *Handler) handleUsers(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "user exists or error: "+err.Error(), http.StatusConflict)
 			return
 		}
+		h.store.LogActivity(user.ID, "user_create", nil, req.Username+" ("+req.Role+")")
 		jsonResp(w, map[string]int64{"id": id})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2458,10 +2459,15 @@ func (h *Handler) handleUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "cannot delete yourself", http.StatusBadRequest)
 			return
 		}
+		var delName string
+		if tu, e := h.store.GetUser(id); e == nil && tu != nil {
+			delName = tu.Username
+		}
 		if err := h.store.DeleteUser(id); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		h.store.LogActivity(user.ID, "user_delete", nil, delName)
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodPut:
 		var req struct {
@@ -2495,6 +2501,14 @@ func (h *Handler) handleUser(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			tname := ""
+			if tu, e := h.store.GetUser(id); e == nil && tu != nil {
+				tname = tu.Username
+			}
+			h.store.LogActivity(user.ID, "user_role", nil, tname+" → "+req.Role)
+		}
+		if req.Password != "" {
+			h.store.LogActivity(user.ID, "user_password", nil, "#"+strconv.FormatInt(id, 10))
 		}
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
