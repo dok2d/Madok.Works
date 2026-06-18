@@ -31,6 +31,12 @@ func (h *Handler) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
+		// Admin replay: clear the flag so the wizard shows again on next load.
+		if req.Mode == "reset" {
+			h.store.SetSetting("onboarding_done", "false")
+			jsonResp(w, map[string]string{"status": "ok"})
+			return
+		}
 		set := func(name string, on bool) {
 			v := "false"
 			if on {
