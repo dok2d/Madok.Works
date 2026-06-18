@@ -463,6 +463,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/settings/llm", h.handleLLMSettings)
 	h.mux.HandleFunc("/api/settings/llm/test", h.handleLLMTest)
 	h.mux.HandleFunc("/api/integrations/llm/status", h.handleLLMStatus)
+	h.mux.HandleFunc("/api/llm/generate-task", h.handleLLMGenerateTask)
 	h.mux.HandleFunc("/api/integrations/db-info", h.handleDBInfo)
 	h.mux.HandleFunc("/api/admin/audit", h.handleAdminAudit)
 

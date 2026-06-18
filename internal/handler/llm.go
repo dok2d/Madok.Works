@@ -186,6 +186,136 @@ func llmSummarize(c llmConfig, text string) (string, error) {
 	return content, nil
 }
 
+// llmChat is a minimal one-shot chat completion (system + user → assistant text),
+// stripping any <think> reasoning block. Shared by summary/task generation.
+func llmChat(c llmConfig, system, user string, temperature float64) (string, error) {
+	payload := map[string]any{
+		"model": c.Model,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+		"temperature": temperature,
+		"stream":      false,
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	resp, err := (&http.Client{Timeout: llmHTTPTimeout}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(raw)))
+	}
+	var out struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", err
+	}
+	if len(out.Choices) == 0 {
+		return "", fmt.Errorf("empty response from model")
+	}
+	content := out.Choices[0].Message.Content
+	if i := strings.LastIndex(content, "</think>"); i >= 0 {
+		content = content[i+len("</think>"):]
+	}
+	return strings.TrimSpace(content), nil
+}
+
+// llmGenerateTask asks the model for a task description and a TODO checklist
+// (markdown) from a title/prompt, returning (description, todoMarkdown).
+func llmGenerateTask(c llmConfig, title, prompt string) (string, string, error) {
+	sys := "You help write software task tickets. Given a task title and optional notes, " +
+		"reply with STRICT JSON: {\"description\": string (a clear markdown description), " +
+		"\"todo\": [string, ...] (a short actionable checklist, 3-7 items)}. " +
+		"Reply in the same language as the title. Output only the JSON, no preamble or code fences."
+	user := "Title: " + title
+	if strings.TrimSpace(prompt) != "" {
+		user += "\nNotes: " + prompt
+	}
+	content, err := llmChat(c, sys, user, 0.4)
+	if err != nil {
+		return "", "", err
+	}
+	// Tolerate code fences around the JSON.
+	content = strings.TrimSpace(content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	if i := strings.Index(content, "{"); i > 0 {
+		content = content[i:]
+	}
+	if j := strings.LastIndex(content, "}"); j >= 0 {
+		content = content[:j+1]
+	}
+	var parsed struct {
+		Description string   `json:"description"`
+		Todo        []string `json:"todo"`
+	}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		// Fall back to using the whole reply as the description.
+		return content, "", nil
+	}
+	var todo strings.Builder
+	for _, item := range parsed.Todo {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			todo.WriteString("- [ ] " + item + "\n")
+		}
+	}
+	return strings.TrimSpace(parsed.Description), strings.TrimSpace(todo.String()), nil
+}
+
+// handleLLMGenerateTask generates a task description + TODO checklist via the LLM.
+func (h *Handler) handleLLMGenerateTask(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if user.Role == "readonly" {
+		http.Error(w, "read-only access", http.StatusForbidden)
+		return
+	}
+	c := h.llmConfig()
+	if !c.Enabled || c.BaseURL == "" {
+		http.Error(w, "LLM not configured", http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		Title  string `json:"title"`
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+		http.Error(w, "title required", http.StatusBadRequest)
+		return
+	}
+	// The model may take a while; allow a longer write deadline (as summary does).
+	if rc := http.NewResponseController(w); rc != nil {
+		rc.SetWriteDeadline(time.Now().Add(llmHTTPTimeout + 5*time.Second))
+	}
+	desc, todo, err := llmGenerateTask(c, strings.TrimSpace(req.Title), req.Prompt)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	jsonResp(w, map[string]string{"description": desc, "todo": todo})
+}
+
 // --- Endpoints ---
 
 // handleLLMSettings reads/writes the LLM integration config (admin only). On a
