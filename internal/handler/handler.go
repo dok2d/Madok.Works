@@ -465,6 +465,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/integrations/llm/status", h.handleLLMStatus)
 	h.mux.HandleFunc("/api/llm/generate-task", h.handleLLMGenerateTask)
 	h.mux.HandleFunc("/api/2fa/", h.handle2FA)
+	h.mux.HandleFunc("/api/setup/onboarding", h.handleOnboarding)
 	h.mux.HandleFunc("/api/integrations/db-info", h.handleDBInfo)
 	h.mux.HandleFunc("/api/admin/audit", h.handleAdminAudit)
 
