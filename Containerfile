@@ -2,10 +2,16 @@
 FROM docker.io/library/debian:bookworm-slim AS assets
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
+    apt-get install -y --no-install-recommends curl ca-certificates unzip && \
     rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /assets/js /assets/css /assets/fonts
+RUN mkdir -p /assets/js /assets/css /assets/fonts /assets/drawio
+
+# Self-hosted draw.io for the wiki diagram editor. The release .war is a zip of
+# the static web app (index.html at its root); we drop the Java-only dirs.
+RUN curl -sL "https://github.com/jgraph/drawio/releases/download/v30.0.4/draw.war" -o /tmp/draw.war && \
+    (cd /assets/drawio && unzip -q /tmp/draw.war) && rm /tmp/draw.war && \
+    rm -rf /assets/drawio/WEB-INF /assets/drawio/META-INF
 
 # JavaScript libraries
 RUN curl -sL "https://cdn.jsdelivr.net/npm/marked/marked.min.js" -o /assets/js/marked.min.js && \
@@ -52,6 +58,7 @@ COPY web/ /app/web/
 COPY --from=assets /assets/js/ /app/web/static/js/
 COPY --from=assets /assets/css/ /app/web/static/css/
 COPY --from=assets /assets/fonts/ /app/web/static/fonts/
+COPY --from=assets /assets/drawio/ /app/web/static/drawio/
 
 # drop to non-root
 USER kanban
