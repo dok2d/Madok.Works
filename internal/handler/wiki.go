@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"archive/zip"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -174,8 +175,41 @@ func (h *Handler) handleWikiSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, pages)
 	case "members":
 		h.handleWikiSpaceMembers(w, r, user, sp, role)
+	case "export":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.exportWikiSpace(w, sp)
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// exportWikiSpace streams a zip of every page's markdown in the space.
+func (h *Handler) exportWikiSpace(w http.ResponseWriter, sp *model.WikiSpace) {
+	pages, err := h.store.ExportWikiSpacePages(sp.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+wikiSafeFilename(sp.Key)+"-wiki.zip\"")
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+	used := map[string]int{}
+	for _, p := range pages {
+		base := wikiSafeFilename(p.Title)
+		name := base + ".md"
+		if used[name] > 0 {
+			name = fmt.Sprintf("%s-%d.md", base, p.ID)
+		}
+		used[name]++
+		fw, err := zw.Create(name)
+		if err != nil {
+			return
+		}
+		fw.Write([]byte("# " + p.Title + "\n\n" + p.ContentMd))
 	}
 }
 
@@ -424,9 +458,37 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 		h.handleWikiComments(w, r, user, page, role)
 	case "react":
 		h.handleWikiReact(w, r, user, "page", page.ID, role)
+	case "export":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+wikiSafeFilename(page.Title)+".md\"")
+		w.Write([]byte("# " + page.Title + "\n\n" + page.ContentMd))
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// wikiSafeFilename strips path separators and control characters so a page title
+// can be used as a download filename.
+func wikiSafeFilename(name string) string {
+	name = strings.TrimSpace(name)
+	repl := func(r rune) rune {
+		if r < 32 || strings.ContainsRune(`/\:*?"<>|`, r) {
+			return '_'
+		}
+		return r
+	}
+	name = strings.Map(repl, name)
+	if name == "" {
+		name = "page"
+	}
+	if len(name) > 100 {
+		name = name[:100]
+	}
+	return name
 }
 
 // handleWikiComments lists (GET) or adds (POST) comments on a page.

@@ -235,6 +235,8 @@ function wikiRenderPageView(el) {
         ${wikiCanEdit() ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('/wiki/page/${p.id}/edit')">${t('wikiEdit')}</button>` : ''}
         ${wikiState.llmEnabled ? `<button class="btn btn-ghost btn-sm" onclick="wikiSummarize(${p.id})">&#10024; ${t('wikiSummary')}</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="navigateTo('/wiki/page/${p.id}/history')">${t('wikiHistory')}</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.open('/api/wiki/pages/${p.id}/export','_blank')" title="${escAttr(t('wikiExportMd'))}">&#11015;</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.print()" title="${escAttr(t('wikiPrint'))}">&#128424;</button>
         ${wikiCanEdit() ? `<div class="wiki-menu-wrap">
           <button class="btn btn-ghost btn-sm" onclick="wikiToggleMenu(event)">&#8943;</button>
           <div class="wiki-menu hidden">
@@ -1200,6 +1202,7 @@ function wikiRenderSpaceSettings(el) {
       </label>
       <div style="display:flex;gap:8px;margin:10px 0 20px">
         <button class="btn btn-primary btn-sm" onclick="wikiSaveSpaceSettings()">${t('wikiSave')}</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.open('/api/wiki/spaces/${sp.id}/export','_blank')">&#11015; ${t('wikiExportSpace')}</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="wikiDeleteSpace()">${t('wikiDeleteSpace')}</button>
       </div>
       <h3>${t('wikiMembers')}</h3>

@@ -290,6 +290,25 @@ func (s *Store) ListWikiPageTree(spaceID int64) ([]model.WikiPage, error) {
 	return out, rows.Err()
 }
 
+// ExportWikiSpacePages returns every page of a space with its markdown source,
+// for a bulk export (zip of .md files).
+func (s *Store) ExportWikiSpacePages(spaceID int64) ([]model.WikiPage, error) {
+	rows, err := s.db.Query(`SELECT id, title, content_md FROM wiki_pages WHERE space_id = ? ORDER BY title COLLATE NOCASE`, spaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.WikiPage
+	for rows.Next() {
+		var p model.WikiPage
+		if err := rows.Scan(&p.ID, &p.Title, &p.ContentMd); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetWikiPage(id int64) (*model.WikiPage, error) {
 	var p model.WikiPage
 	var createdName, updatedName sql.NullString
