@@ -275,7 +275,7 @@ func (h *Handler) runTelegramBot(token string) {
 				if len(parts) > 1 {
 					text = parts[1]
 				} else {
-					h.sendTelegramMessageWithKeyboard(token, chatID, "👋 Добро пожаловать в Kanban Bot!\n\nОтправьте хэш привязки из настроек kanban для подключения.", h.mainMenuKeyboard())
+					h.sendTelegramMessageWithKeyboard(token, chatID, fmt.Sprintf("👋 Добро пожаловать в %s Bot!\n\nОтправьте хэш привязки из настроек %s для подключения.", h.appName(), h.appName()), h.mainMenuKeyboard())
 					continue
 				}
 			}
@@ -343,7 +343,7 @@ func (h *Handler) runTelegramBot(token string) {
 				continue
 			}
 
-			h.sendTelegramMessageWithKeyboard(token, chatID, fmt.Sprintf("Отправьте %d-символьный хэш привязки из настроек kanban.", tgLinkHashLen), h.mainMenuKeyboard())
+			h.sendTelegramMessageWithKeyboard(token, chatID, fmt.Sprintf("Отправьте %d-символьный хэш привязки из настроек %s.", tgLinkHashLen, h.appName()), h.mainMenuKeyboard())
 		}
 	}
 }

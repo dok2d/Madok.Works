@@ -513,7 +513,38 @@ func (h *Handler) appName() string {
 	if n := strings.TrimSpace(h.store.GetSetting("app_name")); n != "" {
 		return n
 	}
-	return "Kanban"
+	return "Madok.Works"
+}
+
+// appShort is the compact brand mark shown as a UI element (header logo): the
+// initials of the app name, e.g. "Madok.Works" → "MW". Falls back to the first
+// two letters for single-word names.
+func (h *Handler) appShort() string {
+	name := h.appName()
+	isDelim := func(r rune) bool { return strings.ContainsRune(" .,-_/|:", r) }
+	fields := strings.FieldsFunc(name, func(r rune) bool { return isDelim(r) })
+	var initials []rune
+	for _, f := range fields {
+		rs := []rune(f)
+		if len(rs) > 0 {
+			initials = append(initials, rs[0])
+		}
+	}
+	s := strings.ToUpper(string(initials))
+	if len([]rune(s)) < 2 && len(fields) > 0 {
+		rs := []rune(fields[0])
+		if len(rs) > 2 {
+			rs = rs[:2]
+		}
+		s = strings.ToUpper(string(rs))
+	}
+	if rs := []rune(s); len(rs) > 3 {
+		s = string(rs[:3])
+	}
+	if s == "" {
+		s = "MW"
+	}
+	return s
 }
 
 // appSlug is a filesystem/URL-safe form of the app name (for backup filenames).
@@ -547,9 +578,13 @@ func (h *Handler) serveBrandedHTML(w http.ResponseWriter, path string) {
 	}
 	name := h.appName()
 	jsName, _ := json.Marshal(name)
+	short := h.appShort()
+	jsShort, _ := json.Marshal(short)
 	s := string(data)
 	s = strings.ReplaceAll(s, "__APP_NAME_JS__", string(jsName))
 	s = strings.ReplaceAll(s, "__APP_NAME__", html.EscapeString(name))
+	s = strings.ReplaceAll(s, "__APP_SHORT_JS__", string(jsShort))
+	s = strings.ReplaceAll(s, "__APP_SHORT__", html.EscapeString(short))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(s))
 }

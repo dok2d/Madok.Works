@@ -59,13 +59,14 @@ func (h *Handler) handleWapLogin(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) wapLoginPage(w http.ResponseWriter, errMsg string) {
 	w.Header().Set("Content-Type", wmlContentType)
+	short := html.EscapeString(h.appShort())
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE wml PUBLIC "-//WAPFORUM//DTD WML 1.1//EN" "http://www.wapforum.org/DTD/wml_1.1.xml">
 <wml>
-<card id="login" title="Kanban - Вход">
+<card id="login" title="` + short + ` - Вход">
 <p>
-<b>Kanban</b><br/>
+<b>` + short + `</b><br/>
 `)
 	if errMsg != "" {
 		b.WriteString("<b>" + html.EscapeString(errMsg) + "</b><br/>\n")
@@ -107,8 +108,9 @@ func (h *Handler) handleWapBoard(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", wmlContentType)
 	var b strings.Builder
-	b.WriteString(wmlHeader("Kanban"))
-	b.WriteString("<b>Kanban доска</b><br/><br/>\n")
+	short := html.EscapeString(h.appShort())
+	b.WriteString(wmlHeader(short))
+	b.WriteString("<b>" + short + " доска</b><br/><br/>\n")
 
 	for _, col := range cols {
 		cnt := colCount[col.ID]

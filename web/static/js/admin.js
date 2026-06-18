@@ -310,7 +310,7 @@ async function renderAdminSite(panel) {
     <h2 class="admin-h">${t('adminTabSite')}</h2>
     <div class="admin-form">
       <label class="admin-fld">${t('adminAppName')}
-        <input id="site-appname" maxlength="60" value="${escAttr(name)}" placeholder="Kanban"></label>
+        <input id="site-appname" maxlength="60" value="${escAttr(name)}" placeholder="Madok.Works"></label>
       <div class="admin-row"><button class="btn btn-primary btn-sm" onclick="adminSaveAppName()">${t('adminSave')}</button></div>
       <div class="admin-note">${t('adminAppNameHint')}</div>
     </div>
@@ -330,7 +330,7 @@ async function adminSaveAppName() {
   const name = document.getElementById('site-appname').value.trim();
   try {
     const r = await api('/api/settings/app', 'POST', { name });
-    if (typeof applyAppName === 'function') applyAppName(r.name || name || 'Kanban');
+    if (typeof applyAppName === 'function') applyAppName(r.name || name || 'Madok.Works');
   } catch (e) { alert(e.message); }
 }
 

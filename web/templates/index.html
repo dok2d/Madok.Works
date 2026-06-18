@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__APP_NAME__</title>
-<script>window.APP_NAME = __APP_NAME_JS__;</script>
+<script>window.APP_NAME = __APP_NAME_JS__; window.APP_SHORT = __APP_SHORT_JS__;</script>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/css/fonts.css">
 <link rel="stylesheet" href="/static/css/atom-one-dark.min.css">
@@ -1060,7 +1060,7 @@ body.has-rail .search-results{left:52px}
 
 <div class="header">
   <h1>
-    <a href="/" onclick="resetBoardFilters();navigateTo('/');return false;">&#x2B21; __APP_NAME__</a>
+    <a href="/" title="__APP_NAME__" onclick="resetBoardFilters();navigateTo('/');return false;">&#x2B21; __APP_SHORT__</a>
     <span id="project-hdr"></span>
     <span class="hdr-sep">/</span>
     <span class="hdr-filter">
@@ -1892,11 +1892,21 @@ function ensureValidView() {
 
 // applyAppName updates the live branding (title, header link, rail tooltip) after
 // an admin changes the application name, without a page reload.
+// appShort derives the compact brand mark (initials) from an app name, e.g.
+// "Madok.Works" → "MW". Mirrors the server-side appShort().
+function appShort(name) {
+  const fields = (name || '').split(/[\s.,\-_/|:]+/).filter(Boolean);
+  let s = fields.map(f => f[0]).join('').toUpperCase();
+  if (s.length < 2 && fields.length) s = fields[0].slice(0, 2).toUpperCase();
+  if (s.length > 3) s = s.slice(0, 3);
+  return s || 'MW';
+}
 function applyAppName(name) {
-  window.APP_NAME = name || 'Kanban';
+  window.APP_NAME = name || 'Madok.Works';
+  window.APP_SHORT = appShort(window.APP_NAME);
   document.title = window.APP_NAME;
   const a = document.querySelector('.header h1 a');
-  if (a) a.textContent = '⬡ ' + window.APP_NAME;
+  if (a) { a.textContent = '⬡ ' + window.APP_SHORT; a.title = window.APP_NAME; }
   renderAppRail();
 }
 
