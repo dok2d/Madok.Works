@@ -318,7 +318,7 @@ function chatChannelRow(c, label, onclick, extraCls) {
   return `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''} ${extraCls || ''}" onclick="${onclick}">
     ${chatAvatar(label)}
     <div class="chat-ch-main">
-      <div class="chat-ch-line1"><span class="chat-ch-name">${c.pinned ? '<span class="chat-ch-pinmark">&#128204;</span> ' : ''}${c.muted ? '<span class="chat-ch-mutemark" title="' + escAttr(t('chatMuted')) + '">&#128277;</span> ' : ''}${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
+      <div class="chat-ch-line1"><span class="chat-ch-name">${c.pinned ? '<span class="chat-ch-pinmark">&#128204;</span> ' : ''}${c.muted ? '<span class="chat-ch-mutemark" title="' + escAttr(t('chatMuted')) + '">&#128263;</span> ' : ''}${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
       <div class="chat-ch-line2"><span class="chat-ch-preview">${preview}</span>${badge}</div>
     </div>
     ${pin}
@@ -453,7 +453,7 @@ function chatHeadActions(c) {
     h += `<button class="btn btn-ghost btn-sm" title="${t('callAudio')}" onclick="chatCall(false)">&#128222;</button>`;
     h += `<button class="btn btn-ghost btn-sm" title="${t('callVideo')}" onclick="chatCall(true)">&#127909;</button>`;
   }
-  h += `<button class="btn btn-ghost btn-sm" title="${c.muted ? t('chatMuted') : t('chatMute')}" onclick="chatMuteMenu(event)">${c.muted ? '&#128277;' : '&#128276;'}</button>`;
+  h += `<button class="btn btn-ghost btn-sm" title="${c.muted ? t('chatMuted') : t('chatMute')}" onclick="chatMuteMenu(event)">${c.muted ? '&#128263;' : '&#128266;'}</button>`;
   if (c.type === 'dm') return h;
   h += `<button class="btn btn-ghost btn-sm" onclick="chatMembersDialog()">${t('chatMembers')} (${c.member_count || 0})</button>`;
   if (currentUser && currentUser.role !== 'readonly') {
