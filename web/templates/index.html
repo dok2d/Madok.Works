@@ -562,11 +562,18 @@ body.has-rail #app{margin-left:52px}
 .wiki-react-pop button{background:none;border:none;cursor:pointer;font-size:1.1rem;padding:2px 4px;border-radius:4px}
 .wiki-react-pop button:hover{background:var(--bg3)}
 @media print{
+  /* Print the article on a clean white page: no theme background anywhere,
+     black text, and strip element backgrounds (code blocks, callouts, etc.). */
+  html,body{background:#fff !important}
   body *{visibility:hidden !important}
   .wiki-title,.wiki-title *,.wiki-content,.wiki-content *{visibility:visible !important}
-  .wiki-title{position:absolute;top:0;left:0;color:#000}
-  .wiki-content{position:absolute;top:36px;left:0;width:100%;max-width:none;color:#000}
-  .wiki-actions,.wiki-menu-wrap,.wiki-comments-section,.wiki-backlinks{display:none !important}
+  .wiki-title{position:absolute;top:0;left:0;color:#000 !important}
+  .wiki-content{position:absolute;top:36px;left:0;width:100%;max-width:none;color:#000 !important}
+  .wiki-content *{color:#000 !important;background:transparent !important;box-shadow:none !important}
+  .wiki-content pre,.wiki-content code,.wiki-content table,.wiki-content th,.wiki-content td,.wiki-content blockquote,
+  .wiki-info,.wiki-warn,.wiki-note,.wiki-success{background:#fff !important;border-color:#999 !important}
+  .wiki-content a{color:#000 !important;text-decoration:underline}
+  .wiki-actions,.wiki-menu-wrap,.wiki-comments-section,.wiki-backlinks,.app-rail,.header-spacer{display:none !important}
 }
 .wiki-info,.wiki-warn,.wiki-note,.wiki-success{padding:10px 14px;border-radius:var(--radius);margin:.7em 0;border-left:3px solid}
 .wiki-info{background:color-mix(in srgb, var(--accent) 12%, var(--bg2));border-color:var(--accent)}
@@ -604,6 +611,9 @@ body.has-rail #app{margin-left:52px}
 [dir="rtl"] .wiki-menu{right:auto;left:0}
 .wiki-menu a{display:block;padding:8px 14px;font-size:.84rem;color:var(--fg);cursor:pointer;text-decoration:none}
 .wiki-menu a:hover{background:var(--bg3)}
+.wiki-menu-sep{height:1px;background:var(--bg4);margin:4px 0}
+.wiki-comment-editbox{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.wiki-comment-editbox textarea,.wiki-comment-form textarea{width:100%;resize:vertical;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg);padding:8px;font:inherit;font-size:.9rem}
 .wiki-history{display:flex;gap:18px;align-items:flex-start}
 .wiki-rev-list{width:280px;min-width:280px;display:flex;flex-direction:column;gap:6px}
 .wiki-rev-item{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);padding:8px 12px;cursor:pointer;font-size:.84rem}

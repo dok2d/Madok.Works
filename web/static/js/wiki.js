@@ -251,11 +251,12 @@ function wikiRenderPageView(el) {
         ${wikiCanEdit() ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('/wiki/page/${p.id}/edit')">${t('wikiEdit')}</button>` : ''}
         ${wikiState.llmEnabled ? `<button class="btn btn-ghost btn-sm" onclick="wikiSummarize(${p.id})">&#10024; ${t('wikiSummary')}</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="navigateTo('/wiki/page/${p.id}/history')">${t('wikiHistory')}</button>
-        <button class="btn btn-ghost btn-sm" onclick="window.open('/api/wiki/pages/${p.id}/export','_blank')" title="${escAttr(t('wikiExportMd'))}">&#11015;</button>
-        <button class="btn btn-ghost btn-sm" onclick="window.print()" title="${escAttr(t('wikiPrint'))}">&#128424;</button>
-        ${wikiCanEdit() ? `<div class="wiki-menu-wrap">
+        <div class="wiki-menu-wrap">
           <button class="btn btn-ghost btn-sm" onclick="wikiToggleMenu(event)">&#8943;</button>
           <div class="wiki-menu hidden">
+            <a onclick="window.open('/api/wiki/pages/${p.id}/export','_blank')">&#11015; ${t('wikiExportMd')}</a>
+            <a onclick="window.print()">&#128424; ${t('wikiPrint')}</a>
+            ${wikiCanEdit() ? `<div class="wiki-menu-sep"></div>
             <a onclick="wikiNewPage(${p.id})">${t('wikiAddChild')}</a>
             <a onclick="wikiMovePage(${p.id},-1)">&#9650; ${t('wikiMoveUp')}</a>
             <a onclick="wikiMovePage(${p.id},1)">&#9660; ${t('wikiMoveDown')}</a>
@@ -264,9 +265,9 @@ function wikiRenderPageView(el) {
             <a onclick="wikiToggleTemplate(${p.id})">&#128209; ${p.is_template ? t('wikiUnmarkTemplate') : t('wikiMarkTemplate')}</a>
             <a onclick="wikiTogglePin(${p.id},false)">&#128204; ${p.pinned_by_me ? t('wikiUnpin') : t('wikiPin')}</a>
             ${wikiRoleIsAdmin() ? `<a onclick="wikiTogglePin(${p.id},true)">&#128204; ${p.pinned_shared ? t('wikiUnpinShared') : t('wikiPinShared')}</a>` : ''}
-            <a onclick="wikiDeletePage(${p.id})" style="color:var(--red)">${t('wikiDeletePage')}</a>
+            <a onclick="wikiDeletePage(${p.id})" style="color:var(--red)">${t('wikiDeletePage')}</a>` : ''}
           </div>
-        </div>` : ''}
+        </div>
       </div>
     </div>
     <div class="wiki-meta">v${p.rev_no} &middot; ${t('wikiEditedBy')} ${esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
@@ -335,11 +336,17 @@ function wikiRenderCommentsSection(el, p) {
       <button class="btn btn-ghost btn-sm comment-sort-toggle" onclick="toggleCommentSort()" title="${escAttr(t('commentSortToggle'))}">${commentSortPref() === 'newest' ? '&#8593; ' + t('commentNewest') : '&#8595; ' + t('commentOldest')}</button>
     </h3>
     <div id="wiki-comment-list"></div>
-    ${currentUser && currentUser.role !== 'readonly' ? `<div class="wiki-comment-form">
-      <textarea id="wiki-comment-input" rows="2" placeholder="${escAttr(t('writeComment'))}"></textarea>
-      <button class="btn btn-primary btn-sm" onclick="wikiPostComment()">${t('send')}</button>
+    ${currentUser && currentUser.role !== 'readonly' ? `<div class="wiki-comment-form comment-form">
+      ${typeof insertMdToolbar === 'function' ? insertMdToolbar('wiki-comment-input') : ''}
+      <textarea id="wiki-comment-input" placeholder="${escAttr(t('writeComment'))}" onkeydown="if(event.ctrlKey&&event.key==='Enter')wikiPostComment()"></textarea>
+      <div class="comment-form-actions">
+        <span class="paste-hint">${t('pasteHint')} &middot; ${t('ctrlEnter')}</span>
+        <button class="btn btn-primary btn-sm" onclick="wikiPostComment()">${t('send')}</button>
+      </div>
     </div>` : ''}`;
   el.appendChild(sec);
+  const cinp = sec.querySelector('#wiki-comment-input');
+  if (cinp && typeof setupPaste === 'function') setupPaste(cinp);
   wikiLoadComments(p.id);
 }
 
@@ -399,23 +406,54 @@ async function wikiPostComment(parentId) {
   } catch (e) { alert(e.message); }
 }
 
-async function wikiReplyComment(id) {
-  const text = await uiPrompt(t('reply'));
-  if (!text || !text.trim()) return;
-  try {
-    await api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text: text.trim(), parent_id: id });
-    await wikiLoadComments(wikiState.page.id);
-  } catch (e) { alert(e.message); }
+// wikiCommentEditor builds an inline textarea editor (paste images, Ctrl+Enter
+// to save / Esc to cancel) — same kind of field as the composer, so multiline
+// markdown text is never mangled (the old single-line prompt did).
+function wikiCommentEditor(initial, onSave, onCancel) {
+  const box = document.createElement('div');
+  box.className = 'wiki-comment-editbox comment-form';
+  box.innerHTML = `<textarea class="wiki-ce-input" rows="2"></textarea>
+    <div class="comment-form-actions">
+      <button class="btn btn-ghost btn-sm" data-act="cancel">${t('cancel')}</button>
+      <button class="btn btn-primary btn-sm" data-act="save">${t('send')}</button>
+    </div>`;
+  const ta = box.querySelector('textarea');
+  ta.value = initial || '';
+  if (typeof setupPaste === 'function') setupPaste(ta);
+  const cancel = () => { box.remove(); if (onCancel) onCancel(); };
+  const save = () => { const v = ta.value.trim(); if (v) onSave(v); };
+  box.querySelector('[data-act="cancel"]').onclick = cancel;
+  box.querySelector('[data-act="save"]').onclick = save;
+  ta.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  setTimeout(() => { ta.focus(); ta.style.height = 'auto'; ta.style.height = Math.min(200, ta.scrollHeight) + 'px'; }, 0);
+  return box;
 }
 
-async function wikiEditComment(id) {
+function wikiReplyComment(id) {
+  const row = document.getElementById('wiki-comment-' + id);
+  if (!row || row.querySelector('.wiki-comment-editbox')) return;
+  const box = wikiCommentEditor('', async v => {
+    try { await api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text: v, parent_id: id }); await wikiLoadComments(wikiState.page.id); }
+    catch (e) { alert(e.message); }
+  });
+  row.appendChild(box);
+}
+
+function wikiEditComment(id) {
   const c = wikiComments.find(x => x.id === id);
-  const text = await uiPrompt(t('edit'), c ? c.text : '');
-  if (text === null) return;
-  try {
-    await api('/api/wiki/comments/' + id, 'PUT', { text: text.trim() });
-    await wikiLoadComments(wikiState.page.id);
-  } catch (e) { alert(e.message); }
+  const row = document.getElementById('wiki-comment-' + id);
+  if (!c || !row || row.querySelector('.wiki-comment-editbox')) return;
+  const body = row.querySelector('.wiki-comment-body');
+  if (!body) return;
+  body.style.display = 'none';
+  const box = wikiCommentEditor(c.text, async v => {
+    try { await api('/api/wiki/comments/' + id, 'PUT', { text: v }); await wikiLoadComments(wikiState.page.id); }
+    catch (e) { alert(e.message); }
+  }, () => { body.style.display = ''; });
+  body.parentNode.insertBefore(box, body.nextSibling);
 }
 
 async function wikiDeleteComment(id) {
