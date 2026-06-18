@@ -569,6 +569,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE mail_messages ADD COLUMN in_reply_to TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE mail_messages ADD COLUMN message_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_pages ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE wiki_pages ADD COLUMN is_template INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
 		"ALTER TABLE chat_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",

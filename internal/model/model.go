@@ -196,9 +196,11 @@ type WikiPage struct {
 	UpdatedByName string `json:"updated_by_name,omitempty"`
 	// Populated only on the single-page view: [[link]] token -> resolved page id
 	// (0 = unresolved), and the pages that link to this one.
-	Links     map[string]int64 `json:"links,omitempty"`
-	Backlinks []WikiPageRef    `json:"backlinks,omitempty"`
-	Reactions []ChatReaction   `json:"reactions,omitempty"` // page-level reactions (view only)
+	IsTemplate bool             `json:"is_template"`
+	Links      map[string]int64 `json:"links,omitempty"`
+	TaskLinks  map[string]int64 `json:"task_links,omitempty"` // [[task:N]]/[[KEY-N]] token -> task id
+	Backlinks  []WikiPageRef    `json:"backlinks,omitempty"`
+	Reactions  []ChatReaction   `json:"reactions,omitempty"` // page-level reactions (view only)
 }
 
 // WikiPageRef is a lightweight page reference (for backlinks and link results).

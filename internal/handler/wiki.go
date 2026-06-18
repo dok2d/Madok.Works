@@ -181,6 +181,17 @@ func (h *Handler) handleWikiSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.exportWikiSpace(w, sp)
+	case "templates":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		tpls, err := h.store.ListWikiTemplates(sp.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, tpls)
 	default:
 		http.NotFound(w, r)
 	}
@@ -458,6 +469,24 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 		h.handleWikiComments(w, r, user, page, role)
 	case "react":
 		h.handleWikiReact(w, r, user, "page", page.ID, role)
+	case "template":
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !wikiRoleAtLeast(role, "editor") {
+			http.Error(w, "no edit access", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			IsTemplate bool `json:"is_template"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if err := h.store.SetWikiPageTemplate(page.ID, req.IsTemplate); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]bool{"is_template": req.IsTemplate})
 	case "export":
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -646,6 +675,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 	case http.MethodGet:
 		// Resolve [[links]] for rendering and gather backlinks for this page.
 		page.Links, _ = h.store.ResolveWikiLinks(page.SpaceID, page.ContentMd)
+		page.TaskLinks = h.store.ResolveWikiTaskLinks(page.ContentMd)
 		if bl, err := h.store.WikiBacklinks(page.ID); err == nil {
 			page.Backlinks = bl
 		}

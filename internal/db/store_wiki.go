@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"kanban/internal/model"
@@ -312,20 +313,84 @@ func (s *Store) ExportWikiSpacePages(spaceID int64) ([]model.WikiPage, error) {
 func (s *Store) GetWikiPage(id int64) (*model.WikiPage, error) {
 	var p model.WikiPage
 	var createdName, updatedName sql.NullString
+	var isTmpl int
 	err := s.db.QueryRow(`SELECT p.id, p.space_id, p.parent_id, p.title, p.content, p.content_md, p.position, p.rev_no,
-		p.created_by, p.created_at, p.updated_by, p.updated_at, cu.username, uu.username
+		p.created_by, p.created_at, p.updated_by, p.updated_at, p.is_template, cu.username, uu.username
 		FROM wiki_pages p
 		LEFT JOIN users cu ON cu.id = p.created_by
 		LEFT JOIN users uu ON uu.id = p.updated_by
 		WHERE p.id = ?`, id).
 		Scan(&p.ID, &p.SpaceID, &p.ParentID, &p.Title, &p.Content, &p.ContentMd, &p.Position, &p.RevNo,
-			&p.CreatedBy, &p.CreatedAt, &p.UpdatedBy, &p.UpdatedAt, &createdName, &updatedName)
+			&p.CreatedBy, &p.CreatedAt, &p.UpdatedBy, &p.UpdatedAt, &isTmpl, &createdName, &updatedName)
 	if err != nil {
 		return nil, err
 	}
+	p.IsTemplate = isTmpl == 1
 	p.CreatedByName = createdName.String
 	p.UpdatedByName = updatedName.String
 	return &p, nil
+}
+
+// SetWikiPageTemplate marks/unmarks a page as a reusable template.
+func (s *Store) SetWikiPageTemplate(id int64, isTemplate bool) error {
+	v := 0
+	if isTemplate {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE wiki_pages SET is_template=? WHERE id=?`, v, id)
+	return err
+}
+
+// ListWikiTemplates returns the template pages of a space (id, title, content_md).
+func (s *Store) ListWikiTemplates(spaceID int64) ([]model.WikiPage, error) {
+	rows, err := s.db.Query(`SELECT id, title, content_md FROM wiki_pages WHERE space_id=? AND is_template=1 ORDER BY title COLLATE NOCASE`, spaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.WikiPage{}
+	for rows.Next() {
+		var p model.WikiPage
+		if err := rows.Scan(&p.ID, &p.Title, &p.ContentMd); err != nil {
+			return nil, err
+		}
+		p.IsTemplate = true
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// taskLinkRe matches [[task:123]] or [[KEY-123]] task-reference tokens.
+var taskLinkRe = regexp.MustCompile(`^(?:task:(\d+)|([A-Za-z][A-Za-z0-9_]*)-(\d+))$`)
+
+// ResolveWikiTaskLinks resolves [[task:ID]] and [[KEY-NUMBER]] tokens to task ids
+// (0 when unresolved), so the renderer can turn them into task links.
+func (s *Store) ResolveWikiTaskLinks(md string) map[string]int64 {
+	out := map[string]int64{}
+	for _, m := range wikiLinkRe.FindAllStringSubmatch(md, -1) {
+		tok := strings.TrimSpace(m[1])
+		if _, done := out[tok]; done {
+			continue
+		}
+		sm := taskLinkRe.FindStringSubmatch(tok)
+		if sm == nil {
+			continue
+		}
+		var tid int64
+		if sm[1] != "" { // task:ID
+			id, _ := strconv.ParseInt(sm[1], 10, 64)
+			var exists int64
+			if s.db.QueryRow(`SELECT id FROM tasks WHERE id=?`, id).Scan(&exists) == nil {
+				tid = exists
+			}
+		} else { // KEY-NUMBER
+			key := strings.ToUpper(sm[2])
+			num, _ := strconv.ParseInt(sm[3], 10, 64)
+			s.db.QueryRow(`SELECT t.id FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.key=? AND t.number=?`, key, num).Scan(&tid)
+		}
+		out[tok] = tid
+	}
+	return out
 }
 
 func (s *Store) CreateWikiPage(spaceID int64, parentID *int64, title, content, contentMd string, author int64) (int64, error) {

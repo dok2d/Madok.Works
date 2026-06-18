@@ -245,6 +245,7 @@ function wikiRenderPageView(el) {
             <a onclick="wikiMovePage(${p.id},1)">&#9660; ${t('wikiMoveDown')}</a>
             <a onclick="wikiIndentPage(${p.id})">&#8618; ${t('wikiIndent')}</a>
             <a onclick="wikiOutdentPage(${p.id})">&#8617; ${t('wikiOutdent')}</a>
+            <a onclick="wikiToggleTemplate(${p.id})">&#128209; ${p.is_template ? t('wikiUnmarkTemplate') : t('wikiMarkTemplate')}</a>
             <a onclick="wikiDeletePage(${p.id})" style="color:var(--red)">${t('wikiDeletePage')}</a>
           </div>
         </div>` : ''}
@@ -259,7 +260,8 @@ function wikiRenderPageView(el) {
     </div>` : ''}`;
   const contentEl = el.querySelector('.wiki-content');
   wikiFillSubpageTocs(contentEl, p.id);
-  wikiFillWikiLinks(contentEl, p.links);
+  wikiFillToc(contentEl);
+  wikiFillWikiLinks(contentEl, p.links, p.task_links);
   highlightCode();
   wikiEnsureLLM();
   wikiRenderCommentsSection(el, p);
@@ -407,9 +409,10 @@ async function wikiDeleteComment(id) {
 // page into links, using the server-resolved token->pageId map (`links`). Resolved
 // tokens become navigable anchors; unresolved ones render as a muted broken-link
 // span. Layout markers ([[subpages]]/[[toc]]) and text inside code are skipped.
-function wikiFillWikiLinks(container, links) {
+function wikiFillWikiLinks(container, links, taskLinks) {
   if (!container) return;
   links = links || {};
+  taskLinks = taskLinks || {};
   const re = /\[\[\s*([^\]\n|]+?)\s*\]\]/g;
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
@@ -426,21 +429,42 @@ function wikiFillWikiLinks(container, links) {
       if (low === 'subpages' || low === 'subpages:tree' || low === 'toc') continue;
       if (!frag) frag = document.createDocumentFragment();
       if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-      const title = tok.includes(':') ? tok.slice(tok.indexOf(':') + 1).trim() : tok;
-      const pid = links[tok] || 0;
-      if (pid) {
-        const a = document.createElement('a');
-        a.className = 'wiki-link';
-        a.href = '/wiki/page/' + pid;
-        a.textContent = title;
-        a.addEventListener('click', e => { e.preventDefault(); navigateTo('/wiki/page/' + pid); });
-        frag.appendChild(a);
+      const isTask = Object.prototype.hasOwnProperty.call(taskLinks, tok);
+      if (isTask) {
+        // Task reference [[task:123]] / [[KEY-123]].
+        const tid = taskLinks[tok] || 0;
+        const label = tok.startsWith('task:') ? '#' + tok.slice(5) : tok;
+        if (tid) {
+          const a = document.createElement('a');
+          a.className = 'wiki-link wiki-task-link';
+          a.href = '/task/' + tid;
+          a.textContent = label;
+          a.addEventListener('click', e => { e.preventDefault(); navigateTo('/task/' + tid); });
+          frag.appendChild(a);
+        } else {
+          const span = document.createElement('span');
+          span.className = 'wiki-link-broken';
+          span.title = t('wikiLinkBroken');
+          span.textContent = label;
+          frag.appendChild(span);
+        }
       } else {
-        const span = document.createElement('span');
-        span.className = 'wiki-link-broken';
-        span.title = t('wikiLinkBroken');
-        span.textContent = title;
-        frag.appendChild(span);
+        const title = tok.includes(':') ? tok.slice(tok.indexOf(':') + 1).trim() : tok;
+        const pid = links[tok] || 0;
+        if (pid) {
+          const a = document.createElement('a');
+          a.className = 'wiki-link';
+          a.href = '/wiki/page/' + pid;
+          a.textContent = title;
+          a.addEventListener('click', e => { e.preventDefault(); navigateTo('/wiki/page/' + pid); });
+          frag.appendChild(a);
+        } else {
+          const span = document.createElement('span');
+          span.className = 'wiki-link-broken';
+          span.title = t('wikiLinkBroken');
+          span.textContent = title;
+          frag.appendChild(span);
+        }
       }
       last = re.lastIndex;
     }
@@ -449,6 +473,41 @@ function wikiFillWikiLinks(container, links) {
       node.parentNode.replaceChild(frag, node);
     }
   }
+}
+
+// wikiFillToc replaces a literal [[toc]] token with a generated table of contents
+// built from the page's h1-h3 headings (each gets an id for anchor links).
+function wikiFillToc(container) {
+  if (!container) return;
+  // Find a text node holding exactly the [[toc]] marker.
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let tocNode = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (/^\s*\[\[\s*toc\s*\]\]\s*$/i.test(n.nodeValue)) { tocNode = n; break; }
+  }
+  if (!tocNode) return;
+  const heads = container.querySelectorAll('h1, h2, h3');
+  if (!heads.length) { tocNode.parentNode.removeChild(tocNode); return; }
+  const nav = document.createElement('nav');
+  nav.className = 'wiki-toc';
+  const ul = document.createElement('ul');
+  let i = 0;
+  heads.forEach(h => {
+    if (!h.id) h.id = 'h-' + (i++) + '-' + (h.textContent || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+    const li = document.createElement('li');
+    li.className = 'wiki-toc-' + h.tagName.toLowerCase();
+    const a = document.createElement('a');
+    a.href = '#' + h.id;
+    a.textContent = h.textContent;
+    a.addEventListener('click', e => { e.preventDefault(); const el = document.getElementById(h.id); if (el) el.scrollIntoView({ behavior: 'smooth' }); });
+    li.appendChild(a);
+    ul.appendChild(li);
+  });
+  nav.appendChild(ul);
+  // Replace the marker's containing <p> if it only held the marker, else the node.
+  const p = tocNode.parentElement;
+  if (p && p.tagName === 'P' && p.textContent.trim().match(/^\[\[\s*toc\s*\]\]$/i)) p.replaceWith(nav);
+  else tocNode.parentNode.replaceChild(nav, tocNode);
 }
 
 // wikiEnsureLLM refreshes the LLM-integration status on each page view. If the
@@ -964,11 +1023,45 @@ async function wikiCancelEdit() {
 async function wikiNewPage(parentId) {
   const title = await uiPrompt(t('wikiNewPageTitle'));
   if (!title || !title.trim()) return;
+  // Offer space templates (if any) to seed the new page's content.
+  let templates = [];
+  try { templates = await api('/api/wiki/spaces/' + wikiState.spaceId + '/templates'); } catch (e) { templates = []; }
+  const createWith = async (contentMd) => {
+    try {
+      const res = await api('/api/wiki/pages', 'POST', {
+        space_id: wikiState.spaceId, parent_id: parentId, title: title.trim(), content: '', content_md: contentMd || '',
+      });
+      navigateTo('/wiki/page/' + res.id + '/edit');
+    } catch (e) { alert(e.message); }
+  };
+  if (!templates.length) { createWith(''); return; }
+  // Picker: blank or one of the templates.
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML = `<div class="modal"><h3>${esc(t('wikiChooseTemplate'))}</h3>
+    <div class="wiki-tpl-list">
+      <button class="btn btn-ghost" data-md="">${esc(t('wikiBlankPage'))}</button>
+      ${templates.map((tp, i) => `<button class="btn btn-ghost" data-i="${i}">${esc(tp.title)}</button>`).join('')}
+    </div></div>`;
+  ov.addEventListener('click', e => {
+    if (e.target === ov) { ov.remove(); return; }
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const md = btn.dataset.i !== undefined ? (templates[Number(btn.dataset.i)].content_md || '') : '';
+    ov.remove();
+    createWith(md);
+  });
+  document.body.appendChild(ov);
+}
+
+// wikiToggleTemplate marks/unmarks the current page as a reusable template.
+async function wikiToggleTemplate(id) {
+  const p = wikiState.page;
+  const next = !(p && p.is_template);
   try {
-    const res = await api('/api/wiki/pages', 'POST', {
-      space_id: wikiState.spaceId, parent_id: parentId, title: title.trim(), content: '',
-    });
-    navigateTo('/wiki/page/' + res.id + '/edit');
+    await api('/api/wiki/pages/' + id + '/template', 'POST', { is_template: next });
+    if (p) p.is_template = next;
+    wikiRenderMain();
   } catch (e) { alert(e.message); }
 }
 
