@@ -52,7 +52,7 @@ const CAL_I18N = {
     calDelete: 'Delete', calDeleteConfirm: 'Delete this event?', calNoCalendars: 'No calendars yet',
     calNoEvents: 'No events in this period', calTitleRequired: 'Title is required',
     calNameRequired: 'Name is required', calVisibility: 'Visibility', calPrivate: 'Private',
-    calShared: 'Shared', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
+    calShared: 'Shared', calPersonal: 'Personal (no project)', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
     calDeleteCalendarConfirm: 'Delete this calendar and all its events?', calName: 'Name',
     calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints', calReminders: 'Reminders', calReminderAdd: 'Add reminder', calRemBefore: 'before', calRemMin: 'minutes', calRemHour: 'hours', calRemDay: 'days', calRemTg: 'Telegram', calRemInApp: 'In-app', calRemBoth: 'Both',
     calAddIcsSub: 'Google Calendar (ICS)', calIcsUrl: 'iCal/ICS address (secret URL)', calIcsName: 'Name', calSyncNow: 'Sync now', calSubDelete: 'Remove subscription', calNoTitle: '(no title)',
@@ -70,7 +70,7 @@ const CAL_I18N = {
     calDelete: 'Удалить', calDeleteConfirm: 'Удалить событие?', calNoCalendars: 'Пока нет календарей',
     calNoEvents: 'Нет событий в этом периоде', calTitleRequired: 'Введите название',
     calNameRequired: 'Введите название', calVisibility: 'Видимость', calPrivate: 'Личный',
-    calShared: 'Общий', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
+    calShared: 'Общий', calPersonal: 'Личный (вне проекта)', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
     calDeleteCalendarConfirm: 'Удалить календарь и все его события?', calName: 'Название',
     calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты', calReminders: 'Напоминания', calReminderAdd: 'Добавить напоминание', calRemBefore: 'до начала', calRemMin: 'минут', calRemHour: 'часов', calRemDay: 'дней', calRemTg: 'Telegram', calRemInApp: 'В приложении', calRemBoth: 'Оба',
     calAddIcsSub: 'Google Календарь (ICS)', calIcsUrl: 'Адрес iCal/ICS (секретный URL)', calIcsName: 'Название', calSyncNow: 'Синхронизировать', calSubDelete: 'Удалить подписку', calNoTitle: '(без названия)',
@@ -88,7 +88,7 @@ const CAL_I18N = {
     calDelete: "Eliminar", calDeleteConfirm: "¿Eliminar este evento?", calNoCalendars: "Aún no hay calendarios",
     calNoEvents: "Sin eventos en este período", calTitleRequired: "El título es obligatorio",
     calNameRequired: "El nombre es obligatorio", calVisibility: "Visibilidad", calPrivate: "Privado",
-    calShared: "Compartido", calColor: "Color", calDeleteCalendar: "Eliminar calendario",
+    calShared: "Compartido", calPersonal: "Personal (sin proyecto)", calColor: "Color", calDeleteCalendar: "Eliminar calendario",
     calDeleteCalendarConfirm: "¿Eliminar este calendario y todos sus eventos?", calName: "Nombre",
     calEditEvent: "Editar evento", calEditCalendar: "Ajustes del calendario", calKanban: "Tareas y sprints",
   },
@@ -103,7 +103,7 @@ const CAL_I18N = {
     calDelete: "Supprimer", calDeleteConfirm: "Supprimer cet événement ?", calNoCalendars: "Aucun calendrier",
     calNoEvents: "Aucun événement sur cette période", calTitleRequired: "Le titre est obligatoire",
     calNameRequired: "Le nom est obligatoire", calVisibility: "Visibilité", calPrivate: "Privé",
-    calShared: "Partagé", calColor: "Couleur", calDeleteCalendar: "Supprimer le calendrier",
+    calShared: "Partagé", calPersonal: "Personnel (sans projet)", calColor: "Couleur", calDeleteCalendar: "Supprimer le calendrier",
     calDeleteCalendarConfirm: "Supprimer ce calendrier et tous ses événements ?", calName: "Nom",
     calEditEvent: "Modifier l'événement", calEditCalendar: "Paramètres du calendrier", calKanban: "Tâches et sprints",
   },
@@ -118,7 +118,7 @@ const CAL_I18N = {
     calDelete: "Löschen", calDeleteConfirm: "Diesen Termin löschen?", calNoCalendars: "Noch keine Kalender",
     calNoEvents: "Keine Termine in diesem Zeitraum", calTitleRequired: "Titel ist erforderlich",
     calNameRequired: "Name ist erforderlich", calVisibility: "Sichtbarkeit", calPrivate: "Privat",
-    calShared: "Geteilt", calColor: "Farbe", calDeleteCalendar: "Kalender löschen",
+    calShared: "Geteilt", calPersonal: "Persönlich (ohne Projekt)", calColor: "Farbe", calDeleteCalendar: "Kalender löschen",
     calDeleteCalendarConfirm: "Diesen Kalender und alle Termine löschen?", calName: "Name",
     calEditEvent: "Termin bearbeiten", calEditCalendar: "Kalendereinstellungen", calKanban: "Aufgaben und Sprints",
   },
@@ -133,7 +133,7 @@ const CAL_I18N = {
     calDelete: "Excluir", calDeleteConfirm: "Excluir este evento?", calNoCalendars: "Ainda não há calendários",
     calNoEvents: "Sem eventos neste período", calTitleRequired: "O título é obrigatório",
     calNameRequired: "O nome é obrigatório", calVisibility: "Visibilidade", calPrivate: "Privado",
-    calShared: "Compartilhado", calColor: "Cor", calDeleteCalendar: "Excluir calendário",
+    calShared: "Compartilhado", calPersonal: "Pessoal (sem projeto)", calColor: "Cor", calDeleteCalendar: "Excluir calendário",
     calDeleteCalendarConfirm: "Excluir este calendário e todos os eventos?", calName: "Nome",
     calEditEvent: "Editar evento", calEditCalendar: "Configurações do calendário", calKanban: "Tarefas e sprints",
   },
@@ -857,10 +857,14 @@ function calCalendarForm(c) {
 }
 
 function calNewCalendarDialog() {
-  calModal(t('calNewCalendar'), calCalendarForm(null), async ov => {
+  const form = calCalendarForm(null) +
+    `<label class="cal-fld" style="flex-direction:row;align-items:center;gap:6px">
+      <input type="checkbox" id="cal-c-personal"> ${t('calPersonal')}</label>`;
+  calModal(t('calNewCalendar'), form, async ov => {
     const name = ov.querySelector('#cal-c-name').value.trim();
     if (!name) { alert(t('calNameRequired')); return; }
-    const body = { name, color: ov.querySelector('#cal-c-color').value, visibility: ov.querySelector('#cal-c-vis').value };
+    const personal = ov.querySelector('#cal-c-personal').checked;
+    const body = { name, color: ov.querySelector('#cal-c-color').value, visibility: ov.querySelector('#cal-c-vis').value, personal };
     try { await api('/api/calendar/calendars', 'POST', body); ov.remove(); calState.calendars = await api('/api/calendar/calendars'); calRenderCalList(); await calLoadAndRender(); }
     catch (e) { alert(e.message); }
   });

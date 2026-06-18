@@ -97,8 +97,34 @@ func (h *Handler) handleCalendarUpcoming(w http.ResponseWriter, r *http.Request)
 	}
 	const layout = "2006-01-02 15:04:05"
 	now := time.Now().UTC()
-	n := h.store.UpcomingEventCount(user.ID, user.IsAdmin, now.Format(layout), now.Add(24*time.Hour).Format(layout))
+	n := h.store.UpcomingEventCount(user.ID, user.IsAdmin, h.projectID(r), now.Format(layout), now.Add(24*time.Hour).Format(layout))
 	jsonResp(w, map[string]int{"upcoming": n})
+}
+
+// calAccess reports whether the user may view (needEdit=false) or edit
+// (needEdit=true) a calendar. Personal calendars (project_id nil) are owner-only.
+// Project calendars combine the user's project role with the calendar's
+// visibility: members see shared calendars; private ones stay owner-only; editors
+// may change shared calendars and project admins may change anything.
+func (h *Handler) calAccess(user *model.User, cal *model.Calendar, needEdit bool) bool {
+	if user.IsAdmin {
+		return true
+	}
+	owner := cal.OwnerID != nil && *cal.OwnerID == user.ID
+	if cal.ProjectID == nil {
+		return owner // personal calendar
+	}
+	role, _, err := h.projectRole(user, *cal.ProjectID)
+	if err != nil || role == "" {
+		return false
+	}
+	if needEdit {
+		if owner || role == "admin" {
+			return true
+		}
+		return cal.Visibility == "shared" && projectRoleAtLeast(role, "editor")
+	}
+	return owner || role == "admin" || cal.Visibility == "shared"
 }
 
 // calAudience resolves which users should receive live updates for a calendar:
@@ -135,7 +161,11 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		cals, err := h.store.ListCalendars(user.ID, user.IsAdmin)
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		cals, err := h.store.ListCalendars(user.ID, user.IsAdmin, pid)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -146,6 +176,7 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 			Name       string `json:"name"`
 			Color      string `json:"color"`
 			Visibility string `json:"visibility"`
+			Personal   bool   `json:"personal"` // true = personal calendar (no project)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -155,12 +186,23 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "name required", http.StatusBadRequest)
 			return
 		}
-		id, err := h.store.CreateCalendar(req.Name, req.Color, user.ID, req.Visibility)
+		// Personal calendars need no project access; project calendars require editor.
+		var projectID *int64
+		if !req.Personal {
+			pid, ok := h.requireProject(w, r, user, "editor")
+			if !ok {
+				return
+			}
+			projectID = &pid
+		} else {
+			req.Visibility = "private" // personal calendars are owner-only
+		}
+		id, err := h.store.CreateCalendar(req.Name, req.Color, user.ID, req.Visibility, projectID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		h.calNotify(&model.Calendar{Visibility: req.Visibility, OwnerID: &user.ID})
+		h.calNotify(&model.Calendar{Visibility: req.Visibility, OwnerID: &user.ID, ProjectID: projectID})
 		jsonResp(w, map[string]int64{"id": id})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -182,7 +224,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !h.store.CanEditCalendar(cal, user.ID, user.IsAdmin) {
+	if !h.calAccess(user, cal, true) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -229,8 +271,12 @@ func (h *Handler) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
 		q := r.URL.Query()
-		events, err := h.store.ListCalendarEvents(user.ID, user.IsAdmin, q.Get("from"), q.Get("to"))
+		events, err := h.store.ListCalendarEvents(user.ID, user.IsAdmin, pid, q.Get("from"), q.Get("to"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -254,7 +300,7 @@ func (h *Handler) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if !h.store.CanEditCalendar(cal, user.ID, user.IsAdmin) {
+		if !h.calAccess(user, cal, true) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -292,13 +338,13 @@ func (h *Handler) handleCalendarEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		if !h.store.CanViewCalendar(cal, user.ID, user.IsAdmin) {
+		if !h.calAccess(user, cal, false) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		jsonResp(w, ev)
 	case http.MethodPut:
-		if !h.store.CanEditCalendar(cal, user.ID, user.IsAdmin) {
+		if !h.calAccess(user, cal, true) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -319,7 +365,7 @@ func (h *Handler) handleCalendarEvent(w http.ResponseWriter, r *http.Request) {
 		h.calNotify(cal)
 		jsonResp(w, updated)
 	case http.MethodDelete:
-		if !h.store.CanEditCalendar(cal, user.ID, user.IsAdmin) {
+		if !h.calAccess(user, cal, true) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

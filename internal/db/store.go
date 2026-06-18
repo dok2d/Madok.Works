@@ -317,6 +317,7 @@ func (s *Store) migrate() error {
 			name TEXT NOT NULL DEFAULT '',
 			color TEXT NOT NULL DEFAULT '#6366f1',
 			owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
 			visibility TEXT NOT NULL DEFAULT 'private',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -489,6 +490,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_epics_project ON epics(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tags_project ON tags(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_calendars_project ON calendars(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id)`,
 	}
 	for _, q := range stmts {

@@ -70,7 +70,7 @@ func (h *Handler) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Calendar events
 	if want("calendar") && h.serviceEnabled("calendar") {
-		if hits, err := h.store.SearchCalendarEvents(user.ID, user.IsAdmin, q, globalSearchPerService); err == nil {
+		if hits, err := h.store.SearchCalendarEvents(user.ID, user.IsAdmin, h.projectID(r), q, globalSearchPerService); err == nil {
 			for _, hit := range hits {
 				out = append(out, globalHit{Service: "calendar", Title: hit.Title, Snippet: hit.Snippet, URL: "/calendar"})
 			}

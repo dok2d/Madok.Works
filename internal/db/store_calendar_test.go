@@ -7,6 +7,9 @@ import (
 	"kanban/internal/model"
 )
 
+// p1 returns a pointer to the default project id (1), for project-scoped calendars.
+func p1() *int64 { v := int64(1); return &v }
+
 func mustTime(t *testing.T, s string) time.Time {
 	t.Helper()
 	tm, ok := parseCalTime(s)
@@ -46,7 +49,7 @@ func TestExpandOccurrences(t *testing.T) {
 func TestCalendarEventCRUD(t *testing.T) {
 	s := newTestStore(t)
 	u := mustUser(t, s, "alice")
-	cal, err := s.CreateCalendar("Work", "#ff0000", u, "private")
+	cal, err := s.CreateCalendar("Work", "#ff0000", u, "private", p1())
 	if err != nil {
 		t.Fatalf("CreateCalendar: %v", err)
 	}
@@ -80,7 +83,7 @@ func TestCalendarEventCRUD(t *testing.T) {
 func TestListCalendarEventsRange(t *testing.T) {
 	s := newTestStore(t)
 	u := mustUser(t, s, "alice")
-	cal, _ := s.CreateCalendar("Work", "#abc", u, "private")
+	cal, _ := s.CreateCalendar("Work", "#abc", u, "private", p1())
 
 	// one-off inside January, one-off in March (out of range)
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Jan", Start: "2026-01-05 10:00:00", End: "2026-01-05 11:00:00"}, u)
@@ -88,7 +91,7 @@ func TestListCalendarEventsRange(t *testing.T) {
 	// weekly recurring from Jan 1, 10 times -> 5 land in January
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Weekly", Start: "2026-01-01 09:00:00", End: "2026-01-01 09:30:00", RRule: "FREQ=WEEKLY;COUNT=10"}, u)
 
-	events, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	events, err := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}
@@ -122,7 +125,7 @@ func TestListCalendarEventsRange(t *testing.T) {
 func TestDueReminders(t *testing.T) {
 	s := newTestStore(t)
 	u := mustUser(t, s, "alice")
-	cal, _ := s.CreateCalendar("Work", "#abc", u, "private")
+	cal, _ := s.CreateCalendar("Work", "#abc", u, "private", p1())
 	soon, _ := s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Soon", Start: "2026-05-01 12:10:00", End: "2026-05-01 12:30:00"}, u)
 	// far future and recurring events must not be reminded
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Later", Start: "2026-05-01 18:00:00", End: "2026-05-01 19:00:00"}, u)
@@ -151,7 +154,7 @@ func TestDueReminders(t *testing.T) {
 func TestConfigurableReminders(t *testing.T) {
 	s := newTestStore(t)
 	u := mustUser(t, s, "alice")
-	cal, _ := s.CreateCalendar("Work", "#abc", u, "private")
+	cal, _ := s.CreateCalendar("Work", "#abc", u, "private", p1())
 	now := time.Now().UTC().Truncate(time.Minute)
 	start := now.Add(10 * time.Minute).Format(calTimeLayout)
 	ev, err := s.CreateCalendarEvent(&model.CalendarEvent{
@@ -195,12 +198,12 @@ func TestCalendarVisibility(t *testing.T) {
 	alice := mustUser(t, s, "alice")
 	bob := mustUser(t, s, "bob")
 
-	priv, _ := s.CreateCalendar("Alice private", "#111", alice, "private")
-	shared, _ := s.CreateCalendar("Team", "#222", alice, "shared")
+	priv, _ := s.CreateCalendar("Alice private", "#111", alice, "private", p1())
+	shared, _ := s.CreateCalendar("Team", "#222", alice, "shared", p1())
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: priv, Title: "secret", Start: "2026-04-01 10:00:00", End: "2026-04-01 11:00:00"}, alice)
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: shared, Title: "meeting", Start: "2026-04-02 10:00:00", End: "2026-04-02 11:00:00"}, alice)
 
-	bobEvents, err := s.ListCalendarEvents(bob, false, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
+	bobEvents, err := s.ListCalendarEvents(bob, false, 1, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}
@@ -209,9 +212,50 @@ func TestCalendarVisibility(t *testing.T) {
 	}
 
 	// admin sees everything
-	adminEvents, _ := s.ListCalendarEvents(bob, true, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
+	adminEvents, _ := s.ListCalendarEvents(bob, true, 1, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
 	if len(adminEvents) != 2 {
 		t.Errorf("admin should see both events, got %d", len(adminEvents))
+	}
+}
+
+// TestCalendarProjectScope verifies calendars are isolated per project and that
+// personal calendars (project_id NULL) follow their owner across projects.
+func TestCalendarProjectScope(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+
+	p2, err := s.CreateProject("Beta", "", "open", alice)
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	one := int64(1)
+	teamA, _ := s.CreateCalendar("Team A", "#111", alice, "shared", &one)
+	teamB, _ := s.CreateCalendar("Team B", "#222", alice, "shared", &p2)
+	personal, _ := s.CreateCalendar("Mine", "#333", alice, "private", nil)
+
+	has := func(cals []model.Calendar, id int64) bool {
+		for _, c := range cals {
+			if c.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	a, _ := s.ListCalendars(alice, false, 1)
+	if !has(a, teamA) || has(a, teamB) || !has(a, personal) {
+		t.Errorf("project 1 view wrong: teamA=%v teamB=%v personal=%v", has(a, teamA), has(a, teamB), has(a, personal))
+	}
+	b, _ := s.ListCalendars(alice, false, p2)
+	if has(b, teamA) || !has(b, teamB) || !has(b, personal) {
+		t.Errorf("project 2 view wrong: teamA=%v teamB=%v personal=%v", has(b, teamA), has(b, teamB), has(b, personal))
+	}
+
+	// A different user does not see another user's personal calendar.
+	bob := mustUser(t, s, "bob")
+	bobCals, _ := s.ListCalendars(bob, false, 1)
+	if has(bobCals, personal) {
+		t.Error("bob must not see alice's personal calendar")
 	}
 }
 
@@ -229,7 +273,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	if err := s.ReplaceSubscriptionEvents(id, evs); err != nil {
 		t.Fatalf("ReplaceSubscriptionEvents: %v", err)
 	}
-	out, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	out, err := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}
@@ -257,7 +301,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	}
 	// Other users don't see this private subscription.
 	bob := mustUser(t, s, "bob")
-	bout, _ := s.ListCalendarEvents(bob, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	bout, _ := s.ListCalendarEvents(bob, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	for _, e := range bout {
 		if e.Source == "ics" {
 			t.Error("subscription leaked to another user")
@@ -267,7 +311,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	if err := s.DeleteSubscription(id, u); err != nil {
 		t.Fatalf("DeleteSubscription: %v", err)
 	}
-	out2, _ := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	out2, _ := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	for _, e := range out2 {
 		if e.Source == "ics" {
 			t.Error("ics events remain after delete")
@@ -334,7 +378,7 @@ func TestSubscriptionExdateAndOverrides(t *testing.T) {
 	if err := s.ReplaceSubscriptionEvents(id, evs); err != nil {
 		t.Fatalf("ReplaceSubscriptionEvents: %v", err)
 	}
-	out, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	out, err := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}

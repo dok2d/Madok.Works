@@ -1215,9 +1215,14 @@ async function switchProject(id) {
   localStorage.setItem('kanban-project', currentProjectId);
   const dd = document.getElementById('project-dd'); if (dd) dd.classList.add('hidden');
   renderProjectHeader();
-  // Later phases scope kanban/calendar/wiki by project; reloading the board here
-  // refreshes state (and will pick up the project once scoping lands).
-  await loadBoard();
+  // Refresh the active service view for the new project. Kanban needs its board
+  // state reloaded; other project-scoped views (calendar, later wiki) re-fetch
+  // themselves via renderCurrentView().
+  if (KANBAN_VIEWS.includes(currentView)) {
+    await loadBoard();
+  } else {
+    renderCurrentView();
+  }
 }
 
 async function newProjectDialog() {
@@ -1507,7 +1512,8 @@ function epicProgress(epicId) {
 // === API ===
 // Kanban endpoints are scoped to the current project via a ?project= query param
 // (mirrors how wiki passes space_id). By-id endpoints ignore it server-side.
-const _projectScoped = ['/api/board', '/api/columns', '/api/epics', '/api/sprints', '/api/tags', '/api/tasks', '/api/search'];
+const _projectScoped = ['/api/board', '/api/columns', '/api/epics', '/api/sprints', '/api/tags', '/api/tasks', '/api/search',
+  '/api/calendar/calendars', '/api/calendar/events', '/api/calendar/upcoming'];
 function withProject(path) {
   const base = path.split('?')[0];
   if (!_projectScoped.some(p => base === p || base.startsWith(p + '/'))) return path;

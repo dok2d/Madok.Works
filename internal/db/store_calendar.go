@@ -108,14 +108,21 @@ func expandOccurrencesEx(start time.Time, rruleStr string, exdates []time.Time, 
 
 // === Calendars ===
 
-func (s *Store) ListCalendars(userID int64, isAdmin bool) ([]model.Calendar, error) {
-	where := "c.visibility = 'shared' OR c.owner_id = ?"
-	args := []any{userID}
+// ListCalendars returns the calendars visible in the given project plus the
+// user's personal calendars (project_id IS NULL, owner-only). Within a project,
+// shared calendars are visible to everyone with access; private ones only to
+// their owner (admins see all of the project's calendars).
+func (s *Store) ListCalendars(userID int64, isAdmin bool, projectID int64) ([]model.Calendar, error) {
+	var where string
+	var args []any
 	if isAdmin {
-		where = "1=1"
-		args = nil // no placeholder in this branch; passing userID would error on pgx
+		where = "(c.project_id = ?) OR (c.project_id IS NULL AND c.owner_id = ?)"
+		args = []any{projectID, userID}
+	} else {
+		where = "(c.project_id = ? AND (c.visibility = 'shared' OR c.owner_id = ?)) OR (c.project_id IS NULL AND c.owner_id = ?)"
+		args = []any{projectID, userID, userID}
 	}
-	rows, err := s.db.Query(`SELECT c.id, c.name, c.color, c.owner_id, c.visibility, c.created_at, COALESCE(u.username,'')
+	rows, err := s.db.Query(`SELECT c.id, c.name, c.color, c.owner_id, c.project_id, c.visibility, c.created_at, COALESCE(u.username,'')
 		FROM calendars c LEFT JOIN users u ON u.id = c.owner_id
 		WHERE `+where+`
 		ORDER BY c.name COLLATE NOCASE`, args...)
@@ -126,7 +133,7 @@ func (s *Store) ListCalendars(userID int64, isAdmin bool) ([]model.Calendar, err
 	var out []model.Calendar
 	for rows.Next() {
 		var c model.Calendar
-		if err := rows.Scan(&c.ID, &c.Name, &c.Color, &c.OwnerID, &c.Visibility, &c.CreatedAt, &c.OwnerName); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Color, &c.OwnerID, &c.ProjectID, &c.Visibility, &c.CreatedAt, &c.OwnerName); err != nil {
 			return nil, err
 		}
 		c.CanEdit = isAdmin || (c.OwnerID != nil && *c.OwnerID == userID)
@@ -140,16 +147,18 @@ func (s *Store) ListCalendars(userID int64, isAdmin bool) ([]model.Calendar, err
 
 func (s *Store) GetCalendar(id int64) (*model.Calendar, error) {
 	var c model.Calendar
-	err := s.db.QueryRow(`SELECT c.id, c.name, c.color, c.owner_id, c.visibility, c.created_at, COALESCE(u.username,'')
+	err := s.db.QueryRow(`SELECT c.id, c.name, c.color, c.owner_id, c.project_id, c.visibility, c.created_at, COALESCE(u.username,'')
 		FROM calendars c LEFT JOIN users u ON u.id = c.owner_id WHERE c.id = ?`, id).
-		Scan(&c.ID, &c.Name, &c.Color, &c.OwnerID, &c.Visibility, &c.CreatedAt, &c.OwnerName)
+		Scan(&c.ID, &c.Name, &c.Color, &c.OwnerID, &c.ProjectID, &c.Visibility, &c.CreatedAt, &c.OwnerName)
 	if err != nil {
 		return nil, err
 	}
 	return &c, nil
 }
 
-func (s *Store) CreateCalendar(name, color string, ownerID int64, visibility string) (int64, error) {
+// CreateCalendar makes a calendar in a project (projectID != nil) or a personal
+// calendar (projectID == nil, visible only to its owner).
+func (s *Store) CreateCalendar(name, color string, ownerID int64, visibility string, projectID *int64) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, fmt.Errorf("name required")
@@ -160,8 +169,8 @@ func (s *Store) CreateCalendar(name, color string, ownerID int64, visibility str
 	if color == "" {
 		color = "#6366f1"
 	}
-	return s.db.ExecInsert(`INSERT INTO calendars(name, color, owner_id, visibility) VALUES(?,?,?,?)`,
-		name, color, ownerID, visibility)
+	return s.db.ExecInsert(`INSERT INTO calendars(name, color, owner_id, project_id, visibility) VALUES(?,?,?,?,?)`,
+		name, color, ownerID, projectID, visibility)
 }
 
 func (s *Store) UpdateCalendar(id int64, name, color, visibility string) error {
@@ -376,7 +385,7 @@ func (s *Store) DeleteCalendarEvent(id int64) error {
 
 // ListCalendarEvents returns events visible to the user that overlap [from,to],
 // expanding recurring events into individual occurrences within the range.
-func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr string) ([]model.CalendarEvent, error) {
+func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, projectID int64, fromStr, toStr string) ([]model.CalendarEvent, error) {
 	from, ok1 := parseCalTime(fromStr)
 	to, ok2 := parseCalTime(toStr)
 	if !ok1 || !ok2 {
@@ -384,7 +393,7 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 	}
 	fromN, toN := from.Format(calTimeLayout), to.Format(calTimeLayout)
 
-	cals, err := s.ListCalendars(userID, isAdmin)
+	cals, err := s.ListCalendars(userID, isAdmin, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -441,8 +450,8 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 		}
 	}
 
-	// Overlay read-only kanban events (task deadlines, sprint ranges).
-	kb, err := s.kanbanEvents(from, to)
+	// Overlay read-only kanban events (task deadlines, sprint ranges) of the project.
+	kb, err := s.kanbanEvents(projectID, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +469,7 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr st
 // kanbanEvents surfaces task deadlines and sprint ranges as read-only virtual
 // events so the calendar reflects board activity. They belong to no calendar
 // (calendar_id 0) and carry source/ref_id for linking back to the board.
-func (s *Store) kanbanEvents(from, to time.Time) ([]model.CalendarEvent, error) {
+func (s *Store) kanbanEvents(projectID int64, from, to time.Time) ([]model.CalendarEvent, error) {
 	var out []model.CalendarEvent
 
 	type taskRow struct {
@@ -468,7 +477,7 @@ func (s *Store) kanbanEvents(from, to time.Time) ([]model.CalendarEvent, error) 
 		title, deadline string
 	}
 	var tasks []taskRow
-	rows, err := s.db.Query(`SELECT id, title, deadline FROM tasks WHERE deadline != ''`)
+	rows, err := s.db.Query(`SELECT id, title, deadline FROM tasks WHERE deadline != '' AND project_id = ?`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +508,7 @@ func (s *Store) kanbanEvents(from, to time.Time) ([]model.CalendarEvent, error) 
 		sd, ed string
 	}
 	var sprints []sprintRow
-	rows2, err := s.db.Query(`SELECT id, name, start_date, end_date FROM sprints WHERE start_date != '' AND end_date != ''`)
+	rows2, err := s.db.Query(`SELECT id, name, start_date, end_date FROM sprints WHERE start_date != '' AND end_date != '' AND project_id = ?`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -569,8 +578,8 @@ func (s *Store) MarkReminded(id int64) error {
 
 // UpcomingEventCount counts real (non-kanban) events visible to the user that
 // start within [from,to], for the rail badge.
-func (s *Store) UpcomingEventCount(userID int64, isAdmin bool, fromStr, toStr string) int {
-	events, err := s.ListCalendarEvents(userID, isAdmin, fromStr, toStr)
+func (s *Store) UpcomingEventCount(userID int64, isAdmin bool, projectID int64, fromStr, toStr string) int {
+	events, err := s.ListCalendarEvents(userID, isAdmin, projectID, fromStr, toStr)
 	if err != nil {
 		return 0
 	}
@@ -592,11 +601,11 @@ type CalendarSearchHit struct {
 }
 
 // SearchCalendarEvents does a LIKE search over events in calendars the user can see.
-func (s *Store) SearchCalendarEvents(userID int64, isAdmin bool, query string, limit int) ([]CalendarSearchHit, error) {
+func (s *Store) SearchCalendarEvents(userID int64, isAdmin bool, projectID int64, query string, limit int) ([]CalendarSearchHit, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	cals, err := s.ListCalendars(userID, isAdmin)
+	cals, err := s.ListCalendars(userID, isAdmin, projectID)
 	if err != nil {
 		return nil, err
 	}

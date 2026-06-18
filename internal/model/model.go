@@ -297,6 +297,7 @@ type Calendar struct {
 	Name       string `json:"name"`
 	Color      string `json:"color"`
 	OwnerID    *int64 `json:"owner_id"`
+	ProjectID  *int64 `json:"project_id"` // nil = personal calendar (owner-only, outside projects)
 	Visibility string `json:"visibility"` // "private" | "shared"
 	CreatedAt  string `json:"created_at"`
 	OwnerName  string `json:"owner_name,omitempty"`
