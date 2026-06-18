@@ -211,6 +211,16 @@ type WikiPageRef struct {
 	Title    string `json:"title"`
 }
 
+// WikiDiagram is a draw.io diagram stored as editable XML plus a rendered PNG
+// (base64). Pages embed it via a [[diagram:ID]] token.
+type WikiDiagram struct {
+	ID        int64  `json:"id"`
+	SpaceID   int64  `json:"space_id"`
+	Title     string `json:"title"`
+	XML       string `json:"xml,omitempty"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // WikiComment is a (threaded) comment on a wiki page. Reactions reuse ChatReaction.
 type WikiComment struct {
 	ID         int64          `json:"id"`

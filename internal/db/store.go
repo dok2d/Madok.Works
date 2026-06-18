@@ -294,6 +294,18 @@ func (s *Store) migrate() error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// draw.io diagrams stored as an entity: editable XML + a rendered PNG.
+		// Pages reference one via a [[diagram:ID]] token (source stays out of the article).
+		`CREATE TABLE IF NOT EXISTS wiki_diagrams (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			space_id INTEGER NOT NULL REFERENCES wiki_spaces(id) ON DELETE CASCADE,
+			title TEXT NOT NULL DEFAULT '',
+			xml TEXT NOT NULL DEFAULT '',
+			png TEXT NOT NULL DEFAULT '', -- base64-encoded PNG (drawio client export)
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 		// Reactions on a wiki page or comment (target_type: 'page' | 'comment').
 		`CREATE TABLE IF NOT EXISTS wiki_reactions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -429,6 +429,24 @@ function wikiFillWikiLinks(container, links, taskLinks) {
       if (low === 'subpages' || low === 'subpages:tree' || low === 'toc') continue;
       if (!frag) frag = document.createDocumentFragment();
       if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const dm = /^diagram:(\d+)$/.exec(tok);
+      if (dm) {
+        // [[diagram:N]] -> rendered PNG preview, click to open the editor.
+        const did = Number(dm[1]);
+        const a = document.createElement('a');
+        a.className = 'wiki-diagram-embed';
+        a.href = '#';
+        a.title = 'draw.io';
+        a.addEventListener('click', e => { e.preventDefault(); wikiOpenDiagram(did); });
+        const img = document.createElement('img');
+        img.src = '/api/wiki/diagrams/' + did + '/png';
+        img.alt = 'diagram ' + did;
+        img.addEventListener('error', () => { a.textContent = '🖼 diagram #' + did; });
+        a.appendChild(img);
+        frag.appendChild(a);
+        last = re.lastIndex;
+        continue;
+      }
       const isTask = Object.prototype.hasOwnProperty.call(taskLinks, tok);
       if (isTask) {
         // Task reference [[task:123]] / [[KEY-123]].
@@ -605,6 +623,7 @@ const WIKI_TOOLBAR = [
   { act: 'callout', label: '&#128161;', key: 'tbCallout' },
   { act: 'spoiler', label: '&#9656;', key: 'tbSpoiler' },
   { act: 'subpages', label: '&#9776;', key: 'tbSubpages' },
+  { act: 'diagram', label: '&#9635;', key: 'tbDiagram' },
 ];
 
 // wikiMdToHtml converts markdown to HTML via the bundled marked (falls back to
@@ -862,7 +881,63 @@ function wikiTbAction(act, anchor) {
     case 'callout': return wikiMdCalloutPick(anchor);
     case 'spoiler': return wikiMdSpoiler();
     case 'subpages': return wikiMdSubpagesPick(anchor);
+    case 'diagram': return wikiInsertDiagram();
   }
+}
+
+// wikiInsertDiagram creates a new draw.io diagram in the current space, inserts a
+// [[diagram:N]] reference at the cursor, and opens the editor.
+async function wikiInsertDiagram() {
+  const title = await uiPrompt(t('tbDiagram'), 'Diagram');
+  if (title === null) return;
+  try {
+    const res = await api('/api/wiki/spaces/' + wikiState.spaceId + '/diagrams', 'POST', { title: title.trim() || 'Diagram' });
+    wikiMdInsert('\n\n[[diagram:' + res.id + ']]\n\n');
+    wikiOpenDiagram(res.id);
+  } catch (e) { alert(e.message); }
+}
+
+// wikiOpenDiagram embeds draw.io (configurable URL) to edit a diagram; on save it
+// stores the XML and a rendered PNG. Requires the draw.io assets to be present at
+// the configured URL (self-hosted, bundled at deploy time).
+async function wikiOpenDiagram(id) {
+  let d, cfg;
+  try { d = await api('/api/wiki/diagrams/' + id); } catch (e) { alert(e.message); return; }
+  try { cfg = await api('/api/wiki/drawio-config'); } catch (e) { cfg = { url: '/static/drawio/index.html' }; }
+  const canEdit = typeof wikiCanEdit === 'function' ? wikiCanEdit() : false;
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay wiki-drawio-overlay';
+  ov.innerHTML = `<div class="wiki-drawio-modal">
+    <div class="wiki-drawio-bar">
+      <input id="wiki-dgm-title" value="${escAttr(d.title)}" ${canEdit ? '' : 'disabled'}>
+      <span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm wiki-dgm-close">&#10005;</button>
+    </div>
+    <iframe id="wiki-dgm-frame" src="${escAttr(cfg.url)}?embed=1&proto=json&spin=1&modified=unsavedChanges&noExitBtn=0&saveAndExit=0"></iframe>
+  </div>`;
+  document.body.appendChild(ov);
+  const frame = ov.querySelector('#wiki-dgm-frame');
+  let latestXml = d.xml || '';
+  const close = () => { window.removeEventListener('message', onMsg); ov.remove(); };
+  const onMsg = async (ev) => {
+    if (!frame.contentWindow || ev.source !== frame.contentWindow) return;
+    let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.event === 'init') {
+      frame.contentWindow.postMessage(JSON.stringify({ action: 'load', xml: latestXml, autosave: 1 }), '*');
+    } else if (msg.event === 'save') {
+      latestXml = msg.xml;
+      frame.contentWindow.postMessage(JSON.stringify({ action: 'export', format: 'png', xml: msg.xml }), '*');
+    } else if (msg.event === 'export') {
+      try {
+        await api('/api/wiki/diagrams/' + id, 'PUT', { title: ov.querySelector('#wiki-dgm-title').value, xml: latestXml, png: msg.data });
+        document.querySelectorAll(`img[src^="/api/wiki/diagrams/${id}/png"]`).forEach(im => im.src = '/api/wiki/diagrams/' + id + '/png?t=' + Date.now());
+      } catch (e) { alert(e.message); }
+    } else if (msg.event === 'exit') {
+      close();
+    }
+  };
+  window.addEventListener('message', onMsg);
+  ov.querySelector('.wiki-dgm-close').addEventListener('click', close);
 }
 
 function wikiMdSubpagesPick(anchor) {

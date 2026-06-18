@@ -3,6 +3,7 @@ package handler
 import (
 	"archive/zip"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -192,8 +193,165 @@ func (h *Handler) handleWikiSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonResp(w, tpls)
+	case "diagrams":
+		switch r.Method {
+		case http.MethodGet:
+			ds, err := h.store.ListWikiDiagrams(sp.ID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			jsonResp(w, ds)
+		case http.MethodPost:
+			if !wikiRoleAtLeast(role, "editor") {
+				http.Error(w, "no edit access", http.StatusForbidden)
+				return
+			}
+			var req struct {
+				Title string `json:"title"`
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			if strings.TrimSpace(req.Title) == "" {
+				req.Title = "Diagram"
+			}
+			id, err := h.store.CreateWikiDiagram(sp.ID, strings.TrimSpace(req.Title), user.ID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			jsonResp(w, map[string]int64{"id": id})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// defaultDrawioURL is the self-hosted embed path operators populate with the
+// draw.io assets (bundled into the image at deploy time — see docs).
+const defaultDrawioURL = "/static/drawio/index.html"
+
+// handleDrawioConfig returns the draw.io embed URL (GET, any user) and lets an
+// admin set it (POST). Empty/unset falls back to the self-hosted path.
+func (h *Handler) handleDrawioConfig(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		url := strings.TrimSpace(h.store.GetSetting("drawio_url"))
+		if url == "" {
+			url = defaultDrawioURL
+		}
+		jsonResp(w, map[string]string{"url": url})
+	case http.MethodPost:
+		if user.Role != "admin" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			URL string `json:"url"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		h.store.SetSetting("drawio_url", strings.TrimSpace(req.URL))
+		jsonResp(w, map[string]string{"status": "ok"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleWikiDiagramRoute dispatches /api/wiki/diagrams/{id}[/png].
+func (h *Handler) handleWikiDiagramRoute(w http.ResponseWriter, r *http.Request) {
+	user := h.wikiUser(w, r)
+	if user == nil {
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/wiki/diagrams/")
+	parts := strings.SplitN(strings.TrimSuffix(rest, "/"), "/", 2)
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "bad diagram id", http.StatusBadRequest)
+		return
+	}
+	spaceID, err := h.store.WikiDiagramSpace(id)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "diagram not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	role, _, err := h.wikiRole(user, spaceID)
+	if err != nil || role == "" {
+		http.Error(w, "no access to this space", http.StatusForbidden)
+		return
+	}
+	sub := ""
+	if len(parts) == 2 {
+		sub = parts[1]
+	}
+	if sub == "png" {
+		png, _, err := h.store.WikiDiagramPNG(id)
+		if err != nil || png == "" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		raw, derr := base64.StdEncoding.DecodeString(png)
+		if derr != nil {
+			http.Error(w, "bad image", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(raw)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		d, err := h.store.GetWikiDiagram(id)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		jsonResp(w, d)
+	case http.MethodPut:
+		if !wikiRoleAtLeast(role, "editor") {
+			http.Error(w, "no edit access", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			Title string `json:"title"`
+			XML   string `json:"xml"`
+			PNG   string `json:"png"` // base64 (may include data: prefix)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if i := strings.Index(req.PNG, ","); strings.HasPrefix(req.PNG, "data:") && i > 0 {
+			req.PNG = req.PNG[i+1:] // strip data:image/png;base64, prefix
+		}
+		if err := h.store.UpdateWikiDiagram(id, strings.TrimSpace(req.Title), req.XML, req.PNG); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	case http.MethodDelete:
+		if !wikiRoleAtLeast(role, "editor") {
+			http.Error(w, "no edit access", http.StatusForbidden)
+			return
+		}
+		if err := h.store.DeleteWikiDiagram(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
