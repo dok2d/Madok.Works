@@ -271,6 +271,10 @@ type ChatChannel struct {
 	Name        string `json:"name"`
 	Topic       string `json:"topic"`
 	Type        string `json:"type"` // "channel" (public), "group" (private), "dm"
+	ReadOnly    bool   `json:"read_only"`
+	CanWrite    bool   `json:"can_write"` // viewer may post (false in read-only channels w/o write right)
+	Muted       bool   `json:"muted"`     // viewer muted this channel
+	MuteUntil   int64  `json:"mute_until,omitempty"`
 	CreatedBy   *int64 `json:"created_by"`
 	CreatedAt   string `json:"created_at"`
 	MemberCount int    `json:"member_count"`

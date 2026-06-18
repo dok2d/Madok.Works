@@ -96,6 +96,11 @@ const CHAT_I18N = {
     chatOptions: 'Options',
     chatTyping: '%s is typing…', chatSysCreate: '%s created the chat', chatSysJoin: '%s joined',
     chatSysLeave: '%s left', chatSysRename: 'Renamed to “%s”',
+    chatReadonlyChannel: 'Read-only channel — only writers can post',
+    chatReadonlyToggle: 'Read-only (only selected members can write)',
+    chatMembersPick: 'Members', chatCanWrite: 'Can write',
+    chatMute: 'Mute', chatUnmute: 'Unmute', chatMute1h: 'Mute 1 hour', chatMute8h: 'Mute 8 hours',
+    chatMuteForever: 'Mute forever', chatMuted: 'Muted', chatSound: 'Notification sound',
   },
   ru: {
     chatChannels: 'Каналы', chatGroups: 'Группы', chatDirect: 'Личные сообщения',
@@ -117,6 +122,11 @@ const CHAT_I18N = {
     chatOptions: 'Опции',
     chatTyping: '%s печатает…', chatSysCreate: '%s создал(а) чат', chatSysJoin: '%s присоединился(ась)',
     chatSysLeave: '%s покинул(а) чат', chatSysRename: 'Чат переименован в «%s»',
+    chatReadonlyChannel: 'Канал только для чтения — пишут только избранные',
+    chatReadonlyToggle: 'Только чтение (писать могут только выбранные участники)',
+    chatMembersPick: 'Участники', chatCanWrite: 'Может писать',
+    chatMute: 'Заглушить', chatUnmute: 'Включить уведомления', chatMute1h: 'Заглушить на 1 час', chatMute8h: 'Заглушить на 8 часов',
+    chatMuteForever: 'Заглушить навсегда', chatMuted: 'Заглушено', chatSound: 'Звук уведомлений',
   },
   es: {
     chatChannels: "Canales", chatGroups: "Grupos", chatDirect: "Mensajes directos",
@@ -308,7 +318,7 @@ function chatChannelRow(c, label, onclick, extraCls) {
   return `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''} ${extraCls || ''}" onclick="${onclick}">
     ${chatAvatar(label)}
     <div class="chat-ch-main">
-      <div class="chat-ch-line1"><span class="chat-ch-name">${c.pinned ? '<span class="chat-ch-pinmark">&#128204;</span> ' : ''}${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
+      <div class="chat-ch-line1"><span class="chat-ch-name">${c.pinned ? '<span class="chat-ch-pinmark">&#128204;</span> ' : ''}${c.muted ? '<span class="chat-ch-mutemark" title="' + escAttr(t('chatMuted')) + '">&#128277;</span> ' : ''}${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
       <div class="chat-ch-line2"><span class="chat-ch-preview">${preview}</span>${badge}</div>
     </div>
     ${pin}
@@ -427,8 +437,11 @@ function chatRenderMain() {
 }
 
 function chatHeadActions(c) {
-  if (c.type === 'dm') return '';
-  let h = `<button class="btn btn-ghost btn-sm" onclick="chatMembersDialog()">${t('chatMembers')} (${c.member_count || 0})</button>`;
+  // Sound + per-channel mute apply to every conversation, including DMs.
+  let h = `<button class="btn btn-ghost btn-sm" title="${t('chatSound')}" onclick="chatToggleSound()">${chatSoundOn() ? '&#128266;' : '&#128263;'}</button>`;
+  h += `<button class="btn btn-ghost btn-sm" title="${c.muted ? t('chatMuted') : t('chatMute')}" onclick="chatMuteMenu(event)">${c.muted ? '&#128277;' : '&#128276;'}</button>`;
+  if (c.type === 'dm') return h;
+  h += `<button class="btn btn-ghost btn-sm" onclick="chatMembersDialog()">${t('chatMembers')} (${c.member_count || 0})</button>`;
   if (currentUser && currentUser.role !== 'readonly') {
     if (c.type === 'channel' && !c.is_member) h += `<button class="btn btn-ghost btn-sm" onclick="chatJoin()">${t('chatJoin')}</button>`;
     else if (c.is_member) h += `<button class="btn btn-ghost btn-sm" onclick="chatLeave()">${t('chatLeave')}</button>`;
@@ -437,8 +450,65 @@ function chatHeadActions(c) {
   return h;
 }
 
+// === Sound + mute ===
+let chatAudioCtx = null;
+function chatSoundOn() { return localStorage.getItem('chat-sound') !== 'off'; }
+function chatToggleSound() {
+  localStorage.setItem('chat-sound', chatSoundOn() ? 'off' : 'on');
+  if (chatState.channel) chatRenderMain();
+}
+function chatBeep() {
+  if (!chatSoundOn()) return;
+  try {
+    chatAudioCtx = chatAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = chatAudioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine'; o.frequency.value = 680;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    o.start(); o.stop(ctx.currentTime + 0.26);
+  } catch (e) { /* audio unavailable */ }
+}
+function chatMaybeBeep(ev) {
+  if (!ev || !ev.message) return;
+  if (ev.message.author_id && currentUser && ev.message.author_id === currentUser.id) return;
+  const ch = (chatState.channels || []).find(c => c.id === ev.channel_id);
+  if (ch && ch.muted) return;
+  chatBeep();
+}
+function chatMuteMenu(ev) {
+  ev.stopPropagation();
+  document.querySelectorAll('.chat-mute-menu').forEach(m => m.remove());
+  const c = chatState.channel; if (!c) return;
+  const m = document.createElement('div');
+  m.className = 'chat-mute-menu chat-emoji-pop';
+  const opt = (label, arg) => `<button class="chat-mute-opt" onclick="chatMuteSet(${arg})">${label}</button>`;
+  m.innerHTML = c.muted ? opt(t('chatUnmute'), 'null')
+    : opt(t('chatMute1h'), '3600') + opt(t('chatMute8h'), '28800') + opt(t('chatMuteForever'), '0');
+  document.body.appendChild(m);
+  const r = ev.currentTarget.getBoundingClientRect();
+  m.style.top = (r.bottom + 4) + 'px';
+  m.style.left = Math.max(8, r.right - m.offsetWidth) + 'px';
+  setTimeout(() => document.addEventListener('click', function hide() { m.remove(); document.removeEventListener('click', hide); }), 0);
+}
+async function chatMuteSet(secs) {
+  const c = chatState.channel; if (!c) return;
+  try {
+    if (secs === null) await api(`/api/chat/channels/${c.id}/mute`, 'DELETE');
+    else { const until = secs === 0 ? 0 : Math.floor(Date.now() / 1000) + secs; await api(`/api/chat/channels/${c.id}/mute`, 'POST', { until }); }
+    await chatReloadChannel();
+    chatState.channels = await api('/api/chat/channels');
+    chatRenderChannelList();
+  } catch (e) { alert(e.message); }
+}
+
 function chatComposer() {
   if (currentUser && currentUser.role === 'readonly') return `<div class="chat-readonly">${t('chatReadonly')}</div>`;
+  const c = chatState.channel;
+  if (c && c.read_only && !c.can_write) return `<div class="chat-readonly">&#128274; ${t('chatReadonlyChannel')}</div>`;
   return `<div class="chat-reply-bar hidden" id="chat-reply-bar"></div>
   <div class="chat-pending" id="chat-pending"></div>
   <div class="chat-composer">
@@ -934,14 +1004,18 @@ function chatConnectSSE() {
 function chatHandleEvent(ev) {
   if (!ev || !ev.type) return;
   switch (ev.type) {
-    case 'chat_message':
-      if (ev.message && ev.channel_id === chatState.channelId) {
+    case 'chat_message': {
+      const active = ev.channel_id === chatState.channelId;
+      if (ev.message && active) {
         if (ev.message.author_id) chatClearTyping(ev.message.author_id);
         chatAppendMsg(ev.message);
         if (document.hasFocus()) chatMarkRead();
       }
+      // Beep for incoming messages unless you're actively looking at the channel.
+      if (!(active && document.hasFocus())) chatMaybeBeep(ev);
       chatRefreshChannelsSoon();
       break;
+    }
     case 'chat_typing':
       if (ev.channel_id === chatState.channelId) chatShowTyping(ev.user_id, ev.user_name);
       break;
@@ -1018,15 +1092,30 @@ function chatModal(title, bodyHtml, onSave) {
 
 function chatNewChannelDialog(type) {
   type = type || 'channel';
+  const meId = currentUser && currentUser.id;
+  // Private groups get a member picker; public channels get a read-only toggle.
+  const memberPicker = (type === 'group') ? `
+    <div class="chat-fld"><span>${t('chatMembersPick')}</span>
+      <div class="chat-member-pick">${(state.users || []).filter(u => u.id !== meId)
+        .map(u => `<label class="chat-pick-row"><input type="checkbox" value="${u.id}"> ${esc(u.username)}</label>`).join('') || `<div class="chat-empty">${t('chatNoUsers')}</div>`}</div>
+    </div>` : '';
+  const roToggle = (type === 'channel') ? `
+    <label class="chat-pick-row"><input type="checkbox" id="chat-new-ro"> ${t('chatReadonlyToggle')}</label>` : '';
   const body = `
     <label class="chat-fld">${t('chatChannelName')}<input id="chat-new-name" maxlength="100"></label>
-    <label class="chat-fld">${t('chatTopic')}<input id="chat-new-topic" maxlength="300"></label>`;
+    <label class="chat-fld">${t('chatTopic')}<input id="chat-new-topic" maxlength="300"></label>
+    ${memberPicker}${roToggle}`;
   chatModal(type === 'group' ? t('chatNewGroup') : t('chatNewChannel'), body, async ov => {
     const name = ov.querySelector('#chat-new-name').value.trim();
     if (!name) { alert(t('chatNameRequired')); return; }
     const topic = ov.querySelector('#chat-new-topic').value.trim();
+    const members = Array.from(ov.querySelectorAll('.chat-member-pick input:checked')).map(i => Number(i.value));
+    const roEl = ov.querySelector('#chat-new-ro');
     try {
-      const res = await api('/api/chat/channels', 'POST', { name, topic, type, members: [] });
+      const res = await api('/api/chat/channels', 'POST', { name, topic, type, members });
+      if (roEl && roEl.checked) {
+        try { await api('/api/chat/channels/' + res.id, 'PUT', { name, topic, read_only: true }); } catch (e) { /* ignore */ }
+      }
       ov.remove();
       chatState.channels = await api('/api/chat/channels');
       navigateTo('/chat/channel/' + res.id);
@@ -1055,10 +1144,12 @@ async function chatMembersDialog() {
   let members = [];
   try { members = await api(`/api/chat/channels/${c.id}/members`); } catch (e) { /* ignore */ }
   const canManage = chatCanManage(c) && c.type === 'group';
+  const canManageWriters = chatCanManage(c) && c.read_only && c.type !== 'dm';
   const others = (state.users || []).filter(u => !members.some(m => m.user_id === u.id));
   const body = `
     <div class="chat-mem-list">${members.map(m => `<div class="chat-mem-row">
       <span>${esc(m.username)}</span>
+      ${canManageWriters && m.user_id !== c.created_by ? `<label class="chat-writer-tog"><input type="checkbox" ${m.role === 'writer' ? 'checked' : ''} onchange="chatSetWriter(${m.user_id}, this.checked)"> ${t('chatCanWrite')}</label>` : ''}
       ${canManage && m.user_id !== c.created_by ? `<button class="btn-icon btn-sm chat-danger" onclick="chatRemoveMember(${m.user_id})">&#10005;</button>` : ''}
     </div>`).join('') || `<div class="chat-empty">—</div>`}</div>
     ${canManage && others.length ? `<div class="chat-mem-add">
@@ -1077,6 +1168,12 @@ async function chatAddMember() {
     document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
     await chatReloadChannel();
     chatMembersDialog();
+  } catch (e) { alert(e.message); }
+}
+
+async function chatSetWriter(uid, canWrite) {
+  try {
+    await api(`/api/chat/channels/${chatState.channelId}/members`, 'POST', { user_id: uid, can_write: !!canWrite });
   } catch (e) { alert(e.message); }
 }
 
@@ -1110,16 +1207,22 @@ async function chatLeave() {
 function chatChannelSettings() {
   const c = chatState.channel;
   if (!c) return;
+  const roToggle = c.type !== 'dm' ? `
+    <label class="chat-pick-row"><input type="checkbox" id="chat-set-ro" ${c.read_only ? 'checked' : ''}> ${t('chatReadonlyToggle')}</label>` : '';
   const body = `
     <label class="chat-fld">${t('chatChannelName')}<input id="chat-set-name" maxlength="100" value="${escAttr(c.name)}"></label>
     <label class="chat-fld">${t('chatTopic')}<input id="chat-set-topic" maxlength="300" value="${escAttr(c.topic)}"></label>
+    ${roToggle}
     <button class="btn btn-ghost btn-sm chat-danger chat-set-del" onclick="chatDeleteChannel()">${t('chatDeleteChannel')}</button>`;
   chatModal(t('chatChannelSettings'), body, async ov => {
     const name = ov.querySelector('#chat-set-name').value.trim();
     const topic = ov.querySelector('#chat-set-topic').value.trim();
     if (!name) { alert(t('chatNameRequired')); return; }
+    const roEl = ov.querySelector('#chat-set-ro');
+    const payload = { name, topic };
+    if (roEl) payload.read_only = roEl.checked;
     try {
-      await api(`/api/chat/channels/${c.id}`, 'PUT', { name, topic });
+      await api(`/api/chat/channels/${c.id}`, 'PUT', payload);
       ov.remove();
       await chatReloadChannel();
     } catch (e) { alert(e.message); }

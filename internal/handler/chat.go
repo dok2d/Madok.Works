@@ -79,6 +79,16 @@ func (h *Handler) chatCanManage(user *model.User, ch *model.ChatChannel) bool {
 	return user.Role == "admin" || (ch.CreatedBy != nil && *ch.CreatedBy == user.ID)
 }
 
+// chatCanWrite reports whether the user may post in the channel. Read-only
+// channels accept posts only from managers and members granted can_write.
+func (h *Handler) chatCanWrite(user *model.User, ch *model.ChatChannel) bool {
+	if !ch.ReadOnly || h.chatCanManage(user, ch) {
+		return true
+	}
+	cw, _ := h.store.MemberCanWrite(ch.ID, user.ID)
+	return cw
+}
+
 // === Channels ===
 
 func (h *Handler) handleChatChannels(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +102,12 @@ func (h *Handler) handleChatChannels(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		// Widen the member-level write flag with admin/creator rights.
+		for i := range chans {
+			c := &chans[i]
+			c.CanWrite = !c.ReadOnly || user.Role == "admin" ||
+				(c.CreatedBy != nil && *c.CreatedBy == user.ID) || c.CanWrite
 		}
 		jsonResp(w, chans)
 	case http.MethodPost:
@@ -182,6 +198,27 @@ func (h *Handler) handleChatChannelRoute(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		jsonResp(w, map[string]string{"status": "ok"})
+	case "mute":
+		switch r.Method {
+		case http.MethodPost:
+			var req struct {
+				Until int64 `json:"until"` // 0 = forever; unix seconds otherwise
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			if err := h.store.SetChatMute(user.ID, ch.ID, req.Until); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			jsonResp(w, map[string]string{"status": "ok"})
+		case http.MethodDelete:
+			if err := h.store.ClearChatMute(user.ID, ch.ID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			jsonResp(w, map[string]string{"status": "ok"})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	case "read":
 		h.handleChatRead(w, r, user, ch)
 	case "typing":
@@ -199,19 +236,22 @@ func (h *Handler) handleChatChannelRoute(w http.ResponseWriter, r *http.Request)
 func (h *Handler) handleChatChannel(w http.ResponseWriter, r *http.Request, user *model.User, ch *model.ChatChannel) {
 	switch r.Method {
 	case http.MethodGet:
-		if full, err := h.store.GetChatChannelFor(ch.ID, user.ID); err == nil {
-			jsonResp(w, full)
-		} else {
-			jsonResp(w, ch)
+		full := ch
+		if f, err := h.store.GetChatChannelFor(ch.ID, user.ID); err == nil {
+			full = f
 		}
+		full.CanWrite = h.chatCanWrite(user, full)
+		full.Muted = h.store.IsChatMuted(user.ID, full.ID)
+		jsonResp(w, full)
 	case http.MethodPut:
 		if !h.chatCanManage(user, ch) || ch.Type == "dm" {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		var req struct {
-			Name  string `json:"name"`
-			Topic string `json:"topic"`
+			Name     string `json:"name"`
+			Topic    string `json:"topic"`
+			ReadOnly *bool  `json:"read_only"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -225,6 +265,12 @@ func (h *Handler) handleChatChannel(w http.ResponseWriter, r *http.Request, user
 		if err := h.store.UpdateChatChannel(ch.ID, req.Name, req.Topic); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if req.ReadOnly != nil {
+			if err := h.store.SetChannelReadOnly(ch.ID, *req.ReadOnly); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		if renamed {
 			h.chatSystemMessage(ch, "rename|"+req.Name)
@@ -280,10 +326,25 @@ func (h *Handler) handleChatChannelMembers(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		var req struct {
-			UserID int64 `json:"user_id"`
+			UserID   int64 `json:"user_id"`
+			CanWrite *bool `json:"can_write"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		// Toggling a member's write permission (read-only channels): manager-only.
+		if req.CanWrite != nil {
+			if !h.chatCanManage(user, ch) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			if err := h.store.SetMemberCanWrite(ch.ID, req.UserID, *req.CanWrite); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			h.sse.sendTo([]int64{req.UserID}, sseEvent{Type: "chat_channels"})
+			jsonResp(w, map[string]string{"status": "ok"})
 			return
 		}
 		// groups: only manager may add; channels: anyone may join themselves
@@ -361,6 +422,10 @@ func (h *Handler) handleChatMessages(w http.ResponseWriter, r *http.Request, use
 		}
 		if len(req.Attachments) > 10 {
 			http.Error(w, "too many attachments", http.StatusBadRequest)
+			return
+		}
+		if !h.chatCanWrite(user, ch) {
+			http.Error(w, "read-only channel", http.StatusForbidden)
 			return
 		}
 		// Only allow replying to a message in the same channel.

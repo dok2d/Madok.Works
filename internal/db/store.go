@@ -329,6 +329,7 @@ func (s *Store) migrate() error {
 			name TEXT NOT NULL DEFAULT '',
 			topic TEXT NOT NULL DEFAULT '',
 			type TEXT NOT NULL DEFAULT 'channel',
+			read_only INTEGER NOT NULL DEFAULT 0,
 			created_by INTEGER REFERENCES users(id),
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -336,8 +337,16 @@ func (s *Store) migrate() error {
 			channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			last_read_id INTEGER NOT NULL DEFAULT 0,
+			can_write INTEGER NOT NULL DEFAULT 0,
 			joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (channel_id, user_id)
+		)`,
+		// Per-user per-channel mute. until=0 → forever; until>0 → unix expiry.
+		`CREATE TABLE IF NOT EXISTS chat_mutes (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+			until INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (user_id, channel_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS chat_messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

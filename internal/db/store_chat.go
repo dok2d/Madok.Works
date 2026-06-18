@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"kanban/internal/model"
 )
@@ -25,37 +26,102 @@ func (s *Store) ToggleChatPin(userID, channelID int64) error {
 	return err
 }
 
+// SetChannelReadOnly toggles a channel's read-only flag.
+func (s *Store) SetChannelReadOnly(channelID int64, readOnly bool) error {
+	v := 0
+	if readOnly {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE chat_channels SET read_only=? WHERE id=?`, v, channelID)
+	return err
+}
+
+// MemberCanWrite reports the per-member write flag (used for read-only channels).
+func (s *Store) MemberCanWrite(channelID, userID int64) (bool, error) {
+	var cw int
+	err := s.db.QueryRow(`SELECT COALESCE(can_write,0) FROM chat_members WHERE channel_id=? AND user_id=?`, channelID, userID).Scan(&cw)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return cw == 1, err
+}
+
+// SetMemberCanWrite grants/revokes a member's write permission in a channel.
+func (s *Store) SetMemberCanWrite(channelID, userID int64, canWrite bool) error {
+	v := 0
+	if canWrite {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE chat_members SET can_write=? WHERE channel_id=? AND user_id=?`, v, channelID, userID)
+	return err
+}
+
+// SetChatMute mutes a channel for a user until the given unix time (0 = forever).
+func (s *Store) SetChatMute(userID, channelID, until int64) error {
+	_, err := s.db.Exec(`INSERT INTO chat_mutes(user_id, channel_id, until) VALUES(?,?,?)
+		ON CONFLICT(user_id, channel_id) DO UPDATE SET until=excluded.until`, userID, channelID, until)
+	return err
+}
+
+// ClearChatMute unmutes a channel for a user.
+func (s *Store) ClearChatMute(userID, channelID int64) error {
+	_, err := s.db.Exec(`DELETE FROM chat_mutes WHERE user_id=? AND channel_id=?`, userID, channelID)
+	return err
+}
+
+// IsChatMuted reports whether a channel is currently muted for a user (expired
+// timed mutes count as unmuted).
+func (s *Store) IsChatMuted(userID, channelID int64) bool {
+	var until int64 = -1
+	err := s.db.QueryRow(`SELECT until FROM chat_mutes WHERE user_id=? AND channel_id=?`, userID, channelID).Scan(&until)
+	if err != nil {
+		return false
+	}
+	return until == 0 || until > time.Now().Unix()
+}
+
 func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
-	rows, err := s.db.Query(`SELECT c.id, c.name, c.topic, c.type, c.created_by, c.created_at,
+	rows, err := s.db.Query(`SELECT c.id, c.name, c.topic, c.type, c.read_only, c.created_by, c.created_at,
 		(SELECT COUNT(*) FROM chat_members m2 WHERE m2.channel_id = c.id),
 		COALESCE(m.last_read_id, -1),
+		COALESCE(m.can_write, 0),
 		COALESCE((SELECT MAX(id) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0), 0),
 		COALESCE(CAST((SELECT MAX(created_at) FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0) AS TEXT), '') AS last_at,
 		COALESCE((SELECT msg.text FROM chat_messages msg WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
 		COALESCE((SELECT COALESCE(u2.username,'') FROM chat_messages msg LEFT JOIN users u2 ON u2.id = msg.author_id WHERE msg.channel_id = c.id AND msg.deleted = 0 ORDER BY msg.id DESC LIMIT 1), ''),
-		CASE WHEN EXISTS(SELECT 1 FROM chat_pins p WHERE p.channel_id = c.id AND p.user_id = ?) THEN 1 ELSE 0 END AS pinned
+		CASE WHEN EXISTS(SELECT 1 FROM chat_pins p WHERE p.channel_id = c.id AND p.user_id = ?) THEN 1 ELSE 0 END AS pinned,
+		COALESCE((SELECT until FROM chat_mutes mu WHERE mu.channel_id = c.id AND mu.user_id = ?), -1) AS mute_until
 		FROM chat_channels c
 		LEFT JOIN chat_members m ON m.channel_id = c.id AND m.user_id = ?
 		WHERE c.type = 'channel' OR m.user_id IS NOT NULL
-		ORDER BY pinned DESC, last_at DESC, c.name COLLATE NOCASE`, userID, userID)
+		ORDER BY pinned DESC, last_at DESC, c.name COLLATE NOCASE`, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now().Unix()
 	// With SetMaxOpenConns(1) the open cursor holds the only connection, so
 	// read everything first and only then run follow-up queries.
 	var out []model.ChatChannel
 	var lastReads []int64
 	for rows.Next() {
 		var c model.ChatChannel
-		var lastRead, maxID int64
-		var pinned int
-		if err := rows.Scan(&c.ID, &c.Name, &c.Topic, &c.Type, &c.CreatedBy, &c.CreatedAt,
-			&c.MemberCount, &lastRead, &maxID, &c.LastMsgAt, &c.LastMsgText, &c.LastMsgFrom, &pinned); err != nil {
+		var lastRead, maxID, muteUntil int64
+		var pinned, readOnly, canWrite int
+		if err := rows.Scan(&c.ID, &c.Name, &c.Topic, &c.Type, &readOnly, &c.CreatedBy, &c.CreatedAt,
+			&c.MemberCount, &lastRead, &canWrite, &maxID, &c.LastMsgAt, &c.LastMsgText, &c.LastMsgFrom, &pinned, &muteUntil); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		c.Pinned = pinned == 1
 		c.IsMember = lastRead >= 0
+		c.ReadOnly = readOnly == 1
+		// CanWrite holds the member-level write flag here; the handler widens it
+		// with admin/creator rights before returning to the client.
+		c.CanWrite = canWrite == 1
+		if muteUntil >= 0 {
+			c.Muted = muteUntil == 0 || muteUntil > now
+			c.MuteUntil = muteUntil
+		}
 		out = append(out, c)
 		lastReads = append(lastReads, lastRead)
 	}
@@ -92,13 +158,15 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 
 func (s *Store) GetChatChannel(id int64) (*model.ChatChannel, error) {
 	var c model.ChatChannel
-	err := s.db.QueryRow(`SELECT id, name, topic, type, created_by, created_at,
+	var readOnly int
+	err := s.db.QueryRow(`SELECT id, name, topic, type, read_only, created_by, created_at,
 		(SELECT COUNT(*) FROM chat_members m WHERE m.channel_id = chat_channels.id)
 		FROM chat_channels WHERE id = ?`, id).
-		Scan(&c.ID, &c.Name, &c.Topic, &c.Type, &c.CreatedBy, &c.CreatedAt, &c.MemberCount)
+		Scan(&c.ID, &c.Name, &c.Topic, &c.Type, &readOnly, &c.CreatedBy, &c.CreatedAt, &c.MemberCount)
 	if err != nil {
 		return nil, err
 	}
+	c.ReadOnly = readOnly == 1
 	return &c, nil
 }
 
@@ -211,7 +279,8 @@ func (s *Store) DeleteChatChannel(id int64) error {
 
 func (s *Store) ListChatMembers(channelID int64) ([]model.WikiSpaceMember, error) {
 	// reuse the simple member struct shape (space_id field carries channel id)
-	rows, err := s.db.Query(`SELECT m.channel_id, m.user_id, '', u.username
+	rows, err := s.db.Query(`SELECT m.channel_id, m.user_id,
+		CASE WHEN m.can_write=1 THEN 'writer' ELSE '' END, u.username
 		FROM chat_members m JOIN users u ON u.id = m.user_id
 		WHERE m.channel_id = ? ORDER BY u.username COLLATE NOCASE`, channelID)
 	if err != nil {
