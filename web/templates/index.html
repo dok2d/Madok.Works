@@ -2011,11 +2011,20 @@ function triggerFileAttach(textareaId) {
 
 // === Init ===
 async function init() {
+  // Only a failed identity check means "not logged in" → go to login. Everything
+  // else (a service init throwing, a stale cached script, etc.) must NOT bounce
+  // the user, or first-run UI like the onboarding wizard would be lost.
+  let me;
   try {
-    const me = await api('/api/auth/me');
-    currentUser = me;
-    updateUserUI();
-    applyDirection();
+    me = await api('/api/auth/me');
+  } catch(e) {
+    window.location.href = '/login';
+    return;
+  }
+  currentUser = me;
+  updateUserUI();
+  applyDirection();
+  try {
     try { services = await api('/api/services'); } catch (e) { services = []; }
     await loadProjects();
     await loadBoard();
@@ -2040,11 +2049,12 @@ async function init() {
       });
       searchEl.addEventListener('keydown', function(e) { if (e.key === 'Escape') { this.value = ''; doSearch(''); } });
     }
-    maybeShowOnboarding();
-    maybeStartTour();
   } catch(e) {
-    window.location.href = '/login';
+    console.error('init: non-fatal error', e);
   }
+  // First-run UI runs independently so an error above can't suppress it.
+  try { await maybeShowOnboarding(); } catch(e) { console.error('onboarding', e); }
+  try { maybeStartTour(); } catch(e) { console.error('tour', e); }
 }
 
 // === First-run onboarding wizard (instance-level, admin-only, one-time) ===
