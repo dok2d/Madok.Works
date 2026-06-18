@@ -461,7 +461,7 @@ function chatRenderMsg(msg, grouped) {
   return `<div class="chat-msg ${mine ? 'mine' : 'their'} ${grouped ? 'grouped' : ''} ${msg.pinned ? 'pinned' : ''}" id="chat-msg-${msg.id}">
     ${avatar}
     <div class="chat-bubble-wrap">
-      <div class="chat-bubble">
+      <div class="chat-bubble" ondblclick="chatStartReply(${msg.id})" title="${escAttr(t('chatReply'))}">
         ${showName ? `<div class="chat-bubble-author" style="color:${chatAvatarColor(msg.author_name || '?')}">${esc(msg.author_name || '?')}</div>` : ''}
         ${msg.reply_to ? chatReplyQuote(msg) : ''}
         <span class="chat-text">${chatFormatText(msg.text)}</span>

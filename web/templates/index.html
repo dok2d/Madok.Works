@@ -2782,7 +2782,7 @@ function renderComments(comments, taskId, depth) {
     const editedHtml = isEdited ? ` <span class="comment-edited" title="${t('created')}: ${fmtDate(c.created_at)}&#10;${t('updated')}: ${fmtDate(c.updated_at)}">(${t('edited')})</span>` : '';
     const canEdit = currentUser && c.author && c.author.id === currentUser.id;
 
-    html += `<div class="comment" id="comment-${c.id}">
+    html += `<div class="comment" id="comment-${c.id}" ${!isReadonly() ? `ondblclick="event.stopPropagation();showReplyForm(${c.id},${taskId})"` : ''}>
       <div class="comment-author"><a href="/user/${c.author?c.author.id:0}" onclick="navigateTo('/user/${c.author?c.author.id:0}');return false;">@${esc(authorName)}</a></div>
       <div class="comment-text" id="comment-text-${c.id}"><div class="md-content">${renderMd(c.text)}</div></div>
       <div class="comment-time">

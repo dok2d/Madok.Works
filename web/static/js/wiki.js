@@ -352,7 +352,8 @@ function wikiRenderCommentList() {
       acts.push(`<a onclick="wikiEditComment(${c.id})">${t('edit')}</a>`);
       acts.push(`<a onclick="wikiDeleteComment(${c.id})" style="color:var(--red)">${t('delete')}</a>`);
     }
-    let h = `<div class="wiki-comment" style="margin-left:${depth * 22}px" id="wiki-comment-${c.id}">
+    const dbl = currentUser && currentUser.role !== 'readonly' ? `ondblclick="event.stopPropagation();wikiReplyComment(${c.id})"` : '';
+    let h = `<div class="wiki-comment" style="margin-left:${depth * 22}px" id="wiki-comment-${c.id}" ${dbl}>
       <div class="wiki-comment-head"><b>${esc(c.author_name || '?')}</b> <span class="wiki-comment-time">${fmtDate(c.updated_at || c.created_at)}</span></div>
       <div class="wiki-comment-body md-content">${renderMd(c.text)}</div>
       <div class="wiki-comment-foot">${wikiReactBarHtml('comment', c.id, c.reactions)} <span class="wiki-comment-acts">${acts.join('')}</span></div>
