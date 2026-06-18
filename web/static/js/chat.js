@@ -289,7 +289,10 @@ function chatListTime(s) {
   return d.toDateString() === now.toDateString() ? chatFmtTime(s) : chatTimeFmt(s, { day: '2-digit', month: '2-digit' });
 }
 
-async function chatTogglePin(id) {
+// chatTogglePinChannel pins/unpins a CHANNEL in the sidebar. Distinct from
+// chatTogglePin (defined later), which pins a *message* — a same-name function
+// would shadow this one (last declaration wins) and break channel pinning.
+async function chatTogglePinChannel(id) {
   try {
     await api('/api/chat/channels/' + id + '/pinchannel', 'POST', {});
     chatState.channels = await api('/api/chat/channels');
@@ -301,7 +304,7 @@ async function chatTogglePin(id) {
 function chatChannelRow(c, label, onclick, extraCls) {
   const badge = c.unread > 0 ? `<span class="chat-ch-badge">${c.unread > 99 ? '99+' : c.unread}</span>` : '';
   const preview = chatListPreview(c);
-  const pin = `<button class="chat-ch-pin ${c.pinned ? 'pinned' : ''}" title="${escAttr(t('chatPinChannel'))}" onclick="event.stopPropagation();chatTogglePin(${c.id})">&#128204;</button>`;
+  const pin = `<button class="chat-ch-pin ${c.pinned ? 'pinned' : ''}" title="${escAttr(t('chatPinChannel'))}" onclick="event.stopPropagation();chatTogglePinChannel(${c.id})">&#128204;</button>`;
   return `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''} ${extraCls || ''}" onclick="${onclick}">
     ${chatAvatar(label)}
     <div class="chat-ch-main">

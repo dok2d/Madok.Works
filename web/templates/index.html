@@ -3429,7 +3429,7 @@ async function loadNotifications() {
     </div>`;
     for (const n of notifs) {
       html += `<div class="notif-item ${n.is_read?'':'unread'}" onclick="readNotification(${n.id}, ${n.task_id || 'null'}, '${esc(n.type||'')}')">
-        <div><span class="notif-icon">${notifIcon(n.type)}</span> ${esc(n.text)}</div>
+        <div><span class="notif-icon">${notifIcon(n.type)}</span> ${esc((n.text || '').replace(/^@/, ''))}</div>
         <div class="notif-time">${fmtDate(n.created_at)}</div>
       </div>`;
     }
