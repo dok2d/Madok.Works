@@ -278,10 +278,7 @@ function wikiRenderPageView(el) {
       <ul>${p.backlinks.map(b => `<li><a href="/wiki/page/${b.id}" onclick="navigateTo('/wiki/page/${b.id}');return false;">${b.space_key ? esc(b.space_key) + ' / ' : ''}${esc(b.title)}</a></li>`).join('')}</ul>
     </div>` : ''}`;
   const contentEl = el.querySelector('.wiki-content');
-  wikiFillSubpageTocs(contentEl, p.id);
-  wikiAddHeadingAnchors(contentEl);
-  wikiFillToc(contentEl);
-  wikiFillWikiLinks(contentEl, p.links, p.task_links);
+  wikiEnhanceContent(contentEl, p.links, p.task_links, p.id);
   highlightCode();
   wikiEnsureLLM();
   wikiRenderCommentsSection(el, p);
@@ -552,6 +549,18 @@ function wikiFillWikiLinks(container, links, taskLinks) {
       node.parentNode.replaceChild(frag, node);
     }
   }
+}
+
+// wikiEnhanceContent runs all post-render passes over a rendered-markdown
+// container: subpage TOCs, heading anchors, [[toc]], and [[Title]]/[[task:N]]/
+// [[diagram:N]] resolution. Shared by the page view, the editor preview and the
+// revision/history view so diagrams render (and stay clickable to edit) everywhere.
+function wikiEnhanceContent(container, links, taskLinks, pageId) {
+  if (!container) return;
+  wikiFillSubpageTocs(container, pageId || null);
+  wikiAddHeadingAnchors(container);
+  wikiFillToc(container);
+  wikiFillWikiLinks(container, links || {}, taskLinks || {});
 }
 
 // wikiSlugify makes a URL-fragment-safe slug from heading text (Unicode-aware).
@@ -911,7 +920,8 @@ function wikiMdPreview() {
   const ta = wikiMdTa(), prev = document.getElementById('wiki-md-preview');
   if (!ta || !prev) return;
   prev.innerHTML = wikiSanitizePreview(wikiMdToHtml(ta.value));
-  wikiFillSubpageTocs(prev, wikiState.page ? wikiState.page.id : null);
+  const pg = wikiState.page;
+  wikiEnhanceContent(prev, pg && pg.links, pg && pg.task_links, pg && pg.id);
   if (typeof highlightCode === 'function') highlightCode();
   // Re-align the preview to the editor's current viewport after re-render so the
   // line being edited stays in view.
@@ -1429,6 +1439,8 @@ async function wikiViewRevision(revId) {
         ${!isCurrent && wikiCanEdit() ? `<button class="btn btn-primary btn-sm" onclick="wikiRestoreRevision(${rev.id})">${t('wikiRestore')}</button>` : ''}
       </div>
       <div class="wiki-content md-content">${rev.content}</div>`;
+    const pg = wikiState.page;
+    wikiEnhanceContent(document.querySelector('#wiki-rev-view .wiki-content'), pg && pg.links, pg && pg.task_links, pg && pg.id);
     highlightCode();
   } catch (e) { alert(e.message); }
 }
@@ -1448,7 +1460,13 @@ async function wikiNewSpaceDialog() {
   let key = await uiPrompt(t('wikiSpaceKeyPrompt'), wikiSuggestKey(name));
   if (!key) return;
   key = key.trim().toUpperCase();
-  const personal = await uiConfirm(t('wikiPersonalSpace'));
+  const scope = await uiChoice(t('wikiSpaceScope'), [
+    { label: t('wikiScopeProject'), value: 'project', primary: true },
+    { label: t('wikiScopePersonal'), value: 'personal' },
+    { label: t('cancel'), value: undefined },
+  ]);
+  if (scope === undefined) return;
+  const personal = scope === 'personal';
   try {
     const res = await api('/api/wiki/spaces', 'POST', { key, name: name.trim(), description: '', visibility: 'open', personal });
     wikiState.spaces = await api('/api/wiki/spaces');
