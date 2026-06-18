@@ -413,6 +413,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/wiki/pages", h.handleWikiPages)
 	h.mux.HandleFunc("/api/wiki/pages/", h.handleWikiPageRoute)
 	h.mux.HandleFunc("/api/wiki/revisions/", h.handleWikiRevision)
+	h.mux.HandleFunc("/api/wiki/comments/", h.handleWikiCommentRoute)
 	h.mux.HandleFunc("/api/wiki/search", h.handleWikiSearch)
 
 	// Chat

@@ -420,8 +420,162 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 		h.handleWikiPageRestore(w, r, user, page, role)
 	case "summary":
 		h.handleWikiPageSummary(w, r, page)
+	case "comments":
+		h.handleWikiComments(w, r, user, page, role)
+	case "react":
+		h.handleWikiReact(w, r, user, "page", page.ID, role)
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// handleWikiComments lists (GET) or adds (POST) comments on a page.
+func (h *Handler) handleWikiComments(w http.ResponseWriter, r *http.Request, user *model.User, page *model.WikiPage, role string) {
+	switch r.Method {
+	case http.MethodGet:
+		comments, err := h.store.ListWikiComments(page.ID, user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, comments)
+	case http.MethodPost:
+		if user.Role == "readonly" {
+			http.Error(w, "read-only access", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			Text     string `json:"text"`
+			ParentID *int64 `json:"parent_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		req.Text = strings.TrimSpace(req.Text)
+		if req.Text == "" || len(req.Text) > wikiMaxContentLen {
+			http.Error(w, "text required", http.StatusBadRequest)
+			return
+		}
+		id, err := h.store.AddWikiComment(page.ID, req.ParentID, req.Text, user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// @mentions in a comment notify, linking the page by title.
+		h.processWikiMentions(req.Text, user, page.Title)
+		jsonResp(w, map[string]int64{"id": id})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleWikiReact toggles the user's reaction on a page or comment.
+func (h *Handler) handleWikiReact(w http.ResponseWriter, r *http.Request, user *model.User, targetType string, targetID int64, role string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if user.Role == "readonly" {
+		http.Error(w, "read-only access", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Emoji) == "" {
+		http.Error(w, "emoji required", http.StatusBadRequest)
+		return
+	}
+	if len(req.Emoji) > 16 {
+		http.Error(w, "bad emoji", http.StatusBadRequest)
+		return
+	}
+	if err := h.store.ToggleWikiReaction(targetType, targetID, user.ID, req.Emoji); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	reacts, _ := h.store.WikiReactions(targetType, targetID, user.ID)
+	jsonResp(w, reacts)
+}
+
+// handleWikiCommentRoute dispatches /api/wiki/comments/{id}[/react].
+func (h *Handler) handleWikiCommentRoute(w http.ResponseWriter, r *http.Request) {
+	user := h.wikiUser(w, r)
+	if user == nil {
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/wiki/comments/")
+	parts := strings.SplitN(strings.TrimSuffix(rest, "/"), "/", 2)
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "bad comment id", http.StatusBadRequest)
+		return
+	}
+	c, err := h.store.GetWikiComment(id)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "comment not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Resolve the space role via the comment's page.
+	page, err := h.store.GetWikiPage(c.PageID)
+	if err != nil {
+		http.Error(w, "page not found", http.StatusNotFound)
+		return
+	}
+	prole, _, err := h.wikiRole(user, page.SpaceID)
+	if err != nil || prole == "" {
+		http.Error(w, "no access to this space", http.StatusForbidden)
+		return
+	}
+	sub := ""
+	if len(parts) == 2 {
+		sub = parts[1]
+	}
+	if sub == "react" {
+		h.handleWikiReact(w, r, user, "comment", c.ID, prole)
+		return
+	}
+	switch r.Method {
+	case http.MethodPut:
+		// Author or space admin may edit.
+		if !(c.AuthorID != nil && *c.AuthorID == user.ID) && !wikiRoleAtLeast(prole, "admin") {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		req.Text = strings.TrimSpace(req.Text)
+		if req.Text == "" || len(req.Text) > wikiMaxContentLen {
+			http.Error(w, "text required", http.StatusBadRequest)
+			return
+		}
+		if err := h.store.UpdateWikiComment(c.ID, req.Text); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	case http.MethodDelete:
+		if !(c.AuthorID != nil && *c.AuthorID == user.ID) && !wikiRoleAtLeast(prole, "admin") {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if err := h.store.DeleteWikiComment(c.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]string{"status": "ok"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -433,6 +587,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 		if bl, err := h.store.WikiBacklinks(page.ID); err == nil {
 			page.Backlinks = bl
 		}
+		page.Reactions, _ = h.store.WikiReactions("page", page.ID, user.ID)
 		jsonResp(w, page)
 	case http.MethodPut:
 		if !wikiRoleAtLeast(role, "editor") {

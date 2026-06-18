@@ -285,6 +285,25 @@ func (s *Store) migrate() error {
 			to_page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
 			PRIMARY KEY (from_page_id, to_page_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS wiki_comments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+			parent_id INTEGER REFERENCES wiki_comments(id) ON DELETE CASCADE,
+			author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			text TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Reactions on a wiki page or comment (target_type: 'page' | 'comment').
+		`CREATE TABLE IF NOT EXISTS wiki_reactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_type TEXT NOT NULL,
+			target_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			emoji TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(target_type, target_id, user_id, emoji)
+		)`,
 		// === Chat (ecosystem service) ===
 		`CREATE TABLE IF NOT EXISTS chat_channels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -486,6 +505,8 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_parent_id ON wiki_pages(parent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_revisions_page_id ON wiki_revisions(page_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_links_to ON wiki_links(to_page_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wiki_comments_page ON wiki_comments(page_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wiki_reactions_target ON wiki_reactions(target_type, target_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_column_id ON tasks(column_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comments_task_id ON comments(task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_tags_task_id ON task_tags(task_id)`,

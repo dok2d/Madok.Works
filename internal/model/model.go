@@ -198,6 +198,7 @@ type WikiPage struct {
 	// (0 = unresolved), and the pages that link to this one.
 	Links     map[string]int64 `json:"links,omitempty"`
 	Backlinks []WikiPageRef    `json:"backlinks,omitempty"`
+	Reactions []ChatReaction   `json:"reactions,omitempty"` // page-level reactions (view only)
 }
 
 // WikiPageRef is a lightweight page reference (for backlinks and link results).
@@ -206,6 +207,19 @@ type WikiPageRef struct {
 	SpaceID  int64  `json:"space_id"`
 	SpaceKey string `json:"space_key"`
 	Title    string `json:"title"`
+}
+
+// WikiComment is a (threaded) comment on a wiki page. Reactions reuse ChatReaction.
+type WikiComment struct {
+	ID         int64          `json:"id"`
+	PageID     int64          `json:"page_id"`
+	ParentID   *int64         `json:"parent_id"`
+	AuthorID   *int64         `json:"author_id"`
+	AuthorName string         `json:"author_name,omitempty"`
+	Text       string         `json:"text"`
+	CreatedAt  string         `json:"created_at"`
+	UpdatedAt  string         `json:"updated_at"`
+	Reactions  []ChatReaction `json:"reactions,omitempty"`
 }
 
 // WikiRevision is a historical version of a page (content loaded on demand).

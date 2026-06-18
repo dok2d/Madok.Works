@@ -260,6 +260,145 @@ function wikiRenderPageView(el) {
   wikiFillWikiLinks(contentEl, p.links);
   highlightCode();
   wikiEnsureLLM();
+  wikiRenderCommentsSection(el, p);
+}
+
+// === Page comments + reactions ===
+let wikiComments = [];
+
+// wikiReactBarHtml renders the reaction chips + an add button for a target.
+function wikiReactBarHtml(targetType, id, reactions) {
+  const chips = (reactions || []).map(r =>
+    `<button class="wiki-react ${r.mine ? 'mine' : ''}" onclick="wikiToggleReaction('${targetType}',${id},'${escAttr(r.emoji)}')">${esc(r.emoji)} ${r.count}</button>`).join('');
+  return `<span class="wiki-react-bar">${chips}<button class="wiki-react-add" onclick="wikiReactPicker(event,'${targetType}',${id})">+</button></span>`;
+}
+
+function wikiReactPicker(ev, targetType, id) {
+  ev.stopPropagation();
+  document.querySelectorAll('.wiki-react-pop').forEach(p => p.remove());
+  const pop = document.createElement('div');
+  pop.className = 'wiki-react-pop';
+  pop.innerHTML = (typeof CHAT_EMOJI !== 'undefined' ? CHAT_EMOJI : ['👍', '❤️', '🎉', '🔥', '👏'])
+    .map(e => `<button onclick="wikiToggleReaction('${targetType}',${id},'${escAttr(e)}')">${esc(e)}</button>`).join('');
+  document.body.appendChild(pop);
+  const rect = ev.target.getBoundingClientRect();
+  pop.style.left = rect.left + 'px';
+  pop.style.top = (rect.bottom + 4) + 'px';
+  setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
+}
+
+async function wikiToggleReaction(targetType, id, emoji) {
+  document.querySelectorAll('.wiki-react-pop').forEach(p => p.remove());
+  try {
+    const url = targetType === 'page' ? `/api/wiki/pages/${id}/react` : `/api/wiki/comments/${id}/react`;
+    const reacts = await api(url, 'POST', { emoji });
+    if (targetType === 'page') {
+      if (wikiState.page) wikiState.page.reactions = reacts;
+      const bar = document.getElementById('wiki-page-reactions');
+      if (bar) bar.innerHTML = wikiReactBarHtml('page', id, reacts);
+    } else {
+      const c = wikiComments.find(x => x.id === id);
+      if (c) c.reactions = reacts;
+      wikiRenderCommentList();
+    }
+  } catch (e) { alert(e.message); }
+}
+
+function wikiRenderCommentsSection(el, p) {
+  const sec = document.createElement('div');
+  sec.className = 'wiki-comments-section';
+  sec.innerHTML = `
+    <div id="wiki-page-reactions" class="wiki-page-reactions">${wikiReactBarHtml('page', p.id, p.reactions)}</div>
+    <h3 class="wiki-comments-title">${t('comments')}</h3>
+    <div id="wiki-comment-list"></div>
+    ${currentUser && currentUser.role !== 'readonly' ? `<div class="wiki-comment-form">
+      <textarea id="wiki-comment-input" rows="2" placeholder="${escAttr(t('writeComment'))}"></textarea>
+      <button class="btn btn-primary btn-sm" onclick="wikiPostComment()">${t('send')}</button>
+    </div>` : ''}`;
+  el.appendChild(sec);
+  wikiLoadComments(p.id);
+}
+
+async function wikiLoadComments(pageId) {
+  try { wikiComments = await api(`/api/wiki/pages/${pageId}/comments`); }
+  catch (e) { wikiComments = []; }
+  wikiRenderCommentList();
+}
+
+// wikiCommentSortPref mirrors the task comment preference (Plan 2.12).
+function wikiCommentSortPref() { return localStorage.getItem('kanban-comment-sort') === 'newest' ? 'newest' : 'oldest'; }
+
+function wikiRenderCommentList() {
+  const el = document.getElementById('wiki-comment-list');
+  if (!el) return;
+  if (!wikiComments.length) { el.innerHTML = `<div class="wiki-no-comments">${t('noComments')}</div>`; return; }
+  // Build threads: top-level ordered by preference; replies always oldest-first.
+  const byParent = {};
+  for (const c of wikiComments) { const k = c.parent_id || 0; (byParent[k] = byParent[k] || []).push(c); }
+  const tops = (byParent[0] || []).slice();
+  if (wikiCommentSortPref() === 'newest') tops.reverse();
+  const canModerate = wikiState.space && wikiRoleIsAdmin();
+  const render = (c, depth) => {
+    const own = currentUser && c.author_id === currentUser.id;
+    const acts = [];
+    if (currentUser && currentUser.role !== 'readonly') acts.push(`<a onclick="wikiReplyComment(${c.id})">${t('reply')}</a>`);
+    if (own || canModerate) {
+      acts.push(`<a onclick="wikiEditComment(${c.id})">${t('edit')}</a>`);
+      acts.push(`<a onclick="wikiDeleteComment(${c.id})" style="color:var(--red)">${t('delete')}</a>`);
+    }
+    let h = `<div class="wiki-comment" style="margin-left:${depth * 22}px" id="wiki-comment-${c.id}">
+      <div class="wiki-comment-head"><b>${esc(c.author_name || '?')}</b> <span class="wiki-comment-time">${fmtDate(c.updated_at || c.created_at)}</span></div>
+      <div class="wiki-comment-body md-content">${renderMd(c.text)}</div>
+      <div class="wiki-comment-foot">${wikiReactBarHtml('comment', c.id, c.reactions)} <span class="wiki-comment-acts">${acts.join('')}</span></div>
+    </div>`;
+    for (const child of (byParent[c.id] || [])) h += render(child, depth + 1);
+    return h;
+  };
+  el.innerHTML = tops.map(c => render(c, 0)).join('');
+}
+
+function wikiRoleIsAdmin() {
+  const sp = wikiState.space;
+  return sp && sp.my_role === 'admin';
+}
+
+async function wikiPostComment(parentId) {
+  const inp = document.getElementById('wiki-comment-input');
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  try {
+    await api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text, parent_id: parentId || null });
+    inp.value = '';
+    await wikiLoadComments(wikiState.page.id);
+  } catch (e) { alert(e.message); }
+}
+
+async function wikiReplyComment(id) {
+  const text = await uiPrompt(t('reply'));
+  if (!text || !text.trim()) return;
+  try {
+    await api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text: text.trim(), parent_id: id });
+    await wikiLoadComments(wikiState.page.id);
+  } catch (e) { alert(e.message); }
+}
+
+async function wikiEditComment(id) {
+  const c = wikiComments.find(x => x.id === id);
+  const text = await uiPrompt(t('edit'), c ? c.text : '');
+  if (text === null) return;
+  try {
+    await api('/api/wiki/comments/' + id, 'PUT', { text: text.trim() });
+    await wikiLoadComments(wikiState.page.id);
+  } catch (e) { alert(e.message); }
+}
+
+async function wikiDeleteComment(id) {
+  if (!await uiConfirm(t('deleteConfirm'))) return;
+  try {
+    await api('/api/wiki/comments/' + id, 'DELETE');
+    await wikiLoadComments(wikiState.page.id);
+  } catch (e) { alert(e.message); }
 }
 
 // wikiFillWikiLinks turns literal [[Title]] / [[KEY:Title]] tokens in the rendered
