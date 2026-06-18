@@ -9,7 +9,7 @@ import (
 // ecosystemTables lists service tables in parent-before-child order (for insert).
 // Clearing on import walks this list in reverse so foreign keys stay satisfied.
 var ecosystemTables = []string{
-	"wiki_spaces", "wiki_space_members", "wiki_pages", "wiki_revisions",
+	"wiki_spaces", "wiki_space_members", "wiki_pages", "wiki_revisions", "wiki_links",
 	"chat_channels", "chat_members", "chat_messages", "chat_attachments", "chat_reactions",
 	"calendars", "calendar_events", "calendar_reminders",
 	"calendar_subscriptions", "calendar_sub_events",

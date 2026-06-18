@@ -4,10 +4,105 @@ import (
 	"database/sql"
 	"fmt"
 	"html"
+	"regexp"
 	"strings"
 
 	"kanban/internal/model"
 )
+
+// wikiLinkRe matches [[Title]] / [[KEY:Title]] wiki-link tokens. The [[subpages]]
+// and [[toc]] markers are excluded by wikiLinkIsMarker below.
+var wikiLinkRe = regexp.MustCompile(`\[\[\s*([^\]\n|]+?)\s*\]\]`)
+
+// wikiLinkIsMarker reports whether a [[...]] token is a layout marker (subpages /
+// toc) rather than a page link.
+func wikiLinkIsMarker(tok string) bool {
+	t := strings.ToLower(strings.TrimSpace(tok))
+	return t == "subpages" || t == "subpages:tree" || t == "toc"
+}
+
+// ResolveWikiLinks parses [[Title]] / [[KEY:Title]] tokens out of markdown and
+// resolves each against the wiki: a bare title resolves within currentSpaceID; a
+// "KEY:Title" token resolves a page titled Title in the space whose key is KEY.
+// Returns a token->pageID map (0 when unresolved) and the distinct resolved ids.
+func (s *Store) ResolveWikiLinks(currentSpaceID int64, md string) (map[string]int64, []int64) {
+	links := map[string]int64{}
+	var ids []int64
+	seenID := map[int64]bool{}
+	for _, m := range wikiLinkRe.FindAllStringSubmatch(md, -1) {
+		tok := strings.TrimSpace(m[1])
+		if tok == "" || wikiLinkIsMarker(tok) {
+			continue
+		}
+		if _, done := links[tok]; done {
+			continue
+		}
+		spaceID, title := currentSpaceID, tok
+		if i := strings.Index(tok, ":"); i > 0 {
+			key := strings.ToUpper(strings.TrimSpace(tok[:i]))
+			var sid int64
+			if err := s.db.QueryRow(`SELECT id FROM wiki_spaces WHERE key = ?`, key).Scan(&sid); err == nil {
+				spaceID, title = sid, strings.TrimSpace(tok[i+1:])
+			}
+		}
+		var pid int64
+		if err := s.db.QueryRow(`SELECT id FROM wiki_pages WHERE space_id = ? AND LOWER(title) = LOWER(?) ORDER BY id LIMIT 1`,
+			spaceID, title).Scan(&pid); err != nil {
+			pid = 0
+		}
+		links[tok] = pid
+		if pid != 0 && !seenID[pid] {
+			seenID[pid] = true
+			ids = append(ids, pid)
+		}
+	}
+	return links, ids
+}
+
+// SetWikiLinks rebuilds the outgoing-link rows for a page (a page never links to
+// itself). Called after every save.
+func (s *Store) SetWikiLinks(fromPageID int64, toIDs []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM wiki_links WHERE from_page_id = ?`, fromPageID); err != nil {
+		return err
+	}
+	for _, to := range toIDs {
+		if to == fromPageID {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT INTO wiki_links(from_page_id, to_page_id) VALUES(?,?) ON CONFLICT DO NOTHING`, fromPageID, to); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// WikiBacklinks returns the pages that link to the given page.
+func (s *Store) WikiBacklinks(pageID int64) ([]model.WikiPageRef, error) {
+	rows, err := s.db.Query(`SELECT p.id, p.space_id, sp.key, p.title
+		FROM wiki_links l
+		JOIN wiki_pages p ON p.id = l.from_page_id
+		JOIN wiki_spaces sp ON sp.id = p.space_id
+		WHERE l.to_page_id = ?
+		ORDER BY p.title COLLATE NOCASE`, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.WikiPageRef{}
+	for rows.Next() {
+		var r model.WikiPageRef
+		if err := rows.Scan(&r.ID, &r.SpaceID, &r.SpaceKey, &r.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
 
 // === Wiki spaces ===
 

@@ -279,6 +279,12 @@ func (s *Store) migrate() error {
 			comment TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// [[wiki links]] graph: which page links to which (rebuilt on each save).
+		`CREATE TABLE IF NOT EXISTS wiki_links (
+			from_page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+			to_page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+			PRIMARY KEY (from_page_id, to_page_id)
+		)`,
 		// === Chat (ecosystem service) ===
 		`CREATE TABLE IF NOT EXISTS chat_channels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -479,6 +485,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_space_id ON wiki_pages(space_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_pages_parent_id ON wiki_pages(parent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wiki_revisions_page_id ON wiki_revisions(page_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wiki_links_to ON wiki_links(to_page_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_column_id ON tasks(column_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comments_task_id ON comments(task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_tags_task_id ON task_tags(task_id)`,

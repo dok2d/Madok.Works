@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -327,7 +328,40 @@ func (h *Handler) handleWikiPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.store.LogActivity(user.ID, "wiki_create_page", nil, req.Title)
+	h.processWikiPageLinks(req.SpaceID, id, req.ContentMd, req.Title, user)
 	jsonResp(w, map[string]int64{"id": id})
+}
+
+// processWikiPageLinks rebuilds a page's [[wiki link]] graph and notifies any
+// @mentioned users. Called after a page is created or updated.
+func (h *Handler) processWikiPageLinks(spaceID, pageID int64, contentMd, title string, author *model.User) {
+	_, ids := h.store.ResolveWikiLinks(spaceID, contentMd)
+	if err := h.store.SetWikiLinks(pageID, ids); err != nil {
+		h.logf("SetWikiLinks(%d): %v", pageID, err)
+	}
+	h.processWikiMentions(contentMd, author, title)
+}
+
+// processWikiMentions notifies users named with @username in a wiki page.
+func (h *Handler) processWikiMentions(text string, author *model.User, pageTitle string) {
+	if author == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, m := range mentionRegex.FindAllStringSubmatch(text, -1) {
+		username := m[1]
+		if seen[username] || username == author.Username {
+			continue
+		}
+		seen[username] = true
+		mentioned, err := h.store.GetUserByUsername(username)
+		if err != nil {
+			continue
+		}
+		notifText := fmt.Sprintf("@%s упомянул(а) вас на вики-странице: %s", author.Username, pageTitle)
+		h.store.CreateNotification(mentioned.ID, "wiki_mention", notifText, nil)
+		h.sendTelegramNotification(mentioned.ID, notifText)
+	}
 }
 
 // handleWikiPageRoute dispatches /api/wiki/pages/{id}[/move|/revisions|/restore].
@@ -394,6 +428,11 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *model.User, page *model.WikiPage, role string) {
 	switch r.Method {
 	case http.MethodGet:
+		// Resolve [[links]] for rendering and gather backlinks for this page.
+		page.Links, _ = h.store.ResolveWikiLinks(page.SpaceID, page.ContentMd)
+		if bl, err := h.store.WikiBacklinks(page.ID); err == nil {
+			page.Backlinks = bl
+		}
 		jsonResp(w, page)
 	case http.MethodPut:
 		if !wikiRoleAtLeast(role, "editor") {
@@ -433,6 +472,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 			return
 		}
 		h.store.LogActivity(user.ID, "wiki_edit_page", nil, page.Title)
+		h.processWikiPageLinks(page.SpaceID, page.ID, req.ContentMd, req.Title, user)
 		jsonResp(w, map[string]any{"status": "ok", "rev_no": rev})
 	case http.MethodDelete:
 		// editors may delete pages; space admins always can

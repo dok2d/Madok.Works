@@ -250,10 +250,64 @@ function wikiRenderPageView(el) {
     </div>
     <div class="wiki-meta">v${p.rev_no} &middot; ${t('wikiEditedBy')} ${esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
     <div id="wiki-summary-panel"></div>
-    <div class="wiki-content md-content">${p.content || `<p style="color:var(--fg3)">${t('wikiEmptyPage')}</p>`}</div>`;
-  wikiFillSubpageTocs(el.querySelector('.wiki-content'), p.id);
+    <div class="wiki-content md-content">${p.content || `<p style="color:var(--fg3)">${t('wikiEmptyPage')}</p>`}</div>
+    ${(p.backlinks && p.backlinks.length) ? `<div class="wiki-backlinks">
+      <h3>${t('wikiBacklinks')}</h3>
+      <ul>${p.backlinks.map(b => `<li><a href="/wiki/page/${b.id}" onclick="navigateTo('/wiki/page/${b.id}');return false;">${b.space_key ? esc(b.space_key) + ' / ' : ''}${esc(b.title)}</a></li>`).join('')}</ul>
+    </div>` : ''}`;
+  const contentEl = el.querySelector('.wiki-content');
+  wikiFillSubpageTocs(contentEl, p.id);
+  wikiFillWikiLinks(contentEl, p.links);
   highlightCode();
   wikiEnsureLLM();
+}
+
+// wikiFillWikiLinks turns literal [[Title]] / [[KEY:Title]] tokens in the rendered
+// page into links, using the server-resolved token->pageId map (`links`). Resolved
+// tokens become navigable anchors; unresolved ones render as a muted broken-link
+// span. Layout markers ([[subpages]]/[[toc]]) and text inside code are skipped.
+function wikiFillWikiLinks(container, links) {
+  if (!container) return;
+  links = links || {};
+  const re = /\[\[\s*([^\]\n|]+?)\s*\]\]/g;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    if (text.indexOf('[[') < 0) continue;
+    if (node.parentElement && node.parentElement.closest('pre,code,a')) continue;
+    re.lastIndex = 0;
+    let m, last = 0, frag = null;
+    while ((m = re.exec(text))) {
+      const tok = m[1].trim();
+      const low = tok.toLowerCase();
+      if (low === 'subpages' || low === 'subpages:tree' || low === 'toc') continue;
+      if (!frag) frag = document.createDocumentFragment();
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const title = tok.includes(':') ? tok.slice(tok.indexOf(':') + 1).trim() : tok;
+      const pid = links[tok] || 0;
+      if (pid) {
+        const a = document.createElement('a');
+        a.className = 'wiki-link';
+        a.href = '/wiki/page/' + pid;
+        a.textContent = title;
+        a.addEventListener('click', e => { e.preventDefault(); navigateTo('/wiki/page/' + pid); });
+        frag.appendChild(a);
+      } else {
+        const span = document.createElement('span');
+        span.className = 'wiki-link-broken';
+        span.title = t('wikiLinkBroken');
+        span.textContent = title;
+        frag.appendChild(span);
+      }
+      last = re.lastIndex;
+    }
+    if (frag) {
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    }
+  }
 }
 
 // wikiEnsureLLM refreshes the LLM-integration status on each page view. If the

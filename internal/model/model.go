@@ -194,6 +194,18 @@ type WikiPage struct {
 	UpdatedAt     string `json:"updated_at"`
 	CreatedByName string `json:"created_by_name,omitempty"`
 	UpdatedByName string `json:"updated_by_name,omitempty"`
+	// Populated only on the single-page view: [[link]] token -> resolved page id
+	// (0 = unresolved), and the pages that link to this one.
+	Links     map[string]int64 `json:"links,omitempty"`
+	Backlinks []WikiPageRef    `json:"backlinks,omitempty"`
+}
+
+// WikiPageRef is a lightweight page reference (for backlinks and link results).
+type WikiPageRef struct {
+	ID       int64  `json:"id"`
+	SpaceID  int64  `json:"space_id"`
+	SpaceKey string `json:"space_key"`
+	Title    string `json:"title"`
 }
 
 // WikiRevision is a historical version of a page (content loaded on demand).
