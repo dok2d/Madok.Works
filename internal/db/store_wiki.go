@@ -601,12 +601,15 @@ func (s *Store) SearchWikiPages(userID int64, isAdmin bool, query string, limit 
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	like := "%" + escapeLike(query) + "%"
+	where, wargs := termAndOrWhere([]string{"LOWER(p.title)", "LOWER(p.content)"}, query)
+	args := []any{userID}
+	args = append(args, wargs...)
+	args = append(args, limit*3)
 	rows, err := s.db.Query(`SELECT p.id, p.space_id, sp.key, p.title, p.content, sp.visibility, sp.project_id, sp.created_by,
 		COALESCE((SELECT m.role FROM wiki_space_members m WHERE m.space_id = sp.id AND m.user_id = ?), '')
 		FROM wiki_pages p JOIN wiki_spaces sp ON sp.id = p.space_id
-		WHERE p.title LIKE ? ESCAPE '\' OR p.content LIKE ? ESCAPE '\'
-		ORDER BY p.updated_at DESC LIMIT ?`, userID, like, like, limit*3)
+		WHERE `+where+`
+		ORDER BY p.updated_at DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

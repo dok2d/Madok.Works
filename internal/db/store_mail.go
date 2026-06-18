@@ -640,11 +640,14 @@ func (s *Store) SearchMail(userID int64, query string, limit int) ([]model.MailM
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	like := "%" + escapeLike(query) + "%"
+	where, wargs := termAndOrWhere([]string{"LOWER(m.subject)", "LOWER(m.body_text)", "LOWER(m.from_name)"}, query)
+	args := []any{userID}
+	args = append(args, wargs...)
+	args = append(args, limit)
 	rows, err := s.db.Query(`SELECT `+mailListCols+`
 		FROM mail_box b JOIN mail_messages m ON m.id = b.message_id
-		WHERE b.user_id = ? AND (m.subject LIKE ? ESCAPE '\' OR m.body_text LIKE ? ESCAPE '\' OR m.from_name LIKE ? ESCAPE '\')
-		ORDER BY b.id DESC LIMIT ?`, userID, like, like, like, limit)
+		WHERE b.user_id = ? AND `+where+`
+		ORDER BY b.id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

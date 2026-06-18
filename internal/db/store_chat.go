@@ -701,7 +701,10 @@ func (s *Store) SearchChatMessages(userID int64, query string, limit int) ([]mod
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	like := "%" + escapeLike(query) + "%"
+	where, wargs := termAndOrWhere([]string{"LOWER(m.text)"}, query)
+	args := []any{userID}
+	args = append(args, wargs...)
+	args = append(args, userID, limit)
 	rows, err := s.db.Query(`SELECT m.id, m.channel_id,
 		CASE WHEN c.type='dm' THEN COALESCE((SELECT u2.username FROM chat_members mm JOIN users u2 ON u2.id=mm.user_id
 			WHERE mm.channel_id=c.id AND mm.user_id != ? LIMIT 1), 'DM') ELSE c.name END,
@@ -709,9 +712,9 @@ func (s *Store) SearchChatMessages(userID int64, query string, limit int) ([]mod
 		FROM chat_messages m
 		JOIN chat_channels c ON c.id = m.channel_id
 		LEFT JOIN users u ON u.id = m.author_id
-		WHERE m.deleted = 0 AND m.text LIKE ? ESCAPE '\'
+		WHERE m.deleted = 0 AND `+where+`
 		AND (c.type = 'channel' OR EXISTS(SELECT 1 FROM chat_members mb WHERE mb.channel_id = c.id AND mb.user_id = ?))
-		ORDER BY m.id DESC LIMIT ?`, userID, like, userID, limit)
+		ORDER BY m.id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1657,21 +1657,77 @@ func (s *Store) CleanupOrphanFiles() (int, error) {
 
 // SearchTasks searches across tasks (title, description, todo), comments, epics, tags.
 // When isRegex is true, it loads all tasks and filters in Go using regexp.
+// searchTerms splits a query into up to 8 lowercased terms for AND matching.
+// Multi-term queries match when every term appears somewhere in the record's
+// searchable text (order-independent), an upgrade over single-substring LIKE.
+func searchTerms(q string) []string {
+	f := strings.Fields(strings.ToLower(q))
+	if len(f) > 8 {
+		f = f[:8]
+	}
+	return f
+}
+
+// termAndOrWhere requires every query term to match at least one of the given
+// expressions (each compared case-insensitively with LIKE). Expressions should
+// already be wrapped in LOWER(...). Returns ("1=1", nil) for an empty query.
+func termAndOrWhere(exprs []string, q string) (string, []any) {
+	terms := searchTerms(q)
+	if len(terms) == 0 || len(exprs) == 0 {
+		return "1=1", nil
+	}
+	var clauses []string
+	var args []any
+	for _, term := range terms {
+		ors := make([]string, len(exprs))
+		for i, e := range exprs {
+			ors[i] = e + ` LIKE ? ESCAPE '\'`
+			args = append(args, "%"+escapeLike(term)+"%")
+		}
+		clauses = append(clauses, "("+strings.Join(ors, " OR ")+")")
+	}
+	return strings.Join(clauses, " AND "), args
+}
+
+// termAndHaving builds a HAVING expression requiring each term to appear in at
+// least one joined row across the given (LOWER()ed) expressions. Used when the
+// searchable text spans LEFT JOINed child rows (comments, tags).
+func termAndHaving(exprs []string, q string) (string, []any) {
+	terms := searchTerms(q)
+	if len(terms) == 0 || len(exprs) == 0 {
+		return "1=1", nil
+	}
+	var clauses []string
+	var args []any
+	for _, term := range terms {
+		ors := make([]string, len(exprs))
+		for i, e := range exprs {
+			ors[i] = e + ` LIKE ? ESCAPE '\'`
+			args = append(args, "%"+escapeLike(term)+"%")
+		}
+		clauses = append(clauses, "MAX(CASE WHEN ("+strings.Join(ors, " OR ")+") THEN 1 ELSE 0 END) = 1")
+	}
+	return strings.Join(clauses, " AND "), args
+}
+
 func (s *Store) SearchTasks(projectID int64, query string, isRegex bool) ([]int64, error) {
 	if isRegex {
 		return s.searchTasksRegex(projectID, query)
 	}
-	like := "%" + query + "%"
+	cols := []string{"LOWER(t.title)", "LOWER(t.description)", "LOWER(t.todo)", "LOWER(t.project_url)",
+		"LOWER(c.text)", "LOWER(tg.name)", "LOWER(e.name)", "LOWER(e.description)"}
+	having, hargs := termAndHaving(cols, query)
+	args := append([]any{projectID}, hargs...)
 	rows, err := s.db.Query(`
-		SELECT DISTINCT t.id FROM tasks t
+		SELECT t.id FROM tasks t
 		LEFT JOIN comments c ON c.task_id = t.id
 		LEFT JOIN task_tags tt ON tt.task_id = t.id
 		LEFT JOIN tags tg ON tg.id = tt.tag_id
 		LEFT JOIN epics e ON e.id = t.epic_id
-		WHERE t.project_id = ? AND (t.title LIKE ? OR t.description LIKE ? OR t.todo LIKE ? OR t.project_url LIKE ?
-		   OR c.text LIKE ? OR tg.name LIKE ? OR e.name LIKE ? OR e.description LIKE ?)
-		ORDER BY t.id`,
-		projectID, like, like, like, like, like, like, like, like)
+		WHERE t.project_id = ?
+		GROUP BY t.id
+		HAVING `+having+`
+		ORDER BY t.id`, args...)
 	if err != nil {
 		return nil, err
 	}

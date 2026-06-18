@@ -661,10 +661,12 @@ func (s *Store) SearchCalendarEvents(userID int64, isAdmin bool, query string, l
 	for _, c := range cals {
 		ids = append(ids, strconv.FormatInt(c.ID, 10))
 	}
-	like := "%" + escapeLike(query) + "%"
+	where, wargs := termAndOrWhere([]string{"LOWER(title)", "LOWER(description)"}, query)
+	args := append([]any{}, wargs...)
+	args = append(args, limit)
 	rows, err := s.db.Query(`SELECT id, title, description, start_utc FROM calendar_events
-		WHERE calendar_id IN (`+strings.Join(ids, ",")+`) AND (title LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\')
-		ORDER BY start_utc DESC LIMIT ?`, like, like, limit)
+		WHERE calendar_id IN (`+strings.Join(ids, ",")+`) AND `+where+`
+		ORDER BY start_utc DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -274,6 +274,23 @@ func TestSearchChatMessagesAccess(t *testing.T) {
 	}
 }
 
+func TestSearchChatMessagesMultiTerm(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	ch, _ := s.CreateChatChannel("c", "", "channel", alice, nil)
+	s.CreateChatMessage(ch, alice, "the quick brown fox", nil, 0)
+	s.CreateChatMessage(ch, alice, "lazy dog sleeps", nil, 0)
+
+	// Both terms present, any order → match (case-insensitive).
+	if hits, _ := s.SearchChatMessages(alice, "FOX Quick", 50); len(hits) != 1 {
+		t.Errorf("multi-term AND should match 1, got %d", len(hits))
+	}
+	// One term absent → no match.
+	if hits, _ := s.SearchChatMessages(alice, "quick cat", 50); len(hits) != 0 {
+		t.Errorf("a missing term must exclude the row, got %d", len(hits))
+	}
+}
+
 func TestChatAttachments(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")
