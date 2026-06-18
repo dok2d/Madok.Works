@@ -225,6 +225,13 @@ func (s *Store) migrate() error {
 			details TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
+		// TOTP recovery codes (hashed, single-use) for 2FA.
+		`CREATE TABLE IF NOT EXISTS totp_recovery (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			code_hash TEXT NOT NULL,
+			used INTEGER NOT NULL DEFAULT 0
+		)`,
 		// App settings (key-value)
 		`CREATE TABLE IF NOT EXISTS app_settings (
 			key TEXT PRIMARY KEY,
@@ -595,6 +602,8 @@ func (s *Store) migrate() error {
 		"ALTER TABLE wiki_pages ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_pages ADD COLUMN is_template INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE activity_log ADD COLUMN project_id INTEGER",
+		"ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
 		"ALTER TABLE chat_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",

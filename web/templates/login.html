@@ -46,6 +46,10 @@ body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',san
       <label for="password2">Подтверждение пароля</label>
       <input type="password" id="password2" autocomplete="new-password">
     </div>
+    <div id="totp-field" class="field" style="display:none">
+      <label for="totp-code">Код двухфакторной аутентификации</label>
+      <input type="text" id="totp-code" autocomplete="one-time-code" inputmode="text" placeholder="123456 или код восстановления">
+    </div>
     <div id="db-setup" style="display:none;margin:14px 0;padding-top:14px;border-top:1px solid var(--bg4)">
       <label style="display:flex;align-items:center;gap:8px;color:var(--fg2);font-size:.85rem;cursor:pointer">
         <input type="checkbox" id="db-external" onchange="toggleDbFields()" style="width:auto;margin:0"> Использовать внешний PostgreSQL
@@ -209,12 +213,21 @@ async function submit() {
     }
   } else {
     try {
+      const code = (document.getElementById('totp-code').value || '').trim();
       const r = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username, password})
+        body: JSON.stringify({username, password, code})
       });
       if (!r.ok) {
+        let body = {};
+        try { body = await r.json(); } catch (e) {}
+        if (body.totp_required) {
+          document.getElementById('totp-field').style.display = '';
+          document.getElementById('totp-code').focus();
+          errorEl.textContent = body.error ? 'Неверный код' : 'Введите код двухфакторной аутентификации';
+          return;
+        }
         errorEl.textContent = 'Неверное имя пользователя или пароль';
         return;
       }

@@ -464,6 +464,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/settings/llm/test", h.handleLLMTest)
 	h.mux.HandleFunc("/api/integrations/llm/status", h.handleLLMStatus)
 	h.mux.HandleFunc("/api/llm/generate-task", h.handleLLMGenerateTask)
+	h.mux.HandleFunc("/api/2fa/", h.handle2FA)
 	h.mux.HandleFunc("/api/integrations/db-info", h.handleDBInfo)
 	h.mux.HandleFunc("/api/admin/audit", h.handleAdminAudit)
 
@@ -2094,6 +2095,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Code     string `json:"code"` // TOTP or recovery code (second step)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -2124,6 +2126,22 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
+	}
+	// Second factor: if the user enabled 2FA, require a valid TOTP or recovery code.
+	if secret, enabled, _ := h.store.GetTOTP(user.ID); enabled {
+		code := strings.TrimSpace(req.Code)
+		if code == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{"totp_required": true})
+			return
+		}
+		if !auth.VerifyTOTP(secret, code) && !h.store.UseRecoveryCode(user.ID, code) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{"totp_required": true, "error": "invalid code"})
+			return
+		}
 	}
 	token, err := h.store.CreateSession(user.ID)
 	if err != nil {
