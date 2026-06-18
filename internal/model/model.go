@@ -163,6 +163,7 @@ type WikiSpace struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Visibility  string `json:"visibility"` // "open" (all users) or "restricted" (members only)
+	ProjectID   *int64 `json:"project_id"` // nil = personal space (outside projects)
 	CreatedBy   *int64 `json:"created_by"`
 	CreatedAt   string `json:"created_at"`
 	PageCount   int    `json:"page_count"`

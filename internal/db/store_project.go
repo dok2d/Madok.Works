@@ -156,9 +156,11 @@ func (s *Store) UpdateProject(id int64, name, description, visibility string) er
 	return err
 }
 
-// DeleteProject removes a project (and its members via FK cascade). The default
-// project "Общее" (id 1) cannot be deleted. Phase B also cascades the project's
-// kanban/calendar/wiki data here.
+// DeleteProject removes a project. Foreign keys handle the dependent data:
+// members, kanban (columns/epics/sprints/tags/tasks) and calendars cascade-delete
+// (ON DELETE CASCADE), while wiki spaces are reparented to personal
+// (project_id → NULL via ON DELETE SET NULL) so docs are never lost. The default
+// project "Общее" (id 1) cannot be deleted.
 func (s *Store) DeleteProject(id int64) error {
 	if id == 1 {
 		return fmt.Errorf("cannot delete the default project")

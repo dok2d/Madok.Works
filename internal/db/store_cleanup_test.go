@@ -21,7 +21,7 @@ func TestCleanupOrphanFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveImage: %v", err)
 	}
-	spaceID, err := s.CreateWikiSpace("DOC", "Docs", "", "open", author)
+	spaceID, err := s.CreateWikiSpace("DOC", "Docs", "", "open", nil, author)
 	if err != nil {
 		t.Fatalf("CreateWikiSpace: %v", err)
 	}

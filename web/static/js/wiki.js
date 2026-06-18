@@ -964,8 +964,9 @@ async function wikiNewSpaceDialog() {
   let key = await uiPrompt(t('wikiSpaceKeyPrompt'), wikiSuggestKey(name));
   if (!key) return;
   key = key.trim().toUpperCase();
+  const personal = await uiConfirm(t('wikiPersonalSpace'));
   try {
-    const res = await api('/api/wiki/spaces', 'POST', { key, name: name.trim(), description: '', visibility: 'open' });
+    const res = await api('/api/wiki/spaces', 'POST', { key, name: name.trim(), description: '', visibility: 'open', personal });
     wikiState.spaces = await api('/api/wiki/spaces');
     navigateTo('/wiki/space/' + res.id);
   } catch (e) { alert(e.message); }

@@ -12,7 +12,7 @@ import (
 func TestEcosystemExportRoundTrip(t *testing.T) {
 	a := newTestStore(t)
 	u := mustUser(t, a, "alice")
-	sp, err := a.CreateWikiSpace("DOC", "Docs", "", "open", u)
+	sp, err := a.CreateWikiSpace("DOC", "Docs", "", "open", p1(), u)
 	if err != nil {
 		t.Fatalf("CreateWikiSpace: %v", err)
 	}

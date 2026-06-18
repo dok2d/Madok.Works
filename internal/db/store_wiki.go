@@ -13,11 +13,15 @@ import (
 
 // ListWikiSpaces returns spaces visible to the user with page counts and the
 // user's effective role. Admins see everything.
-func (s *Store) ListWikiSpaces(userID int64, isAdmin bool) ([]model.WikiSpace, error) {
-	rows, err := s.db.Query(`SELECT sp.id, sp.key, sp.name, sp.description, sp.visibility, sp.created_by, sp.created_at,
+// ListWikiSpaces returns the spaces of the given project plus the user's
+// accessible personal spaces (project_id IS NULL). Project-bound spaces are
+// gated by project access first (a restricted project hides even its open
+// spaces from non-members), then by the space's own wiki role.
+func (s *Store) ListWikiSpaces(userID int64, isAdmin bool, projectID int64) ([]model.WikiSpace, error) {
+	rows, err := s.db.Query(`SELECT sp.id, sp.key, sp.name, sp.description, sp.visibility, sp.project_id, sp.created_by, sp.created_at,
 		(SELECT COUNT(*) FROM wiki_pages p WHERE p.space_id = sp.id),
 		COALESCE((SELECT m.role FROM wiki_space_members m WHERE m.space_id = sp.id AND m.user_id = ?), '')
-		FROM wiki_spaces sp ORDER BY sp.name COLLATE NOCASE`, userID)
+		FROM wiki_spaces sp WHERE sp.project_id = ? OR sp.project_id IS NULL ORDER BY sp.name COLLATE NOCASE`, userID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -26,9 +30,13 @@ func (s *Store) ListWikiSpaces(userID int64, isAdmin bool) ([]model.WikiSpace, e
 	for rows.Next() {
 		var sp model.WikiSpace
 		var memberRole string
-		if err := rows.Scan(&sp.ID, &sp.Key, &sp.Name, &sp.Description, &sp.Visibility, &sp.CreatedBy, &sp.CreatedAt, &sp.PageCount, &memberRole); err != nil {
+		if err := rows.Scan(&sp.ID, &sp.Key, &sp.Name, &sp.Description, &sp.Visibility, &sp.ProjectID, &sp.CreatedBy, &sp.CreatedAt, &sp.PageCount, &memberRole); err != nil {
 			return nil, err
 		}
+		// The query already restricts to the current project (+ personal) and the
+		// handler gates project access, so the plain wiki role is the effective
+		// one here. (A per-row ProjectRole query would deadlock under the single
+		// SQLite connection while these rows are open.)
 		sp.MyRole = effectiveWikiRole(sp.Visibility, memberRole, userID, sp.CreatedBy, isAdmin)
 		if sp.MyRole == "" {
 			continue // restricted space, not a member
@@ -45,16 +53,29 @@ func (s *Store) ListWikiSpaces(userID int64, isAdmin bool) ([]model.WikiSpace, e
 func (s *Store) GetWikiSpace(id, userID int64, isAdmin bool) (*model.WikiSpace, error) {
 	var sp model.WikiSpace
 	var memberRole string
-	err := s.db.QueryRow(`SELECT sp.id, sp.key, sp.name, sp.description, sp.visibility, sp.created_by, sp.created_at,
+	err := s.db.QueryRow(`SELECT sp.id, sp.key, sp.name, sp.description, sp.visibility, sp.project_id, sp.created_by, sp.created_at,
 		(SELECT COUNT(*) FROM wiki_pages p WHERE p.space_id = sp.id),
 		COALESCE((SELECT m.role FROM wiki_space_members m WHERE m.space_id = sp.id AND m.user_id = ?), '')
 		FROM wiki_spaces sp WHERE sp.id = ?`, userID, id).
-		Scan(&sp.ID, &sp.Key, &sp.Name, &sp.Description, &sp.Visibility, &sp.CreatedBy, &sp.CreatedAt, &sp.PageCount, &memberRole)
+		Scan(&sp.ID, &sp.Key, &sp.Name, &sp.Description, &sp.Visibility, &sp.ProjectID, &sp.CreatedBy, &sp.CreatedAt, &sp.PageCount, &memberRole)
 	if err != nil {
 		return nil, err
 	}
-	sp.MyRole = effectiveWikiRole(sp.Visibility, memberRole, userID, sp.CreatedBy, isAdmin)
+	sp.MyRole = s.effectiveWikiSpaceRole(&sp, memberRole, userID, isAdmin)
 	return &sp, nil
+}
+
+// effectiveWikiSpaceRole resolves a space's role, gating project-bound spaces by
+// project access (no project access → no space access, regardless of wiki
+// visibility). Personal spaces (project_id nil) use the wiki role directly.
+func (s *Store) effectiveWikiSpaceRole(sp *model.WikiSpace, memberRole string, userID int64, isAdmin bool) string {
+	if sp.ProjectID != nil && !isAdmin {
+		prole, err := s.ProjectRole(*sp.ProjectID, userID, isAdmin)
+		if err != nil || prole == "" {
+			return ""
+		}
+	}
+	return effectiveWikiRole(sp.Visibility, memberRole, userID, sp.CreatedBy, isAdmin)
 }
 
 // effectiveWikiRole resolves the user's role in a space.
@@ -77,12 +98,14 @@ func effectiveWikiRole(visibility, memberRole string, userID int64, createdBy *i
 	return ""
 }
 
-func (s *Store) CreateWikiSpace(key, name, description, visibility string, createdBy int64) (int64, error) {
+// CreateWikiSpace makes a space in a project (projectID != nil) or a personal
+// space (projectID == nil, outside any project).
+func (s *Store) CreateWikiSpace(key, name, description, visibility string, projectID *int64, createdBy int64) (int64, error) {
 	if visibility != "restricted" {
 		visibility = "open"
 	}
-	id, err := s.db.ExecInsert(`INSERT INTO wiki_spaces(key, name, description, visibility, created_by) VALUES(?,?,?,?,?)`,
-		key, name, description, visibility, createdBy)
+	id, err := s.db.ExecInsert(`INSERT INTO wiki_spaces(key, name, description, visibility, project_id, created_by) VALUES(?,?,?,?,?,?)`,
+		key, name, description, visibility, projectID, createdBy)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return 0, fmt.Errorf("space key %q already exists", key)
@@ -352,7 +375,7 @@ func (s *Store) SearchWikiPages(userID int64, isAdmin bool, query string, limit 
 		limit = 50
 	}
 	like := "%" + escapeLike(query) + "%"
-	rows, err := s.db.Query(`SELECT p.id, p.space_id, sp.key, p.title, p.content, sp.visibility, sp.created_by,
+	rows, err := s.db.Query(`SELECT p.id, p.space_id, sp.key, p.title, p.content, sp.visibility, sp.project_id, sp.created_by,
 		COALESCE((SELECT m.role FROM wiki_space_members m WHERE m.space_id = sp.id AND m.user_id = ?), '')
 		FROM wiki_pages p JOIN wiki_spaces sp ON sp.id = p.space_id
 		WHERE p.title LIKE ? ESCAPE '\' OR p.content LIKE ? ESCAPE '\'
@@ -360,28 +383,41 @@ func (s *Store) SearchWikiPages(userID int64, isAdmin bool, query string, limit 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []model.WikiSearchHit
+	// Collect candidates first, then compute roles. effectiveWikiSpaceRole may run
+	// a ProjectRole query, which would deadlock under the single SQLite connection
+	// if executed while these rows are still open — so we drain the cursor first.
+	type cand struct {
+		hit        model.WikiSearchHit
+		content    string
+		sp         model.WikiSpace
+		memberRole string
+	}
+	var cands []cand
 	for rows.Next() {
-		var h model.WikiSearchHit
-		var content, visibility, memberRole string
-		var createdBy *int64
-		if err := rows.Scan(&h.PageID, &h.SpaceID, &h.SpaceKey, &h.Title, &content, &visibility, &createdBy, &memberRole); err != nil {
+		var c cand
+		if err := rows.Scan(&c.hit.PageID, &c.hit.SpaceID, &c.hit.SpaceKey, &c.hit.Title, &c.content,
+			&c.sp.Visibility, &c.sp.ProjectID, &c.sp.CreatedBy, &c.memberRole); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		if effectiveWikiRole(visibility, memberRole, userID, createdBy, isAdmin) == "" {
+		cands = append(cands, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := []model.WikiSearchHit{}
+	for _, c := range cands {
+		if s.effectiveWikiSpaceRole(&c.sp, c.memberRole, userID, isAdmin) == "" {
 			continue
 		}
-		h.Snippet = wikiSnippet(content, query)
-		out = append(out, h)
+		c.hit.Snippet = wikiSnippet(c.content, query)
+		out = append(out, c.hit)
 		if len(out) >= limit {
 			break
 		}
 	}
-	if out == nil {
-		out = []model.WikiSearchHit{}
-	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func escapeLike(s string) string {

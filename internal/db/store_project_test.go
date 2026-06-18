@@ -1,6 +1,66 @@
 package db
 
-import "testing"
+import (
+	"testing"
+
+	"kanban/internal/model"
+)
+
+// TestWikiProjectScope verifies wiki spaces are scoped per project, that personal
+// spaces (project_id NULL) are visible across projects, and that deleting a
+// project reparents its spaces to personal instead of destroying them.
+func TestWikiProjectScope(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+
+	p2, err := s.CreateProject("Beta", "", "open", alice)
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	one := int64(1)
+	spA, _ := s.CreateWikiSpace("AAA", "Space A", "", "open", &one, alice)
+	spB, _ := s.CreateWikiSpace("BBB", "Space B", "", "open", &p2, alice)
+	spP, _ := s.CreateWikiSpace("PPP", "Personal", "", "open", nil, alice)
+
+	has := func(list []model.WikiSpace, id int64) bool {
+		for _, x := range list {
+			if x.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	a, _ := s.ListWikiSpaces(alice, false, 1)
+	if !has(a, spA) || has(a, spB) || !has(a, spP) {
+		t.Errorf("project 1 wiki view wrong: A=%v B=%v P=%v", has(a, spA), has(a, spB), has(a, spP))
+	}
+	b, _ := s.ListWikiSpaces(alice, false, p2)
+	if has(b, spA) || !has(b, spB) || !has(b, spP) {
+		t.Errorf("project 2 wiki view wrong: A=%v B=%v P=%v", has(b, spA), has(b, spB), has(b, spP))
+	}
+
+	// A restricted project hides even its open spaces from a non-member.
+	bob := mustUser(t, s, "bob")
+	pr, _ := s.CreateProject("Secret", "", "restricted", alice)
+	one2 := pr
+	spR, _ := s.CreateWikiSpace("RRR", "Restricted proj space", "", "open", &one2, alice)
+	if r, _ := s.GetWikiSpace(spR, bob, false); r.MyRole != "" {
+		t.Errorf("non-member should have no access to a space in a restricted project, got %q", r.MyRole)
+	}
+
+	// Deleting project 2 reparents Space B to personal (project_id NULL), not delete.
+	if err := s.DeleteProject(p2); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+	sp, err := s.GetWikiSpace(spB, alice, false)
+	if err != nil {
+		t.Fatalf("space B should still exist after project delete: %v", err)
+	}
+	if sp.ProjectID != nil {
+		t.Errorf("space B should be reparented to personal, project_id=%v", sp.ProjectID)
+	}
+}
 
 // TestKanbanProjectIsolation verifies that columns, tasks, tags and per-project
 // task numbering are fully scoped to their owning project.

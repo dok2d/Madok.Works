@@ -246,6 +246,7 @@ func (s *Store) migrate() error {
 			name TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			visibility TEXT NOT NULL DEFAULT 'open',
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
 			created_by INTEGER REFERENCES users(id),
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -491,6 +492,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tags_project ON tags(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_calendars_project ON calendars(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wiki_spaces_project ON wiki_spaces(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id)`,
 	}
 	for _, q := range stmts {

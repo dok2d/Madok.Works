@@ -64,7 +64,11 @@ func (h *Handler) handleWikiSpaces(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		spaces, err := h.store.ListWikiSpaces(user.ID, user.Role == "admin")
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		spaces, err := h.store.ListWikiSpaces(user.ID, user.Role == "admin", pid)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -85,6 +89,7 @@ func (h *Handler) handleWikiSpaces(w http.ResponseWriter, r *http.Request) {
 			Name        string `json:"name"`
 			Description string `json:"description"`
 			Visibility  string `json:"visibility"`
+			Personal    bool   `json:"personal"` // true = personal space (no project)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -100,7 +105,16 @@ func (h *Handler) handleWikiSpaces(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "key must be 1-16 chars: A-Z 0-9 _ -", http.StatusBadRequest)
 			return
 		}
-		id, err := h.store.CreateWikiSpace(req.Key, req.Name, req.Description, req.Visibility, user.ID)
+		// Personal spaces need no project access; project spaces require editor.
+		var projectID *int64
+		if !req.Personal {
+			pid, ok := h.requireProject(w, r, user, "editor")
+			if !ok {
+				return
+			}
+			projectID = &pid
+		}
+		id, err := h.store.CreateWikiSpace(req.Key, req.Name, req.Description, req.Visibility, projectID, user.ID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
