@@ -4,8 +4,8 @@
 // existing populate functions keep working). Phase 7 adds Mail server / Mailboxes.
 
 const ADMIN_I18N = {
-  en: { adminTitle: 'Administration', settingsTitle: 'Settings', adminTabGeneral: 'General', adminTabAccount: 'Account', accProfile: 'Open profile', adminTabSite: 'Site', adminAppName: 'Application name', adminAppNameHint: 'Shown in the page title, header and backup names.', adminDefaultLang: 'Default language', adminDefaultLangHint: 'Interface language for new users (each user can change their own afterwards).', adminWap: 'Enable WAP interface (legacy phones)', adminWapHint: 'Exposes a minimal WML interface at /wap/ for very old devices. Off by default.', obReplayTitle: 'First-run wizard', obReplay: 'Show setup wizard again', obReplayHint: 'Re-open the one-time service-setup wizard (clears the completed flag).', adminTabTelegram: 'Telegram', adminTabMail: 'Mail', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key', llmTitle: 'AI summaries (LLM)', dbTitle: 'Database', llmHint: 'Connect an OpenAI-compatible API (e.g. llama.cpp). When enabled: a "Summary" button on wiki pages and "✨ Generate" (description + TODO) in the task form.', llmEnabledOn: 'Enabled', llmBaseUrl: 'API base URL', llmModel: 'Model', llmApiKey: 'API key', llmApiKeyOptional: 'optional', llmEnable: 'Enable (tests connection)', llmTest: 'Test connection', llmTesting: 'Testing…', llmOk: 'Connection OK', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User', dbPath: 'File', adminTabAudit: 'Audit log', auditTime: 'Time', auditUser: 'User', auditAction: 'Action', auditProject: 'Project', auditDetails: 'Details', auditAllProjects: 'All projects', adminTabSecurity: 'Security', twofaTitle: 'Two-factor authentication', twofaHint: 'Add a time-based one-time code (TOTP) from an authenticator app as a second login step.', twofaOn: 'Two-factor authentication is enabled.', twofaEnable: 'Enable 2FA', twofaDisable: 'Disable 2FA', twofaCode: 'Code', twofaScan: 'Add this secret to your authenticator app (or scan the otpauth URL), then enter the current code:', twofaConfirm: 'Confirm', twofaEnabled: '2FA enabled.', twofaRecovery: 'Save these one-time recovery codes somewhere safe:' },
-  ru: { adminTitle: 'Администрирование', settingsTitle: 'Настройки', adminTabGeneral: 'Общие', adminTabAccount: 'Аккаунт', accProfile: 'Открыть профиль', adminTabSite: 'Сайт', adminAppName: 'Название приложения', adminAppNameHint: 'Показывается в заголовке вкладки, шапке и именах бэкапов.', adminDefaultLang: 'Язык по умолчанию', adminDefaultLangHint: 'Язык интерфейса для новых пользователей (каждый может потом сменить свой).', adminWap: 'Включить WAP-интерфейс (старые телефоны)', adminWapHint: 'Открывает минимальный WML-интерфейс по адресу /wap/ для очень старых устройств. По умолчанию выключен.', obReplayTitle: 'Визард первого запуска', obReplay: 'Показать визард заново', obReplayHint: 'Заново открыть одноразовый визард настройки сервисов (сбрасывает флаг завершения).', adminTabTelegram: 'Telegram', adminTabMail: 'Почта', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ', llmTitle: 'ИИ-саммари (LLM)', dbTitle: 'База данных', llmHint: 'Подключите OpenAI-совместимый API (напр. llama.cpp). После включения появятся: кнопка «Саммари» на wiki-страницах и «✨ Сгенерировать» (описание + TODO) в форме задачи.', llmEnabledOn: 'Включено', llmBaseUrl: 'Базовый URL API', llmModel: 'Модель', llmApiKey: 'API-ключ', llmApiKeyOptional: 'необязательно', llmEnable: 'Включить (с проверкой подключения)', llmTest: 'Проверить подключение', llmTesting: 'Проверка…', llmOk: 'Подключение успешно', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База', dbUser: 'Пользователь', dbPath: 'Файл', adminTabAudit: 'Журнал аудита', auditTime: 'Время', auditUser: 'Пользователь', auditAction: 'Действие', auditProject: 'Проект', auditDetails: 'Детали', auditAllProjects: 'Все проекты', adminTabSecurity: 'Безопасность', twofaTitle: 'Двухфакторная аутентификация', twofaHint: 'Добавьте одноразовый код (TOTP) из приложения-аутентификатора как второй шаг входа.', twofaOn: 'Двухфакторная аутентификация включена.', twofaEnable: 'Включить 2FA', twofaDisable: 'Отключить 2FA', twofaCode: 'Код', twofaScan: 'Добавьте этот секрет в приложение-аутентификатор (или отсканируйте otpauth-ссылку), затем введите текущий код:', twofaConfirm: 'Подтвердить', twofaEnabled: '2FA включена.', twofaRecovery: 'Сохраните эти одноразовые коды восстановления в надёжном месте:' },
+  en: { adminTitle: 'Administration', settingsTitle: 'Settings', adminTabGeneral: 'My settings', adminTabAccount: 'Account', accProfile: 'Open profile', adminTabSite: 'Site', adminAppName: 'Application name', adminAppNameHint: 'Shown in the page title, header and backup names.', adminDefaultLang: 'Default language', adminDefaultLangHint: 'Interface language for new users (each user can change their own afterwards).', adminWap: 'Enable WAP interface (legacy phones)', adminWapHint: 'Exposes a minimal WML interface at /wap/ for very old devices. Off by default.', obReplayTitle: 'First-run wizard', obReplay: 'Show setup wizard again', obReplayHint: 'Re-open the one-time service-setup wizard (clears the completed flag).', adminTabTelegram: 'Telegram', adminTabMail: 'Mail', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabProjects: 'Projects', adminProjNew: 'New project', adminProjVisibility: 'Visibility', adminProjMembers: 'Members', adminProjManage: 'Manage', adminProjNoneSel: 'Select a project to manage its members and settings.', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key', llmTitle: 'AI summaries (LLM)', dbTitle: 'Database', llmHint: 'Connect an OpenAI-compatible API (e.g. llama.cpp). When enabled: a "Summary" button on wiki pages and "✨ Generate" (description + TODO) in the task form.', llmEnabledOn: 'Enabled', llmBaseUrl: 'API base URL', llmModel: 'Model', llmApiKey: 'API key', llmApiKeyOptional: 'optional', llmEnable: 'Enable (tests connection)', llmTest: 'Test connection', llmTesting: 'Testing…', llmOk: 'Connection OK', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User', dbPath: 'File', adminTabAudit: 'Audit log', auditTime: 'Time', auditUser: 'User', auditAction: 'Action', auditProject: 'Project', auditDetails: 'Details', auditAllProjects: 'All projects', adminTabSecurity: 'Security', twofaTitle: 'Two-factor authentication', twofaHint: 'Add a time-based one-time code (TOTP) from an authenticator app as a second login step.', twofaOn: 'Two-factor authentication is enabled.', twofaEnable: 'Enable 2FA', twofaDisable: 'Disable 2FA', twofaCode: 'Code', twofaScan: 'Add this secret to your authenticator app (or scan the otpauth URL), then enter the current code:', twofaConfirm: 'Confirm', twofaEnabled: '2FA enabled.', twofaRecovery: 'Save these one-time recovery codes somewhere safe:' },
+  ru: { adminTitle: 'Администрирование', settingsTitle: 'Настройки', adminTabGeneral: 'Мои настройки', adminTabAccount: 'Аккаунт', accProfile: 'Открыть профиль', adminTabSite: 'Сайт', adminAppName: 'Название приложения', adminAppNameHint: 'Показывается в заголовке вкладки, шапке и именах бэкапов.', adminDefaultLang: 'Язык по умолчанию', adminDefaultLangHint: 'Язык интерфейса для новых пользователей (каждый может потом сменить свой).', adminWap: 'Включить WAP-интерфейс (старые телефоны)', adminWapHint: 'Открывает минимальный WML-интерфейс по адресу /wap/ для очень старых устройств. По умолчанию выключен.', obReplayTitle: 'Визард первого запуска', obReplay: 'Показать визард заново', obReplayHint: 'Заново открыть одноразовый визард настройки сервисов (сбрасывает флаг завершения).', adminTabTelegram: 'Telegram', adminTabMail: 'Почта', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabProjects: 'Проекты', adminProjNew: 'Новый проект', adminProjVisibility: 'Видимость', adminProjMembers: 'Участники', adminProjManage: 'Управлять', adminProjNoneSel: 'Выберите проект, чтобы управлять его участниками и настройками.', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ', llmTitle: 'ИИ-саммари (LLM)', dbTitle: 'База данных', llmHint: 'Подключите OpenAI-совместимый API (напр. llama.cpp). После включения появятся: кнопка «Саммари» на wiki-страницах и «✨ Сгенерировать» (описание + TODO) в форме задачи.', llmEnabledOn: 'Включено', llmBaseUrl: 'Базовый URL API', llmModel: 'Модель', llmApiKey: 'API-ключ', llmApiKeyOptional: 'необязательно', llmEnable: 'Включить (с проверкой подключения)', llmTest: 'Проверить подключение', llmTesting: 'Проверка…', llmOk: 'Подключение успешно', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База', dbUser: 'Пользователь', dbPath: 'Файл', adminTabAudit: 'Журнал аудита', auditTime: 'Время', auditUser: 'Пользователь', auditAction: 'Действие', auditProject: 'Проект', auditDetails: 'Детали', auditAllProjects: 'Все проекты', adminTabSecurity: 'Безопасность', twofaTitle: 'Двухфакторная аутентификация', twofaHint: 'Добавьте одноразовый код (TOTP) из приложения-аутентификатора как второй шаг входа.', twofaOn: 'Двухфакторная аутентификация включена.', twofaEnable: 'Включить 2FA', twofaDisable: 'Отключить 2FA', twofaCode: 'Код', twofaScan: 'Добавьте этот секрет в приложение-аутентификатор (или отсканируйте otpauth-ссылку), затем введите текущий код:', twofaConfirm: 'Подтвердить', twofaEnabled: '2FA включена.', twofaRecovery: 'Сохраните эти одноразовые коды восстановления в надёжном месте:' },
   es: { adminTitle: 'Administración', adminTabUsers: 'Usuarios', adminTabBoard: 'Tablero', adminTabServices: 'Servicios', adminTabIntegrations: 'Integraciones', adminTabData: 'Datos', adminTabMailServer: 'Servidor de correo', adminTabMailboxes: 'Buzones' },
   fr: { adminTitle: 'Administration', adminTabUsers: 'Utilisateurs', adminTabBoard: 'Tableau', adminTabServices: 'Services', adminTabIntegrations: 'Intégrations', adminTabData: 'Données', adminTabMailServer: 'Serveur de messagerie', adminTabMailboxes: 'Boîtes' },
   de: { adminTitle: 'Verwaltung', adminTabUsers: 'Benutzer', adminTabBoard: 'Board', adminTabServices: 'Dienste', adminTabIntegrations: 'Integrationen', adminTabData: 'Daten', adminTabMailServer: 'Mailserver', adminTabMailboxes: 'Postfächer' },
@@ -30,17 +30,31 @@ const ADMIN_TABS = [
   { key: 'account', i: 'adminTabAccount', render: renderAdminAccount },
   { key: 'general', i: 'adminTabGeneral', sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
   { key: 'mail', i: 'adminTabMail', render: renderAdminMail, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
+  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
   // Admin-only service config (bot token, SSO, LLM, DB). Personal Telegram
   // linking lives in the Account tab instead.
   { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section', 'llm-section', 'db-section'], admin: true },
   // Admin configuration
   { key: 'board', i: 'adminTabBoard', sections: ['columns-section', 'epics-section', 'sprints-section', 'tags-section'], admin: true },
+  { key: 'projects', i: 'adminTabProjects', render: renderAdminProjects, admin: true },
   { key: 'users', i: 'adminTabUsers', sections: ['users-section'], admin: true },
   { key: 'services', i: 'adminTabServices', sections: ['services-section'], admin: true },
   { key: 'site', i: 'adminTabSite', render: renderAdminSite, admin: true },
-  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
   { key: 'auditlog', i: 'adminTabAudit', render: renderAdminAuditLog, admin: true },
   { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'], admin: true },
+];
+
+// Top-level layout grouping leaf tabs under collapsible sections. A group shows
+// a secondary tab bar of its children; a leaf is shown directly. Keys reference
+// ADMIN_TABS entries. Order here defines the top-level tab order.
+const ADMIN_LAYOUT = [
+  { leaf: 'account' },
+  { leaf: 'general' },
+  { group: 'mailgrp', i: 'adminTabMail', children: ['mail', 'mailserver'] },
+  { group: 'boardgrp', i: 'adminTabBoard', children: ['board', 'projects'] },
+  { leaf: 'users' },
+  { group: 'sitegrp', i: 'adminTabSite', children: ['site', 'services', 'integrations', 'data'] },
+  { leaf: 'auditlog' },
 ];
 
 // renderAdminAccount renders per-user account tooling available to everyone:
@@ -260,7 +274,7 @@ function ensureAdminPage() {
   ensureAdminI18n();
   const page = document.createElement('div');
   page.id = 'admin-page';
-  page.innerHTML = `<div class="admin-tabs" id="admin-tabs"></div><div class="admin-body" id="admin-body"></div>`;
+  page.innerHTML = `<div class="admin-tabs" id="admin-tabs"></div><div class="admin-subtabs" id="admin-subtabs"></div><div class="admin-body" id="admin-body"></div>`;
   document.body.appendChild(page);
   const body = page.querySelector('#admin-body');
   // Only build panels (and relocate their sections) for tabs the user can see.
@@ -277,11 +291,55 @@ function ensureAdminPage() {
   adminBuilt = true;
 }
 
+function adminLeafVisible(key) {
+  const td = ADMIN_TABS.find(t => t.key === key);
+  return td ? adminTabVisible(td) : false;
+}
+function adminGroupChildren(entry) { return (entry.children || []).filter(adminLeafVisible); }
+function adminTopLevelVisible() {
+  return ADMIN_LAYOUT.filter(e => e.leaf ? adminLeafVisible(e.leaf) : adminGroupChildren(e).length > 0);
+}
+// Layout entry that owns the currently active leaf (leaf itself or its group).
+function adminActiveTop() {
+  return ADMIN_LAYOUT.find(e => e.leaf === adminTab || (e.children && e.children.includes(adminTab)));
+}
+
 function renderAdminTabs() {
   const bar = document.getElementById('admin-tabs');
   if (!bar) return;
-  bar.innerHTML = adminVisibleTabs().map(td => `<button class="admin-tab ${adminTab === td.key ? 'active' : ''}" onclick="adminSetTab('${td.key}')">${esc(t(td.i))}</button>`).join('');
+  const active = adminActiveTop();
+  bar.innerHTML = adminTopLevelVisible().map(e => {
+    const key = e.leaf || e.group;
+    const on = e === active;
+    return `<button class="admin-tab ${on ? 'active' : ''}" onclick="adminSetTop('${key}')">${esc(t(e.i || ADMIN_TABS.find(t2 => t2.key === e.leaf).i))}</button>`;
+  }).join('');
+  // Secondary bar for the active group.
+  const sub = document.getElementById('admin-subtabs');
+  if (sub) {
+    const kidsAll = active && active.group ? adminGroupChildren(active) : [];
+    if (kidsAll.length > 1) {
+      const kids = kidsAll;
+      sub.innerHTML = kids.map(k => {
+        const td = ADMIN_TABS.find(t2 => t2.key === k);
+        return `<button class="admin-subtab ${adminTab === k ? 'active' : ''}" onclick="adminSetTab('${k}')">${esc(t(td.i))}</button>`;
+      }).join('');
+      sub.style.display = '';
+    } else {
+      sub.innerHTML = '';
+      sub.style.display = 'none';
+    }
+  }
   document.querySelectorAll('#admin-page .admin-panel').forEach(p => p.classList.toggle('active', p.id === 'admin-panel-' + adminTab));
+}
+
+// adminSetTop handles a top-level click: a leaf selects directly; a group opens
+// its first visible child.
+function adminSetTop(key) {
+  const entry = ADMIN_LAYOUT.find(e => e.leaf === key || e.group === key);
+  if (!entry) return adminSetTab(key);
+  if (entry.leaf) return adminSetTab(entry.leaf);
+  const kids = adminGroupChildren(entry);
+  if (kids.length) adminSetTab(kids[0]);
 }
 
 function adminSetTab(k) {
@@ -339,6 +397,28 @@ async function renderAdminSite(panel) {
 async function adminReplayOnboarding() {
   try { await api('/api/setup/onboarding', 'POST', { mode: 'reset' }); } catch (e) { alert(e.message); return; }
   location.reload();
+}
+
+// === Projects tab (admin moderation: create / edit / members / delete) ===
+async function renderAdminProjects(panel) {
+  if (!panel) return;
+  if (typeof loadProjects === 'function') { try { await loadProjects(); } catch (e) { /* ignore */ } }
+  const list = (typeof projects !== 'undefined' && projects) ? projects : [];
+  const visLabel = v => v === 'open' ? t('projectOpen') : t('projectRestricted');
+  const rows = list.map(p => `<tr>
+      <td>${esc(p.name)}</td>
+      <td>${esc(visLabel(p.visibility))}</td>
+      <td style="text-align:right">${p.my_role === 'admin'
+        ? `<button class="btn btn-ghost btn-sm" onclick="openProjectSettings(${p.id})">${t('adminProjManage')}</button>`
+        : `<span class="admin-note">${esc(t('wikiRole_' + (p.my_role || '')) || p.my_role || '')}</span>`}</td>
+    </tr>`).join('') || `<tr><td colspan="3"><div class="admin-note">${t('adminNoData')}</div></td></tr>`;
+  panel.innerHTML = `<h2 class="admin-h">${t('adminTabProjects')}</h2>
+    <div class="admin-form">
+      <div class="admin-row"><button class="btn btn-primary btn-sm" onclick="newProjectDialog()">${t('adminProjNew')}</button></div>
+      <div class="admin-note">${t('adminProjNoneSel')}</div>
+    </div>
+    <table class="admin-table"><thead><tr><th>${t('projectName')}</th><th>${t('adminProjVisibility')}</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
 }
 
 async function adminSaveAppName() {

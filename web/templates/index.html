@@ -824,9 +824,16 @@ body:not(.view-calendar) .hdr-cal-only{display:none !important}
 body.has-rail #admin-page{left:52px}
 [dir="rtl"] body.has-rail #admin-page{left:0;right:52px}
 body.view-admin #admin-page{display:block}
+/* Settings page: keep only the logo in the header — the project selector and
+   board filters don't apply here. */
+body.view-admin .header h1 > :not(a){display:none}
+body.view-admin .header-actions .hdr-kanban-only{display:none}
 .admin-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:14px 24px 0;border-bottom:1px solid var(--bg4);position:sticky;top:0;background:var(--bg);z-index:1}
 .admin-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--fg2);cursor:pointer;font-size:.88rem;padding:8px 12px}
 .admin-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.admin-subtabs{display:flex;gap:4px;flex-wrap:wrap;padding:8px 24px 0;background:var(--bg);position:sticky;top:42px;z-index:1}
+.admin-subtab{background:var(--bg3);border:1px solid var(--bg4);border-radius:999px;color:var(--fg2);cursor:pointer;font-size:.8rem;padding:4px 12px}
+.admin-subtab.active{color:#fff;background:var(--accent);border-color:var(--accent);font-weight:600}
 .admin-body{padding:20px 24px 60px;max-width:900px}
 .admin-panel{display:none}
 .admin-panel.active{display:block}
@@ -1357,9 +1364,15 @@ async function newProjectDialog() {
   } catch (e) { alert(e.message); }
 }
 
-async function openProjectSettings() {
-  const cur = currentProject();
+let projSettingsId = null;
+function projSettingsTarget() {
+  return (projects || []).find(p => p.id === projSettingsId) || null;
+}
+async function openProjectSettings(id) {
+  const pid = id || (currentProject() && currentProject().id);
+  const cur = (projects || []).find(p => p.id === pid);
   if (!cur || cur.my_role !== 'admin') return;
+  projSettingsId = pid;
   document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
   let members = [];
   try { members = await api('/api/projects/' + cur.id + '/members'); } catch (e) {}
@@ -1399,8 +1412,15 @@ async function openProjectSettings() {
   document.body.appendChild(ov);
 }
 
+function afterProjectChange() {
+  // Refresh the admin moderation panel if it's open.
+  if (typeof renderAdminProjects === 'function') {
+    const p = document.getElementById('admin-panel-projects');
+    if (p) renderAdminProjects(p);
+  }
+}
 async function saveProjectSettings() {
-  const cur = currentProject();
+  const cur = projSettingsTarget();
   if (!cur) return;
   const name = document.getElementById('proj-name').value.trim();
   const description = document.getElementById('proj-desc').value;
@@ -1410,33 +1430,37 @@ async function saveProjectSettings() {
     await api('/api/projects/' + cur.id, 'PUT', { name, description, visibility });
     document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
     await loadProjects();
+    afterProjectChange();
   } catch (e) { alert(e.message); }
 }
 async function projAddMember() {
-  const cur = currentProject();
+  const cur = projSettingsTarget();
   const uid = Number(document.getElementById('proj-add-user').value);
   const role = document.getElementById('proj-add-role').value;
-  if (!uid) return;
-  try { await api('/api/projects/' + cur.id + '/members', 'POST', { user_id: uid, role }); openProjectSettings(); } catch (e) { alert(e.message); }
+  if (!cur || !uid) return;
+  try { await api('/api/projects/' + cur.id + '/members', 'POST', { user_id: uid, role }); openProjectSettings(cur.id); } catch (e) { alert(e.message); }
 }
 async function projSetMember(uid, role) {
-  const cur = currentProject();
+  const cur = projSettingsTarget();
+  if (!cur) return;
   try { await api('/api/projects/' + cur.id + '/members', 'POST', { user_id: uid, role }); } catch (e) { alert(e.message); }
 }
 async function projRemoveMember(uid) {
-  const cur = currentProject();
-  try { await api('/api/projects/' + cur.id + '/members?user_id=' + uid, 'DELETE'); openProjectSettings(); } catch (e) { alert(e.message); }
+  const cur = projSettingsTarget();
+  if (!cur) return;
+  try { await api('/api/projects/' + cur.id + '/members?user_id=' + uid, 'DELETE'); openProjectSettings(cur.id); } catch (e) { alert(e.message); }
 }
 async function deleteProjectConfirm() {
-  const cur = currentProject();
+  const cur = projSettingsTarget();
   if (!cur || cur.id === 1) return;
   if (!await uiConfirm(t('projectDeleteConfirm'))) return;
   try {
     await api('/api/projects/' + cur.id, 'DELETE');
     document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
-    currentProjectId = 1; localStorage.setItem('kanban-project', 1);
+    if (currentProjectId === cur.id) { currentProjectId = 1; localStorage.setItem('kanban-project', 1); }
     await loadProjects();
-    await loadBoard();
+    afterProjectChange();
+    if (KANBAN_VIEWS.includes(currentView)) await loadBoard();
   } catch (e) { alert(e.message); }
 }
 function setLang(lang) {
