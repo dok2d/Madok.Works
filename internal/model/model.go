@@ -123,12 +123,15 @@ type TaskSubscription struct {
 
 // ActivityEntry represents a user activity log entry
 type ActivityEntry struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	Action    string    `json:"action"` // "create_task", "edit_task", "comment", "move_task", "assign", etc.
-	TaskID    *int64    `json:"task_id,omitempty"`
-	Details   string    `json:"details"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"user_id"`
+	Username    string    `json:"username,omitempty"`
+	Action      string    `json:"action"` // "create_task", "edit_task", "comment", "move_task", "assign", etc.
+	TaskID      *int64    `json:"task_id,omitempty"`
+	ProjectID   *int64    `json:"project_id,omitempty"`
+	ProjectName string    `json:"project_name,omitempty"`
+	Details     string    `json:"details"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // === Wiki (ecosystem service) ===

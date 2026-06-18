@@ -149,7 +149,7 @@ func (h *Handler) handleProjects(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		h.store.LogActivity(user.ID, "project_create", nil, req.Name)
+		h.store.LogActivityP(user.ID, "project_create", nil, &id, req.Name)
 		jsonResp(w, map[string]int64{"id": id})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -234,7 +234,7 @@ func (h *Handler) handleProject(w http.ResponseWriter, r *http.Request, user *mo
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		h.store.LogActivity(user.ID, "project_delete", nil, p.Name)
+		h.store.LogActivityP(user.ID, "project_delete", nil, &p.ID, p.Name)
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

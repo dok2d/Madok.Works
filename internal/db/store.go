@@ -582,6 +582,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE mail_messages ADD COLUMN message_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_pages ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE wiki_pages ADD COLUMN is_template INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE activity_log ADD COLUMN project_id INTEGER",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
 		"ALTER TABLE chat_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
@@ -2518,8 +2519,65 @@ func (s *Store) TaskSubscribers(taskID int64) []model.User {
 // --- Activity Log ---
 
 func (s *Store) LogActivity(userID int64, action string, taskID *int64, details string) {
-	s.db.Exec("INSERT INTO activity_log(user_id,action,task_id,details) VALUES(?,?,?,?)",
-		userID, action, taskID, details)
+	s.LogActivityP(userID, action, taskID, nil, details)
+}
+
+// LogActivityP records an activity entry tagged with a project (nil when none).
+func (s *Store) LogActivityP(userID int64, action string, taskID, projectID *int64, details string) {
+	s.db.Exec("INSERT INTO activity_log(user_id,action,task_id,project_id,details) VALUES(?,?,?,?,?)",
+		userID, action, taskID, projectID, details)
+}
+
+// ListAuditLog returns activity entries (most recent first) for the admin audit
+// view, optionally filtered by user, project and action.
+func (s *Store) ListAuditLog(userID, projectID *int64, action string, limit int) ([]model.ActivityEntry, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	q := `SELECT a.id, a.user_id, COALESCE(u.username,''), a.action, a.task_id, a.project_id,
+		COALESCE(p.name,''), a.details, a.created_at
+		FROM activity_log a
+		LEFT JOIN users u ON u.id = a.user_id
+		LEFT JOIN projects p ON p.id = a.project_id
+		WHERE 1=1`
+	var args []any
+	if userID != nil {
+		q += " AND a.user_id = ?"
+		args = append(args, *userID)
+	}
+	if projectID != nil {
+		q += " AND a.project_id = ?"
+		args = append(args, *projectID)
+	}
+	if action != "" {
+		q += " AND a.action = ?"
+		args = append(args, action)
+	}
+	q += " ORDER BY a.created_at DESC, a.id DESC LIMIT ?"
+	args = append(args, limit)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.ActivityEntry{}
+	for rows.Next() {
+		var e model.ActivityEntry
+		var taskID, projID sql.NullInt64
+		var ca string
+		if err := rows.Scan(&e.ID, &e.UserID, &e.Username, &e.Action, &taskID, &projID, &e.ProjectName, &e.Details, &ca); err != nil {
+			continue
+		}
+		e.CreatedAt = parseTime(ca)
+		if taskID.Valid {
+			e.TaskID = &taskID.Int64
+		}
+		if projID.Valid {
+			e.ProjectID = &projID.Int64
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) UserActivity(userID int64, limit int) ([]model.ActivityEntry, error) {

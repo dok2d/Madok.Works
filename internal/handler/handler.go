@@ -464,6 +464,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/settings/llm/test", h.handleLLMTest)
 	h.mux.HandleFunc("/api/integrations/llm/status", h.handleLLMStatus)
 	h.mux.HandleFunc("/api/integrations/db-info", h.handleDBInfo)
+	h.mux.HandleFunc("/api/admin/audit", h.handleAdminAudit)
 
 	h.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 
@@ -1326,7 +1327,8 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		// Log activity
 		if user != nil {
-			h.store.LogActivity(user.ID, "create_task", &id, req.Title)
+			pp := pid
+			h.store.LogActivityP(user.ID, "create_task", &id, &pp, req.Title)
 		}
 		// Notify assignee
 		if req.AssigneeID != nil && user != nil && *req.AssigneeID != user.ID {
@@ -1430,7 +1432,8 @@ func (h *Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 			if changes != "" {
 				detailedText = shortText + "\n" + changes
 			}
-			h.store.LogActivity(user.ID, "edit_task", &id, truncate(detailedText, truncateActivity))
+			pp := task0.ProjectID
+			h.store.LogActivityP(user.ID, "edit_task", &id, &pp, truncate(detailedText, truncateActivity))
 
 			// Notify new assignee
 			if req.AssigneeID != nil && *req.AssigneeID != user.ID {
@@ -1456,7 +1459,8 @@ func (h *Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 		if _, ok := h.requireProjectOf(w, r, user, task0.ProjectID, "editor"); !ok {
 			return
 		}
-		h.store.LogActivity(user.ID, "delete_task", &id, "")
+		pp := task0.ProjectID
+		h.store.LogActivityP(user.ID, "delete_task", &id, &pp, "")
 		if err := h.store.DeleteTask(id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -1525,7 +1529,8 @@ func (h *Handler) handleMoveTask(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		details := colName
-		h.store.LogActivity(user.ID, "move_task", &req.TaskID, details)
+		pp := mvTask.ProjectID
+		h.store.LogActivityP(user.ID, "move_task", &req.TaskID, &pp, details)
 		if task != nil {
 			shortText := fmt.Sprintf("@%s переместил(а) задачу #%d: %s → %s", user.Username, req.TaskID, task.Title, colName)
 			h.notifySubscribers(req.TaskID, user.ID, truncate(shortText, truncateShort))
@@ -2528,6 +2533,31 @@ func (h *Handler) handleUserActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResp(w, map[string]any{"user": user, "activity": activity})
+}
+
+// handleAdminAudit returns the global activity log for admins, with optional
+// user/project/action filters (?user=&project=&action=&limit=).
+func (h *Handler) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil || user.Role != "admin" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	q := r.URL.Query()
+	var uid, pid *int64
+	if v, err := strconv.ParseInt(q.Get("user"), 10, 64); err == nil && v > 0 {
+		uid = &v
+	}
+	if v, err := strconv.ParseInt(q.Get("project"), 10, 64); err == nil && v > 0 {
+		pid = &v
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	entries, err := h.store.ListAuditLog(uid, pid, q.Get("action"), limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, entries)
 }
 
 // --- Telegram Integration ---
