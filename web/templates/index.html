@@ -3661,12 +3661,12 @@ function showTaskModal(task, defaultColId, defaultEpicId) {
       </div>
       <div id="task-llm-result" class="task-llm-result" style="display:none"></div>
       <div class="field"><label>${t('projectUrl')}</label><input id="task-url" value="${isEdit ? escAttr(task.project_url) : ''}"></div>
-      <div class="field"><label>${t('tags')}</label>
+      ${(state.tags && state.tags.length) ? `<div class="field"><label>${t('tags')}</label>
         <div class="checkbox-group">${state.tags.map(tg => {
           const sel = isEdit && task.tags && task.tags.some(tt => tt.id === tg.id);
           return `<span class="chip ${sel?'selected':''}" style="background:${tg.color};color:${contrastColor(tg.color)}" onclick="this.classList.toggle('selected')" data-tag-id="${tg.id}">${esc(tg.name)}</span>`;
         }).join('')}</div>
-      </div>
+      </div>` : ''}
       <div class="field"><label>${t('dependsOn')}</label>
         <div class="dep-search-wrap">
           <input class="dep-search-input" id="dep-filter" placeholder="${t('filterDeps')}" oninput="filterDepList(this.value)">
