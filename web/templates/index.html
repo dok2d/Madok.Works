@@ -986,6 +986,7 @@ body.has-rail .search-results{left:52px}
 
 .comment-replies{margin-left:20px;border-left:2px solid var(--bg4);padding-left:12px;display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .comment-actions{display:flex;gap:6px;align-items:center}
+.comment-reacts{margin:3px 0 0}
 .comment-actions button{background:transparent;border:none;color:var(--fg3);cursor:pointer;font-size:.72rem;padding:2px 6px;border-radius:3px;font-family:inherit}
 .comment-actions button:hover{color:var(--accent2);background:var(--bg4)}
 .reply-form{margin-top:6px;display:flex;flex-direction:column;gap:4px}
@@ -3130,35 +3131,135 @@ function toggleCommentSort() {
   else if (typeof wikiRenderCommentList === 'function') wikiRenderCommentList();
 }
 
-function renderComments(comments, taskId, depth) {
-  if (!depth) depth = 0;
-  // Top-level comments follow the user's sort preference; replies stay oldest-first.
-  if (depth === 0 && commentSortPref() === 'newest') comments = comments.slice().reverse();
-  let html = '';
-  for (const c of comments) {
-    const authorName = c.author ? c.author.username : '?';
-    const isEdited = c.updated_at && new Date(c.updated_at).getFullYear() > 1 && c.created_at && (new Date(c.updated_at).getTime() - new Date(c.created_at).getTime() > 2000);
-    const editedHtml = isEdited ? ` <span class="comment-edited" title="${t('created')}: ${fmtDate(c.created_at)}&#10;${t('updated')}: ${fmtDate(c.updated_at)}">(${t('edited')})</span>` : '';
-    const canEdit = currentUser && c.author && c.author.id === currentUser.id;
+// renderComments is a thin task-specific wrapper over the shared comment widget
+// (cmtThread). The same widget powers wiki comments, so both share identical
+// threading, markdown toolbar, image paste, @author links, edited markers,
+// reply/edit/delete and sort behaviour.
+function renderComments(comments, taskId) {
+  cmtRegister('task', {
+    children: c => c.replies || [],
+    find: id => findCommentById(comments, id),
+    authorId: c => c.author ? c.author.id : 0,
+    authorName: c => c.author ? c.author.username : '?',
+    text: c => c.text,
+    createdAt: c => c.created_at,
+    updatedAt: c => c.updated_at,
+    canEdit: c => currentUser && c.author && c.author.id === currentUser.id,
+    canDelete: c => (currentUser && c.author && c.author.id === currentUser.id) || isAdmin(),
+    post: (text, parentId) => api('/api/comments', 'POST', { task_id: taskId, text, parent_id: parentId || null }),
+    update: (id, text) => api('/api/comments/' + id, 'PUT', { text }),
+    remove: id => api('/api/comments/' + id, 'DELETE'),
+    reload: () => refreshComments(taskId),
+  });
+  return cmtThread(comments, 'task');
+}
 
-    html += `<div class="comment" id="comment-${c.id}" ${!isReadonly() ? `ondblclick="event.stopPropagation();showReplyForm(${c.id},${taskId})"` : ''}>
-      <div class="comment-author"><a href="/user/${c.author?c.author.id:0}" onclick="navigateTo('/user/${c.author?c.author.id:0}');return false;">@${esc(authorName)}</a></div>
-      <div class="comment-text" id="comment-text-${c.id}"><div class="md-content">${renderMd(c.text)}</div></div>
+// === Shared comment widget (tasks + wiki) ===
+// A ctx adapts a backend (task or wiki page): data accessors + post/update/
+// remove/reload + optional per-comment reactionsHtml. Registered by id; the
+// inline reply/edit handlers look the ctx up by that id.
+const commentCtxs = {};
+function cmtRegister(id, ctx) { ctx.id = id; commentCtxs[id] = ctx; }
+
+function cmtThread(topComments, ctxId, depth) {
+  const ctx = commentCtxs[ctxId];
+  if (!ctx) return '';
+  depth = depth || 0;
+  let list = (topComments || []).slice();
+  if (depth === 0 && commentSortPref() === 'newest') list.reverse();
+  if (depth === 0 && !list.length) return `<p style="color:var(--fg3);font-size:.85rem">${t('noComments')}</p>`;
+  let html = '';
+  for (const c of list) {
+    const aid = ctx.authorId(c), aname = ctx.authorName(c);
+    const created = ctx.createdAt(c), updated = ctx.updatedAt(c);
+    const isEdited = updated && created && new Date(updated).getFullYear() > 1 && (new Date(updated).getTime() - new Date(created).getTime() > 2000);
+    const editedHtml = isEdited ? ` <span class="comment-edited" title="${t('created')}: ${fmtDate(created)}&#10;${t('updated')}: ${fmtDate(updated)}">(${t('edited')})</span>` : '';
+    const canEdit = ctx.canEdit(c), canDel = ctx.canDelete(c);
+    const dbl = !isReadonly() ? `ondblclick="event.stopPropagation();cmtReply('${ctxId}',${c.id})"` : '';
+    const reacts = ctx.reactionsHtml ? ctx.reactionsHtml(c) : '';
+    html += `<div class="comment" id="${ctxId}-comment-${c.id}" ${dbl}>
+      <div class="comment-author"><a href="/user/${aid}" onclick="navigateTo('/user/${aid}');return false;">@${esc(aname)}</a></div>
+      <div class="comment-text" id="${ctxId}-ctext-${c.id}"><div class="md-content">${renderMd(ctx.text(c))}</div></div>
       <div class="comment-time">
-        <span>${fmtDate(c.created_at)}${editedHtml}</span>
+        <span>${fmtDate(created)}${editedHtml}</span>
         <div class="comment-actions">
-          ${!isReadonly() ? `<button onclick="showReplyForm(${c.id},${taskId})">${t('reply')}</button>` : ''}
-          ${canEdit ? `<button onclick="showEditComment(${c.id},${taskId})">${t('edit')}</button>` : ''}
-          ${canEdit || isAdmin() ? `<button onclick="deleteComment(${c.id},${taskId})" style="color:var(--red)">${t('delete')}</button>` : ''}
+          ${!isReadonly() ? `<button onclick="cmtReply('${ctxId}',${c.id})">${t('reply')}</button>` : ''}
+          ${canEdit ? `<button onclick="cmtEdit('${ctxId}',${c.id})">${t('edit')}</button>` : ''}
+          ${(canEdit || canDel) ? `<button onclick="cmtDelete('${ctxId}',${c.id})" style="color:var(--red)">${t('delete')}</button>` : ''}
         </div>
       </div>
-      <div id="reply-form-${c.id}"></div>`;
-    if (c.replies && c.replies.length > 0) {
-      html += `<div class="comment-replies">${renderComments(c.replies, taskId, depth+1)}</div>`;
-    }
+      ${reacts ? `<div class="comment-reacts">${reacts}</div>` : ''}
+      <div id="${ctxId}-replyform-${c.id}"></div>`;
+    const kids = ctx.children(c) || [];
+    if (kids.length) html += `<div class="comment-replies">${cmtThread(kids, ctxId, depth + 1)}</div>`;
     html += '</div>';
   }
   return html;
+}
+
+function cmtFormHtml(taId, value, onSave) {
+  return `<div class="reply-form">
+    ${insertMdToolbar(taId)}
+    <textarea id="${taId}"${value === undefined ? ` placeholder="${t('writeComment')}"` : ' style="min-height:80px"'}>${value !== undefined ? esc(value) : ''}</textarea>
+    <div class="comment-form-actions">
+      <span class="paste-hint">${t('pasteHint')} &middot; ${t('ctrlEnter')}</span>
+      <span style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sm" data-cmt-cancel>${t('cancel')}</button>
+        <button class="btn btn-primary btn-sm" data-cmt-save>${value !== undefined ? t('save') : t('send')}</button>
+      </span>
+    </div>
+  </div>`;
+}
+
+function cmtWireForm(taId, onSave, onCancel) {
+  const ta = document.getElementById(taId);
+  if (!ta) return;
+  const form = ta.closest('.reply-form');
+  setupPaste(ta);
+  ta.focus();
+  ta.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); onSave(); }
+    else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+  });
+  form.querySelector('[data-cmt-save]').onclick = onSave;
+  form.querySelector('[data-cmt-cancel]').onclick = onCancel;
+}
+
+function cmtReply(ctxId, commentId) {
+  const el = document.getElementById(`${ctxId}-replyform-${commentId}`);
+  if (!el) return;
+  if (el.innerHTML) { el.innerHTML = ''; return; }
+  const taId = `${ctxId}-replytext-${commentId}`;
+  el.innerHTML = cmtFormHtml(taId);
+  cmtWireForm(taId, async () => {
+    const ta = document.getElementById(taId);
+    if (!ta || !ta.value.trim()) return;
+    try { await commentCtxs[ctxId].post(ta.value.trim(), commentId); await commentCtxs[ctxId].reload(); }
+    catch (e) { alert(t('error') + ': ' + e.message); }
+  }, () => { el.innerHTML = ''; });
+}
+
+function cmtEdit(ctxId, commentId) {
+  const ctx = commentCtxs[ctxId];
+  const c = ctx.find(commentId);
+  const box = document.getElementById(`${ctxId}-ctext-${commentId}`);
+  if (!c || !box) return;
+  const taId = `${ctxId}-edittext-${commentId}`;
+  box.innerHTML = cmtFormHtml(taId, ctx.text(c));
+  cmtWireForm(taId, async () => {
+    const ta = document.getElementById(taId);
+    if (!ta || !ta.value.trim()) return;
+    try { await ctx.update(commentId, ta.value.trim()); await ctx.reload(); }
+    catch (e) { alert(t('error') + ': ' + e.message); }
+  }, () => { box.innerHTML = `<div class="md-content">${renderMd(ctx.text(c))}</div>`; highlightCode(); });
+}
+
+async function cmtDelete(ctxId, commentId) {
+  const ctx = commentCtxs[ctxId];
+  const el = document.getElementById(`${ctxId}-comment-${commentId}`);
+  const hasReplies = el && el.querySelector('.comment-replies .comment');
+  if (!await uiConfirm(hasReplies ? t('deleteCommentTreeConfirm') : t('deleteCommentConfirm'))) return;
+  try { await ctx.remove(commentId); await ctx.reload(); } catch (e) { alert(t('error')); }
 }
 
 function showReplyForm(commentId, taskId) {

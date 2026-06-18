@@ -355,37 +355,32 @@ async function wikiLoadComments(pageId) {
   wikiRenderCommentList();
 }
 
-// wikiCommentSortPref mirrors the task comment preference (Plan 2.12).
-function wikiCommentSortPref() { return localStorage.getItem('kanban-comment-sort') === 'newest' ? 'newest' : 'oldest'; }
-
+// wikiRenderCommentList renders wiki comments with the SAME shared widget the
+// task page uses (cmtThread): identical threading, markdown toolbar, image paste,
+// @author links, edited markers, reply/edit/delete and sort. Wiki adds a
+// per-comment reaction bar via the ctx.reactionsHtml hook.
 function wikiRenderCommentList() {
   const el = document.getElementById('wiki-comment-list');
   if (!el) return;
-  if (!wikiComments.length) { el.innerHTML = `<div class="wiki-no-comments">${t('noComments')}</div>`; return; }
-  // Build threads: top-level ordered by preference; replies always oldest-first.
-  const byParent = {};
-  for (const c of wikiComments) { const k = c.parent_id || 0; (byParent[k] = byParent[k] || []).push(c); }
-  const tops = (byParent[0] || []).slice();
-  if (wikiCommentSortPref() === 'newest') tops.reverse();
-  const canModerate = wikiState.space && wikiRoleIsAdmin();
-  const render = (c, depth) => {
-    const own = currentUser && c.author_id === currentUser.id;
-    const acts = [];
-    if (currentUser && currentUser.role !== 'readonly') acts.push(`<a onclick="wikiReplyComment(${c.id})">${t('reply')}</a>`);
-    if (own || canModerate) {
-      acts.push(`<a onclick="wikiEditComment(${c.id})">${t('edit')}</a>`);
-      acts.push(`<a onclick="wikiDeleteComment(${c.id})" style="color:var(--red)">${t('delete')}</a>`);
-    }
-    const dbl = currentUser && currentUser.role !== 'readonly' ? `ondblclick="event.stopPropagation();wikiReplyComment(${c.id})"` : '';
-    let h = `<div class="wiki-comment" style="margin-left:${depth * 22}px" id="wiki-comment-${c.id}" ${dbl}>
-      <div class="wiki-comment-head"><b>${esc(c.author_name || '?')}</b> <span class="wiki-comment-time">${fmtDate(c.updated_at || c.created_at)}</span></div>
-      <div class="wiki-comment-body md-content">${renderMd(c.text)}</div>
-      <div class="wiki-comment-foot">${wikiReactBarHtml('comment', c.id, c.reactions)} <span class="wiki-comment-acts">${acts.join('')}</span></div>
-    </div>`;
-    for (const child of (byParent[c.id] || [])) h += render(child, depth + 1);
-    return h;
-  };
-  el.innerHTML = tops.map(c => render(c, 0)).join('');
+  const canModerate = () => wikiState.space && wikiRoleIsAdmin();
+  cmtRegister('wiki', {
+    children: c => wikiComments.filter(x => x.parent_id === c.id),
+    find: id => wikiComments.find(x => x.id === id),
+    authorId: c => c.author_id,
+    authorName: c => c.author_name || '?',
+    text: c => c.text,
+    createdAt: c => c.created_at,
+    updatedAt: c => c.updated_at,
+    canEdit: c => currentUser && c.author_id === currentUser.id,
+    canDelete: c => (currentUser && c.author_id === currentUser.id) || canModerate(),
+    reactionsHtml: c => wikiReactBarHtml('comment', c.id, c.reactions),
+    post: (text, parentId) => api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text, parent_id: parentId || null }),
+    update: (id, text) => api('/api/wiki/comments/' + id, 'PUT', { text }),
+    remove: id => api('/api/wiki/comments/' + id, 'DELETE'),
+    reload: () => wikiLoadComments(wikiState.page.id),
+  });
+  const tops = wikiComments.filter(c => !c.parent_id);
+  el.innerHTML = cmtThread(tops, 'wiki');
 }
 
 function wikiRoleIsAdmin() {
@@ -401,64 +396,6 @@ async function wikiPostComment(parentId) {
   try {
     await api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text, parent_id: parentId || null });
     inp.value = '';
-    await wikiLoadComments(wikiState.page.id);
-  } catch (e) { alert(e.message); }
-}
-
-// wikiCommentEditor builds an inline textarea editor (paste images, Ctrl+Enter
-// to save / Esc to cancel) — same kind of field as the composer, so multiline
-// markdown text is never mangled (the old single-line prompt did).
-function wikiCommentEditor(initial, onSave, onCancel) {
-  const box = document.createElement('div');
-  box.className = 'wiki-comment-editbox comment-form';
-  box.innerHTML = `<textarea class="wiki-ce-input" rows="2"></textarea>
-    <div class="comment-form-actions">
-      <button class="btn btn-ghost btn-sm" data-act="cancel">${t('cancel')}</button>
-      <button class="btn btn-primary btn-sm" data-act="save">${t('send')}</button>
-    </div>`;
-  const ta = box.querySelector('textarea');
-  ta.value = initial || '';
-  if (typeof setupPaste === 'function') setupPaste(ta);
-  const cancel = () => { box.remove(); if (onCancel) onCancel(); };
-  const save = () => { const v = ta.value.trim(); if (v) onSave(v); };
-  box.querySelector('[data-act="cancel"]').onclick = cancel;
-  box.querySelector('[data-act="save"]').onclick = save;
-  ta.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); save(); }
-    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
-  setTimeout(() => { ta.focus(); ta.style.height = 'auto'; ta.style.height = Math.min(200, ta.scrollHeight) + 'px'; }, 0);
-  return box;
-}
-
-function wikiReplyComment(id) {
-  const row = document.getElementById('wiki-comment-' + id);
-  if (!row || row.querySelector('.wiki-comment-editbox')) return;
-  const box = wikiCommentEditor('', async v => {
-    try { await api(`/api/wiki/pages/${wikiState.page.id}/comments`, 'POST', { text: v, parent_id: id }); await wikiLoadComments(wikiState.page.id); }
-    catch (e) { alert(e.message); }
-  });
-  row.appendChild(box);
-}
-
-function wikiEditComment(id) {
-  const c = wikiComments.find(x => x.id === id);
-  const row = document.getElementById('wiki-comment-' + id);
-  if (!c || !row || row.querySelector('.wiki-comment-editbox')) return;
-  const body = row.querySelector('.wiki-comment-body');
-  if (!body) return;
-  body.style.display = 'none';
-  const box = wikiCommentEditor(c.text, async v => {
-    try { await api('/api/wiki/comments/' + id, 'PUT', { text: v }); await wikiLoadComments(wikiState.page.id); }
-    catch (e) { alert(e.message); }
-  }, () => { body.style.display = ''; });
-  body.parentNode.insertBefore(box, body.nextSibling);
-}
-
-async function wikiDeleteComment(id) {
-  if (!await uiConfirm(t('deleteConfirm'))) return;
-  try {
-    await api('/api/wiki/comments/' + id, 'DELETE');
     await wikiLoadComments(wikiState.page.id);
   } catch (e) { alert(e.message); }
 }
