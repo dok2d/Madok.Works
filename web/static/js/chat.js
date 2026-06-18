@@ -81,6 +81,7 @@ const CHAT_I18N = {
     chatNewChannel: 'New channel', chatNewGroup: 'New group', chatStartDM: 'New direct message',
     chatSearchPh: 'Search messages…', chatNoChannels: 'No channels yet',
     chatPickChannel: 'Pick a channel to start chatting', chatMessagePh: 'Write a message…',
+    chatTitle: 'Chat', chatNoGroups: 'No private groups yet',
     chatEmoji: 'Emoji', chatSend: 'Send', chatEdit: 'Edit', chatDelete: 'Delete', chatEdited: 'edited',
     chatDeleted: 'message deleted', chatReadonly: 'Read-only access', chatMembers: 'Members',
     chatJoin: 'Join', chatLeave: 'Leave', chatChannelSettings: 'Channel settings',
@@ -101,6 +102,7 @@ const CHAT_I18N = {
     chatNewChannel: 'Новый канал', chatNewGroup: 'Новая группа', chatStartDM: 'Новое личное сообщение',
     chatSearchPh: 'Поиск сообщений…', chatNoChannels: 'Пока нет каналов',
     chatPickChannel: 'Выберите канал, чтобы начать общение', chatMessagePh: 'Написать сообщение…',
+    chatTitle: 'Чат', chatNoGroups: 'Пока нет приватных групп',
     chatEmoji: 'Эмодзи', chatSend: 'Отправить', chatEdit: 'Изменить', chatDelete: 'Удалить', chatEdited: 'изменено',
     chatDeleted: 'сообщение удалено', chatReadonly: 'Только чтение', chatMembers: 'Участники',
     chatJoin: 'Вступить', chatLeave: 'Покинуть', chatChannelSettings: 'Настройки канала',
@@ -219,8 +221,7 @@ function chatRenderLayout() {
   <div class="chat-layout">
     <aside class="chat-side">
       <div class="chat-side-head">
-        <span class="chat-side-title">${t('chatChannels')}</span>
-        ${canWrite ? `<button class="btn-icon" title="${t('chatNewChannel')}" onclick="chatNewChannelDialog('channel')">+</button>` : ''}
+        <span class="chat-side-title">${t('chatTitle')}</span>
       </div>
       <div class="chat-channels" id="chat-channels"></div>
     </aside>
@@ -333,12 +334,14 @@ function chatRenderChannelList() {
   for (const g of groups) {
     if (g.key === 'dm') { html += chatRenderDMGroup(g.label); continue; }
     const items = chatState.channels.filter(c => c.type === g.key);
-    if (!items.length && g.key === 'group') continue;
     html += `<div class="chat-grp">
       <div class="chat-grp-head"><span>${esc(g.label)}</span>${chatGrpAddBtn(g.key)}</div>`;
     for (const c of items) {
       html += chatChannelRow(c, chatChannelLabel(c), `chatOpen(${c.id})`);
     }
+    // Show a hint (instead of hiding the section) so the "+" stays reachable —
+    // this is the only way to create the first private group.
+    if (!items.length) html += `<div class="chat-empty">${esc(g.key === 'group' ? t('chatNoGroups') : t('chatNoChannels'))}</div>`;
     html += `</div>`;
   }
   el.innerHTML = html || `<div class="chat-empty">${t('chatNoChannels')}</div>`;
@@ -559,7 +562,11 @@ function chatMsgMenu(ev, id) {
   menu.innerHTML = items.join('');
   document.body.appendChild(menu);
   const r = ev.target.getBoundingClientRect();
-  menu.style.top = (r.bottom + 4) + 'px';
+  // Open downward; flip above the button if it would overflow the viewport bottom.
+  const mh = menu.offsetHeight;
+  let top = r.bottom + 4;
+  if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+  menu.style.top = top + 'px';
   menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
   // Close the menu after an action (React keeps its own flow / opens the emoji pop).
   menu.addEventListener('click', e => { const a = e.target.closest('a'); if (a && !a.classList.contains('chat-menu-react')) menu.remove(); });
@@ -792,17 +799,43 @@ function chatAppendMsg(msg) {
   chatScrollBottom();
 }
 
-async function chatEditMsg(id) {
+// chatEditMsg edits in place with a textarea matching the composer (multiline,
+// markdown, paste images, Enter to save / Shift+Enter newline / Esc cancel) so
+// the raw message text is never mangled the way a single-line prompt did.
+function chatEditMsg(id) {
   const msg = chatState.messages.find(m => m.id === id);
   if (!msg) return;
-  const text = await uiPrompt(t('chatEditPrompt'), msg.text);
-  if (text === null) return;
-  const v = text.trim();
-  if (!v) return;
-  try {
-    const upd = await api('/api/chat/messages/' + id, 'PUT', { text: v });
-    chatReplaceMsg(upd);
-  } catch (e) { alert(e.message); }
+  const row = document.getElementById('chat-msg-' + id);
+  if (!row) return;
+  const textEl = row.querySelector('.chat-text');
+  if (!textEl || row.querySelector('.chat-edit-box')) return;
+  const box = document.createElement('div');
+  box.className = 'chat-edit-box';
+  box.innerHTML = `<textarea class="chat-edit-input" rows="2"></textarea>
+    <div class="chat-edit-actions">
+      <button class="btn btn-ghost btn-sm" data-act="cancel">${t('chatCancel')}</button>
+      <button class="btn btn-primary btn-sm" data-act="save">${t('chatSave')}</button>
+    </div>`;
+  textEl.style.display = 'none';
+  textEl.parentNode.insertBefore(box, textEl.nextSibling);
+  const ta = box.querySelector('textarea');
+  ta.value = msg.text;
+  ta.style.height = 'auto'; ta.style.height = Math.min(200, ta.scrollHeight) + 'px';
+  ta.focus();
+  if (typeof setupPaste === 'function') setupPaste(ta);
+  const finish = () => { box.remove(); textEl.style.display = ''; };
+  const save = async () => {
+    const v = ta.value.trim();
+    if (!v || v === msg.text) { finish(); return; }
+    try { const upd = await api('/api/chat/messages/' + id, 'PUT', { text: v }); chatReplaceMsg(upd); }
+    catch (e) { alert(e.message); }
+  };
+  box.querySelector('[data-act="cancel"]').onclick = finish;
+  box.querySelector('[data-act="save"]').onclick = save;
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(); }
+  });
 }
 
 async function chatDeleteMsg(id) {
