@@ -97,7 +97,7 @@ func (h *Handler) handleCalendarUpcoming(w http.ResponseWriter, r *http.Request)
 	}
 	const layout = "2006-01-02 15:04:05"
 	now := time.Now().UTC()
-	n := h.store.UpcomingEventCount(user.ID, user.IsAdmin, h.projectID(r), now.Format(layout), now.Add(24*time.Hour).Format(layout))
+	n := h.store.UpcomingEventCount(user.ID, user.IsAdmin, now.Format(layout), now.Add(24*time.Hour).Format(layout))
 	jsonResp(w, map[string]int{"upcoming": n})
 }
 
@@ -161,11 +161,7 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		pid, ok := h.requireProject(w, r, user, "viewer")
-		if !ok {
-			return
-		}
-		cals, err := h.store.ListCalendars(user.ID, user.IsAdmin, pid)
+		cals, err := h.store.ListCalendars(user.ID, user.IsAdmin)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -176,7 +172,8 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 			Name       string `json:"name"`
 			Color      string `json:"color"`
 			Visibility string `json:"visibility"`
-			Personal   bool   `json:"personal"` // true = personal calendar (no project)
+			Personal   bool   `json:"personal"`   // true = personal calendar (no project)
+			ProjectID  *int64 `json:"project_id"` // target project for a project calendar
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -186,16 +183,16 @@ func (h *Handler) handleCalendars(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "name required", http.StatusBadRequest)
 			return
 		}
-		// Personal calendars need no project access; project calendars require editor.
+		// Personal calendars need no project access; project calendars require
+		// editor on the chosen project.
 		var projectID *int64
-		if !req.Personal {
-			pid, ok := h.requireProject(w, r, user, "editor")
-			if !ok {
+		if req.Personal || req.ProjectID == nil {
+			req.Visibility = "private" // personal calendars are owner-only
+		} else {
+			if _, ok := h.requireProjectOf(w, r, user, *req.ProjectID, "editor"); !ok {
 				return
 			}
-			projectID = &pid
-		} else {
-			req.Visibility = "private" // personal calendars are owner-only
+			projectID = req.ProjectID
 		}
 		id, err := h.store.CreateCalendar(req.Name, req.Color, user.ID, req.Visibility, projectID)
 		if err != nil {
@@ -271,12 +268,8 @@ func (h *Handler) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		pid, ok := h.requireProject(w, r, user, "viewer")
-		if !ok {
-			return
-		}
 		q := r.URL.Query()
-		events, err := h.store.ListCalendarEvents(user.ID, user.IsAdmin, pid, q.Get("from"), q.Get("to"))
+		events, err := h.store.ListCalendarEvents(user.ID, user.IsAdmin, q.Get("from"), q.Get("to"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

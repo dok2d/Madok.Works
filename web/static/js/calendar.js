@@ -2,17 +2,24 @@
 // (api, t, esc, escAttr, navigateTo, getTimezone, langLocale, currentUser, state).
 // Times travel in UTC ("YYYY-MM-DD HH:MM:SS"); inputs use the browser timezone.
 
+const CAL_HIDDEN_KEY = 'kanban-cal-hidden';
+function calLoadHidden() {
+  try { return JSON.parse(localStorage.getItem(CAL_HIDDEN_KEY) || '{}') || {}; }
+  catch (e) { return {}; }
+}
 let calState = {
   calendars: [],
   events: [],
   view: 'month', // month | week | agenda
   cursor: null, // a Date within the visible period (browser-local)
-  hidden: {}, // calendarId -> true when unchecked (subscriptions use -subId)
-  hideKanban: false, // hide task/sprint overlay
+  // visibility toggles, persisted: calendarId -> true when unchecked
+  // (subscriptions use -subId; per-project kanban overlay uses "kanban:<projectId>")
+  hidden: calLoadHidden(),
   subscriptions: [], // external ICS subscriptions
   es: null, // EventSource for live updates
   dragId: null, // event id being dragged
 };
+function calSaveHidden() { localStorage.setItem(CAL_HIDDEN_KEY, JSON.stringify(calState.hidden)); }
 
 const CAL_VIEW_KEY = 'kanban-cal-view';
 let calReminders = []; // draft reminder rows {value,unit,channel} for the open editor
@@ -52,7 +59,7 @@ const CAL_I18N = {
     calDelete: 'Delete', calDeleteConfirm: 'Delete this event?', calNoCalendars: 'No calendars yet',
     calNoEvents: 'No events in this period', calTitleRequired: 'Title is required',
     calNameRequired: 'Name is required', calVisibility: 'Visibility', calPrivate: 'Private',
-    calShared: 'Shared', calPersonal: 'Personal (no project)', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
+    calShared: 'Shared', calPersonal: 'Personal (no project)', calPersonalGroup: 'Personal', calColor: 'Color', calDeleteCalendar: 'Delete calendar',
     calDeleteCalendarConfirm: 'Delete this calendar and all its events?', calName: 'Name',
     calEditEvent: 'Edit event', calEditCalendar: 'Calendar settings', calKanban: 'Tasks & sprints', calReminders: 'Reminders', calReminderAdd: 'Add reminder', calRemBefore: 'before', calRemMin: 'minutes', calRemHour: 'hours', calRemDay: 'days', calRemTg: 'Telegram', calRemInApp: 'In-app', calRemBoth: 'Both',
     calAddIcsSub: 'Google Calendar (ICS)', calIcsUrl: 'iCal/ICS address (secret URL)', calIcsName: 'Name', calSyncNow: 'Sync now', calSubDelete: 'Remove subscription', calNoTitle: '(no title)',
@@ -70,7 +77,7 @@ const CAL_I18N = {
     calDelete: 'Удалить', calDeleteConfirm: 'Удалить событие?', calNoCalendars: 'Пока нет календарей',
     calNoEvents: 'Нет событий в этом периоде', calTitleRequired: 'Введите название',
     calNameRequired: 'Введите название', calVisibility: 'Видимость', calPrivate: 'Личный',
-    calShared: 'Общий', calPersonal: 'Личный (вне проекта)', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
+    calShared: 'Общий', calPersonal: 'Личный (вне проекта)', calPersonalGroup: 'Личные', calColor: 'Цвет', calDeleteCalendar: 'Удалить календарь',
     calDeleteCalendarConfirm: 'Удалить календарь и все его события?', calName: 'Название',
     calEditEvent: 'Редактировать событие', calEditCalendar: 'Настройки календаря', calKanban: 'Задачи и спринты', calReminders: 'Напоминания', calReminderAdd: 'Добавить напоминание', calRemBefore: 'до начала', calRemMin: 'минут', calRemHour: 'часов', calRemDay: 'дней', calRemTg: 'Telegram', calRemInApp: 'В приложении', calRemBoth: 'Оба',
     calAddIcsSub: 'Google Календарь (ICS)', calIcsUrl: 'Адрес iCal/ICS (секретный URL)', calIcsName: 'Название', calSyncNow: 'Синхронизировать', calSubDelete: 'Удалить подписку', calNoTitle: '(без названия)',
@@ -88,7 +95,7 @@ const CAL_I18N = {
     calDelete: "Eliminar", calDeleteConfirm: "¿Eliminar este evento?", calNoCalendars: "Aún no hay calendarios",
     calNoEvents: "Sin eventos en este período", calTitleRequired: "El título es obligatorio",
     calNameRequired: "El nombre es obligatorio", calVisibility: "Visibilidad", calPrivate: "Privado",
-    calShared: "Compartido", calPersonal: "Personal (sin proyecto)", calColor: "Color", calDeleteCalendar: "Eliminar calendario",
+    calShared: "Compartido", calPersonal: "Personal (sin proyecto)", calPersonalGroup: "Personal", calColor: "Color", calDeleteCalendar: "Eliminar calendario",
     calDeleteCalendarConfirm: "¿Eliminar este calendario y todos sus eventos?", calName: "Nombre",
     calEditEvent: "Editar evento", calEditCalendar: "Ajustes del calendario", calKanban: "Tareas y sprints",
   },
@@ -103,7 +110,7 @@ const CAL_I18N = {
     calDelete: "Supprimer", calDeleteConfirm: "Supprimer cet événement ?", calNoCalendars: "Aucun calendrier",
     calNoEvents: "Aucun événement sur cette période", calTitleRequired: "Le titre est obligatoire",
     calNameRequired: "Le nom est obligatoire", calVisibility: "Visibilité", calPrivate: "Privé",
-    calShared: "Partagé", calPersonal: "Personnel (sans projet)", calColor: "Couleur", calDeleteCalendar: "Supprimer le calendrier",
+    calShared: "Partagé", calPersonal: "Personnel (sans projet)", calPersonalGroup: "Personnel", calColor: "Couleur", calDeleteCalendar: "Supprimer le calendrier",
     calDeleteCalendarConfirm: "Supprimer ce calendrier et tous ses événements ?", calName: "Nom",
     calEditEvent: "Modifier l'événement", calEditCalendar: "Paramètres du calendrier", calKanban: "Tâches et sprints",
   },
@@ -118,7 +125,7 @@ const CAL_I18N = {
     calDelete: "Löschen", calDeleteConfirm: "Diesen Termin löschen?", calNoCalendars: "Noch keine Kalender",
     calNoEvents: "Keine Termine in diesem Zeitraum", calTitleRequired: "Titel ist erforderlich",
     calNameRequired: "Name ist erforderlich", calVisibility: "Sichtbarkeit", calPrivate: "Privat",
-    calShared: "Geteilt", calPersonal: "Persönlich (ohne Projekt)", calColor: "Farbe", calDeleteCalendar: "Kalender löschen",
+    calShared: "Geteilt", calPersonal: "Persönlich (ohne Projekt)", calPersonalGroup: "Persönlich", calColor: "Farbe", calDeleteCalendar: "Kalender löschen",
     calDeleteCalendarConfirm: "Diesen Kalender und alle Termine löschen?", calName: "Name",
     calEditEvent: "Termin bearbeiten", calEditCalendar: "Kalendereinstellungen", calKanban: "Aufgaben und Sprints",
   },
@@ -133,7 +140,7 @@ const CAL_I18N = {
     calDelete: "Excluir", calDeleteConfirm: "Excluir este evento?", calNoCalendars: "Ainda não há calendários",
     calNoEvents: "Sem eventos neste período", calTitleRequired: "O título é obrigatório",
     calNameRequired: "O nome é obrigatório", calVisibility: "Visibilidade", calPrivate: "Privado",
-    calShared: "Compartilhado", calPersonal: "Pessoal (sem projeto)", calColor: "Cor", calDeleteCalendar: "Excluir calendário",
+    calShared: "Compartilhado", calPersonal: "Pessoal (sem projeto)", calPersonalGroup: "Pessoal", calColor: "Cor", calDeleteCalendar: "Excluir calendário",
     calDeleteCalendarConfirm: "Excluir este calendário e todos os eventos?", calName: "Nome",
     calEditEvent: "Editar evento", calEditCalendar: "Configurações do calendário", calKanban: "Tarefas e sprints",
   },
@@ -272,28 +279,49 @@ function calRenderHeader() {
   const views = ['month', 'week', 'day', 'agenda'];
   const vlabel = v => t('cal' + v[0].toUpperCase() + v.slice(1));
   const viewItems = views.map(v => `<div class="sfd-item ${calState.view === v ? 'active' : ''}" onclick="calSetView('${v}')">${esc(vlabel(v))}</div>`).join('');
-  let calItems = calState.calendars.map(c => `<label class="sfd-item cal-dd-row">
+  // Calendars are cross-project: group them by project (personal first), each with
+  // a per-calendar visibility checkbox, plus a per-project "Tasks & sprints" overlay
+  // toggle. Project names come from the global `projects` list.
+  const projList = (typeof projects !== 'undefined' && projects) ? projects : [];
+  const calRow = c => `<label class="sfd-item cal-dd-row">
       <input type="checkbox" ${calState.hidden[c.id] ? '' : 'checked'} onchange="calToggleCal(${c.id}, this.checked)">
       <span class="cal-dot" style="background:${escAttr(c.color)}"></span>
       <span class="cal-cl-name">${esc(c.name)}</span>
       ${c.can_edit ? `<button class="cal-cl-edit" title="${escAttr(t('calEditCalendar'))}" onclick="event.preventDefault();event.stopPropagation();calEditCalendarDialog(${c.id})">&#9881;</button>` : ''}
-    </label>`).join('');
-  calItems += `<label class="sfd-item cal-dd-row">
-      <input type="checkbox" ${calState.hideKanban ? '' : 'checked'} onchange="calToggleKanban(this.checked)">
-      <span class="cal-dot" style="background:#ef4444"></span>
-      <span class="cal-cl-name">${esc(t('calKanban'))}</span>
     </label>`;
-  // External ICS subscriptions (read-only), toggled by -subId.
-  for (const sub of (calState.subscriptions || [])) {
-    const key = -sub.id;
-    calItems += `<label class="sfd-item cal-dd-row">
-      <input type="checkbox" ${calState.hidden[key] ? '' : 'checked'} onchange="calToggleCal(${key}, this.checked)">
-      <span class="cal-dot" style="background:${escAttr(sub.color)}"></span>
-      <span class="cal-cl-name">${esc(sub.name)}</span>
-      ${sub.last_error ? `<span class="cal-sub-err" title="${escAttr(sub.last_error)}">&#9888;</span>` : ''}
-      ${canWrite ? `<button class="cal-cl-edit" title="${escAttr(t('calSubDelete'))}" onclick="event.preventDefault();event.stopPropagation();calDeleteSubscription(${sub.id})">&#10005;</button>` : ''}
-    </label>`;
+  const groupHdr = label => `<div class="sfd-item cal-dd-group">${esc(label)}</div>`;
+  let calItems = '';
+
+  // Personal calendars (no project) and external ICS subscriptions.
+  const personal = calState.calendars.filter(c => !c.project_id);
+  const subs = calState.subscriptions || [];
+  if (personal.length || subs.length) {
+    calItems += groupHdr(t('calPersonalGroup'));
+    calItems += personal.map(calRow).join('');
+    for (const sub of subs) {
+      const key = -sub.id;
+      calItems += `<label class="sfd-item cal-dd-row">
+        <input type="checkbox" ${calState.hidden[key] ? '' : 'checked'} onchange="calToggleCal(${key}, this.checked)">
+        <span class="cal-dot" style="background:${escAttr(sub.color)}"></span>
+        <span class="cal-cl-name">${esc(sub.name)}</span>
+        ${sub.last_error ? `<span class="cal-sub-err" title="${escAttr(sub.last_error)}">&#9888;</span>` : ''}
+        ${canWrite ? `<button class="cal-cl-edit" title="${escAttr(t('calSubDelete'))}" onclick="event.preventDefault();event.stopPropagation();calDeleteSubscription(${sub.id})">&#10005;</button>` : ''}
+      </label>`;
+    }
   }
+
+  // One group per accessible project: its calendars + a Tasks & sprints overlay.
+  for (const p of projList) {
+    calItems += groupHdr(p.name);
+    calItems += calState.calendars.filter(c => c.project_id === p.id).map(calRow).join('');
+    const kkey = 'kanban:' + p.id;
+    calItems += `<label class="sfd-item cal-dd-row">
+        <input type="checkbox" ${calState.hidden[kkey] ? '' : 'checked'} onchange="calToggleCalKey('${kkey}', this.checked)">
+        <span class="cal-dot" style="background:#ef4444"></span>
+        <span class="cal-cl-name">${esc(t('calKanban'))}</span>
+      </label>`;
+  }
+
   if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calNewCalendarDialog()">+ ${esc(t('calNewCalendar'))}</div>`;
   if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calSubscriptionDialog()">+ ${esc(t('calAddIcsSub'))}</div>`;
   el.innerHTML = `<span class="hdr-sep">/</span>
@@ -311,16 +339,18 @@ function calRenderHeader() {
 // Back-compat alias: callers that refreshed the calendar list now refresh the header.
 function calRenderCalList() { calRenderHeader(); }
 
-function calToggleKanban(checked) { calState.hideKanban = !checked; calRenderBody(); }
+function calToggleCal(id, checked) { calToggleCalKey(id, checked); }
 
-function calToggleCal(id, checked) {
-  if (checked) delete calState.hidden[id]; else calState.hidden[id] = true;
+function calToggleCalKey(key, checked) {
+  if (checked) delete calState.hidden[key]; else calState.hidden[key] = true;
+  calSaveHidden();
   calRenderBody();
 }
 
 function calVisibleEvents() {
   return calState.events.filter(e => {
-    if (e.source === 'task' || e.source === 'sprint') return !calState.hideKanban;
+    // Kanban overlay events are toggled per project (key "kanban:<projectId>").
+    if (e.source === 'task' || e.source === 'sprint') return !calState.hidden['kanban:' + (e.project_id || 0)];
     return !calState.hidden[e.calendar_id]; // ICS events use calendar_id = -subId
   });
 }
@@ -857,14 +887,21 @@ function calCalendarForm(c) {
 }
 
 function calNewCalendarDialog() {
+  // The calendar belongs either to a project (where the user may edit) or to no
+  // project ("personal", owner-only and visible across every project).
+  const projList = (typeof projects !== 'undefined' && projects) ? projects : [];
+  const editable = projList.filter(p => p.my_role === 'editor' || p.my_role === 'admin');
+  const projOpts = `<option value="">${esc(t('calPersonal'))}</option>` +
+    editable.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   const form = calCalendarForm(null) +
-    `<label class="cal-fld" style="flex-direction:row;align-items:center;gap:6px">
-      <input type="checkbox" id="cal-c-personal"> ${t('calPersonal')}</label>`;
+    `<label class="cal-fld">${t('project')}
+      <select id="cal-c-project">${projOpts}</select></label>`;
   calModal(t('calNewCalendar'), form, async ov => {
     const name = ov.querySelector('#cal-c-name').value.trim();
     if (!name) { alert(t('calNameRequired')); return; }
-    const personal = ov.querySelector('#cal-c-personal').checked;
-    const body = { name, color: ov.querySelector('#cal-c-color').value, visibility: ov.querySelector('#cal-c-vis').value, personal };
+    const pv = ov.querySelector('#cal-c-project').value;
+    const body = { name, color: ov.querySelector('#cal-c-color').value, visibility: ov.querySelector('#cal-c-vis').value };
+    if (pv) body.project_id = Number(pv); else body.personal = true;
     try { await api('/api/calendar/calendars', 'POST', body); ov.remove(); calState.calendars = await api('/api/calendar/calendars'); calRenderCalList(); await calLoadAndRender(); }
     catch (e) { alert(e.message); }
   });

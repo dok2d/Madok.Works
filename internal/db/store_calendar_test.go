@@ -91,7 +91,7 @@ func TestListCalendarEventsRange(t *testing.T) {
 	// weekly recurring from Jan 1, 10 times -> 5 land in January
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "Weekly", Start: "2026-01-01 09:00:00", End: "2026-01-01 09:30:00", RRule: "FREQ=WEEKLY;COUNT=10"}, u)
 
-	events, err := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	events, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestCalendarVisibility(t *testing.T) {
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: priv, Title: "secret", Start: "2026-04-01 10:00:00", End: "2026-04-01 11:00:00"}, alice)
 	s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: shared, Title: "meeting", Start: "2026-04-02 10:00:00", End: "2026-04-02 11:00:00"}, alice)
 
-	bobEvents, err := s.ListCalendarEvents(bob, false, 1, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
+	bobEvents, err := s.ListCalendarEvents(bob, false, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}
@@ -212,25 +212,33 @@ func TestCalendarVisibility(t *testing.T) {
 	}
 
 	// admin sees everything
-	adminEvents, _ := s.ListCalendarEvents(bob, true, 1, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
+	adminEvents, _ := s.ListCalendarEvents(bob, true, "2026-04-01 00:00:00", "2026-04-30 23:59:59")
 	if len(adminEvents) != 2 {
 		t.Errorf("admin should see both events, got %d", len(adminEvents))
 	}
 }
 
-// TestCalendarProjectScope verifies calendars are isolated per project and that
-// personal calendars (project_id NULL) follow their owner across projects.
-func TestCalendarProjectScope(t *testing.T) {
+// TestCalendarCrossProject verifies the calendar is cross-project: a user sees
+// their own/personal calendars plus shared calendars of every project they can
+// access, all at once. A restricted project's shared calendar stays hidden from
+// non-members; a personal calendar stays private to its owner.
+func TestCalendarCrossProject(t *testing.T) {
 	s := newTestStore(t)
 	alice := mustUser(t, s, "alice")
+	bob := mustUser(t, s, "bob")
 
-	p2, err := s.CreateProject("Beta", "", "open", alice)
+	openP, err := s.CreateProject("Beta", "", "open", alice)
 	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
+		t.Fatalf("CreateProject open: %v", err)
+	}
+	secretP, err := s.CreateProject("Secret", "", "restricted", alice)
+	if err != nil {
+		t.Fatalf("CreateProject restricted: %v", err)
 	}
 	one := int64(1)
-	teamA, _ := s.CreateCalendar("Team A", "#111", alice, "shared", &one)
-	teamB, _ := s.CreateCalendar("Team B", "#222", alice, "shared", &p2)
+	teamGen, _ := s.CreateCalendar("Team Gen", "#111", alice, "shared", &one)     // project 1 (open)
+	teamBeta, _ := s.CreateCalendar("Team Beta", "#222", alice, "shared", &openP) // open project
+	teamSecret, _ := s.CreateCalendar("Secret", "#444", alice, "shared", &secretP)
 	personal, _ := s.CreateCalendar("Mine", "#333", alice, "private", nil)
 
 	has := func(cals []model.Calendar, id int64) bool {
@@ -242,20 +250,25 @@ func TestCalendarProjectScope(t *testing.T) {
 		return false
 	}
 
-	a, _ := s.ListCalendars(alice, false, 1)
-	if !has(a, teamA) || has(a, teamB) || !has(a, personal) {
-		t.Errorf("project 1 view wrong: teamA=%v teamB=%v personal=%v", has(a, teamA), has(a, teamB), has(a, personal))
+	// Bob (member of the open projects only) sees shared calendars of project 1
+	// and Beta in one list, but not the restricted project's, nor alice's personal.
+	bobCals, _ := s.ListCalendars(bob, false)
+	if !has(bobCals, teamGen) || !has(bobCals, teamBeta) {
+		t.Errorf("bob should see shared calendars of open projects 1 and Beta")
 	}
-	b, _ := s.ListCalendars(alice, false, p2)
-	if has(b, teamA) || !has(b, teamB) || !has(b, personal) {
-		t.Errorf("project 2 view wrong: teamA=%v teamB=%v personal=%v", has(b, teamA), has(b, teamB), has(b, personal))
+	if has(bobCals, teamSecret) {
+		t.Error("bob (non-member) must not see a restricted project's calendar")
 	}
-
-	// A different user does not see another user's personal calendar.
-	bob := mustUser(t, s, "bob")
-	bobCals, _ := s.ListCalendars(bob, false, 1)
 	if has(bobCals, personal) {
 		t.Error("bob must not see alice's personal calendar")
+	}
+
+	// Alice sees all of hers across every project at once, incl. personal + restricted.
+	aliceCals, _ := s.ListCalendars(alice, false)
+	for _, id := range []int64{teamGen, teamBeta, teamSecret, personal} {
+		if !has(aliceCals, id) {
+			t.Errorf("alice should see calendar %d across projects", id)
+		}
 	}
 }
 
@@ -273,7 +286,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	if err := s.ReplaceSubscriptionEvents(id, evs); err != nil {
 		t.Fatalf("ReplaceSubscriptionEvents: %v", err)
 	}
-	out, err := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	out, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}
@@ -301,7 +314,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	}
 	// Other users don't see this private subscription.
 	bob := mustUser(t, s, "bob")
-	bout, _ := s.ListCalendarEvents(bob, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	bout, _ := s.ListCalendarEvents(bob, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	for _, e := range bout {
 		if e.Source == "ics" {
 			t.Error("subscription leaked to another user")
@@ -311,7 +324,7 @@ func TestSubscriptionEvents(t *testing.T) {
 	if err := s.DeleteSubscription(id, u); err != nil {
 		t.Fatalf("DeleteSubscription: %v", err)
 	}
-	out2, _ := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	out2, _ := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	for _, e := range out2 {
 		if e.Source == "ics" {
 			t.Error("ics events remain after delete")
@@ -378,7 +391,7 @@ func TestSubscriptionExdateAndOverrides(t *testing.T) {
 	if err := s.ReplaceSubscriptionEvents(id, evs); err != nil {
 		t.Fatalf("ReplaceSubscriptionEvents: %v", err)
 	}
-	out, err := s.ListCalendarEvents(u, false, 1, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
+	out, err := s.ListCalendarEvents(u, false, "2026-01-01 00:00:00", "2026-01-31 23:59:59")
 	if err != nil {
 		t.Fatalf("ListCalendarEvents: %v", err)
 	}

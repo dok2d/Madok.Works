@@ -83,7 +83,7 @@ func TestConvertRoundTrip(t *testing.T) {
 	}
 
 	// Ecosystem calendar and wiki space migrated into the default project.
-	if cals, _ := store.ListCalendars(1, true, 1); len(cals) != 1 || cals[0].ProjectID == nil || *cals[0].ProjectID != 1 {
+	if cals, _ := store.ListCalendars(1, true); len(cals) != 1 || cals[0].ProjectID == nil || *cals[0].ProjectID != 1 {
 		t.Errorf("calendar not migrated to project 1: %+v", cals)
 	}
 	if spaces, _ := store.ListWikiSpaces(1, true, 1); len(spaces) != 1 || spaces[0].ProjectID == nil || *spaces[0].ProjectID != 1 {

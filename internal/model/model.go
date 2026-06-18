@@ -324,8 +324,9 @@ type CalendarEvent struct {
 	// Rendering helpers / virtual events from other services
 	Color      string             `json:"color,omitempty"`
 	CalName    string             `json:"calendar_name,omitempty"`
-	Source     string             `json:"source,omitempty"`     // "" (real) | "task" | "sprint"
-	RefID      int64              `json:"ref_id,omitempty"`     // task/sprint id for virtual events
+	Source     string             `json:"source,omitempty"`      // "" (real) | "task" | "sprint"
+	ProjectID  int64              `json:"project_id,omitempty"`  // owning project (kanban overlay events)
+	RefID      int64              `json:"ref_id,omitempty"`      // task/sprint id for virtual events
 	Occurrence string             `json:"occurrence,omitempty"` // set on expanded recurring instances
 	Reminders  []CalendarReminder `json:"reminders,omitempty"`
 }

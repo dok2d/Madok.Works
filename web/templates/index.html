@@ -302,6 +302,7 @@ body.has-rail #app{margin-left:52px}
 .cal-main{flex:1;display:flex;flex-direction:column;min-width:0}
 .cal-main-full{height:calc(100vh - 52px);display:flex;flex-direction:column;min-width:0}
 .cal-dd-row{justify-content:flex-start}
+.cal-dd-group{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--fg3);padding:6px 10px 2px;pointer-events:none}
 .cal-dd-row input[type=checkbox]{margin:0}
 .cal-dd-row .cal-cl-edit{visibility:hidden;margin-left:auto}
 .cal-dd-row:hover .cal-cl-edit{visibility:visible}
@@ -1510,10 +1511,12 @@ function epicProgress(epicId) {
 }
 
 // === API ===
-// Kanban endpoints are scoped to the current project via a ?project= query param
-// (mirrors how wiki passes space_id). By-id endpoints ignore it server-side.
+// Kanban and wiki endpoints are scoped to the current project via a ?project=
+// query param (mirrors how wiki passes space_id). By-id endpoints ignore it
+// server-side. The calendar is cross-project (it aggregates every accessible
+// project's calendars), so its endpoints are NOT listed here.
 const _projectScoped = ['/api/board', '/api/columns', '/api/epics', '/api/sprints', '/api/tags', '/api/tasks', '/api/search',
-  '/api/calendar/calendars', '/api/calendar/events', '/api/calendar/upcoming', '/api/wiki/spaces'];
+  '/api/wiki/spaces'];
 function withProject(path) {
   const base = path.split('?')[0];
   if (!_projectScoped.some(p => base === p || base.startsWith(p + '/'))) return path;

@@ -55,7 +55,7 @@ func TestEcosystemExportRoundTrip(t *testing.T) {
 	if len(msgs) != 1 || msgs[0].Text != "hi there" {
 		t.Errorf("chat message not restored: %+v", msgs)
 	}
-	evs, _ := b.ListCalendarEvents(u, true, 1, "2026-01-01 00:00:00", "2026-01-02 00:00:00")
+	evs, _ := b.ListCalendarEvents(u, true, "2026-01-01 00:00:00", "2026-01-02 00:00:00")
 	found := false
 	for _, e := range evs {
 		if e.Title == "Launch" {

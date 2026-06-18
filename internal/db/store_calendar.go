@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -108,19 +109,48 @@ func expandOccurrencesEx(start time.Time, rruleStr string, exdates []time.Time, 
 
 // === Calendars ===
 
-// ListCalendars returns the calendars visible in the given project plus the
-// user's personal calendars (project_id IS NULL, owner-only). Within a project,
-// shared calendars are visible to everyone with access; private ones only to
-// their owner (admins see all of the project's calendars).
-func (s *Store) ListCalendars(userID int64, isAdmin bool, projectID int64) ([]model.Calendar, error) {
+// accessibleProjectIDs returns the ids of projects the user may access: open
+// projects, ones they created, and ones they belong to (admins get them all).
+func (s *Store) accessibleProjectIDs(userID int64, isAdmin bool) ([]int64, error) {
+	var rows *sql.Rows
+	var err error
+	if isAdmin {
+		rows, err = s.db.Query(`SELECT id FROM projects`)
+	} else {
+		rows, err = s.db.Query(`SELECT p.id FROM projects p
+			WHERE p.visibility = 'open' OR p.created_by = ?
+			   OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?)`, userID, userID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// ListCalendars returns every calendar the user can access across all projects:
+// their own calendars (incl. personal ones, which are owner-only and visible in
+// any project), plus shared calendars of any project they can access. Admins see
+// all. The caller (calendar UI) groups them by Calendar.ProjectID.
+func (s *Store) ListCalendars(userID int64, isAdmin bool) ([]model.Calendar, error) {
 	var where string
 	var args []any
 	if isAdmin {
-		where = "(c.project_id = ?) OR (c.project_id IS NULL AND c.owner_id = ?)"
-		args = []any{projectID, userID}
+		where = "1=1"
 	} else {
-		where = "(c.project_id = ? AND (c.visibility = 'shared' OR c.owner_id = ?)) OR (c.project_id IS NULL AND c.owner_id = ?)"
-		args = []any{projectID, userID, userID}
+		where = `c.owner_id = ? OR (c.visibility = 'shared' AND c.project_id IN (
+			SELECT p.id FROM projects p
+			WHERE p.visibility = 'open' OR p.created_by = ?
+			   OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?)))`
+		args = []any{userID, userID, userID}
 	}
 	rows, err := s.db.Query(`SELECT c.id, c.name, c.color, c.owner_id, c.project_id, c.visibility, c.created_at, COALESCE(u.username,'')
 		FROM calendars c LEFT JOIN users u ON u.id = c.owner_id
@@ -385,7 +415,7 @@ func (s *Store) DeleteCalendarEvent(id int64) error {
 
 // ListCalendarEvents returns events visible to the user that overlap [from,to],
 // expanding recurring events into individual occurrences within the range.
-func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, projectID int64, fromStr, toStr string) ([]model.CalendarEvent, error) {
+func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, fromStr, toStr string) ([]model.CalendarEvent, error) {
 	from, ok1 := parseCalTime(fromStr)
 	to, ok2 := parseCalTime(toStr)
 	if !ok1 || !ok2 {
@@ -393,7 +423,7 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, projectID int64, 
 	}
 	fromN, toN := from.Format(calTimeLayout), to.Format(calTimeLayout)
 
-	cals, err := s.ListCalendars(userID, isAdmin, projectID)
+	cals, err := s.ListCalendars(userID, isAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -450,8 +480,14 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, projectID int64, 
 		}
 	}
 
-	// Overlay read-only kanban events (task deadlines, sprint ranges) of the project.
-	kb, err := s.kanbanEvents(projectID, from, to)
+	// Overlay read-only kanban events (task deadlines, sprint ranges) for every
+	// project the user can access; each is tagged with its project_id so the UI
+	// can toggle the overlay per project.
+	pids, err := s.accessibleProjectIDs(userID, isAdmin)
+	if err != nil {
+		return nil, err
+	}
+	kb, err := s.kanbanEvents(pids, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -467,23 +503,32 @@ func (s *Store) ListCalendarEvents(userID int64, isAdmin bool, projectID int64, 
 }
 
 // kanbanEvents surfaces task deadlines and sprint ranges as read-only virtual
-// events so the calendar reflects board activity. They belong to no calendar
-// (calendar_id 0) and carry source/ref_id for linking back to the board.
-func (s *Store) kanbanEvents(projectID int64, from, to time.Time) ([]model.CalendarEvent, error) {
+// events so the calendar reflects board activity, for the given projects. They
+// belong to no calendar (calendar_id 0) and carry source/ref_id for linking back
+// to the board, plus project_id so the UI can toggle the overlay per project.
+func (s *Store) kanbanEvents(projectIDs []int64, from, to time.Time) ([]model.CalendarEvent, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	inList := make([]string, len(projectIDs))
+	for i, id := range projectIDs {
+		inList[i] = strconv.FormatInt(id, 10)
+	}
+	in := "(" + strings.Join(inList, ",") + ")"
 	var out []model.CalendarEvent
 
 	type taskRow struct {
-		id              int64
+		id, projectID   int64
 		title, deadline string
 	}
 	var tasks []taskRow
-	rows, err := s.db.Query(`SELECT id, title, deadline FROM tasks WHERE deadline != '' AND project_id = ?`, projectID)
+	rows, err := s.db.Query(`SELECT id, project_id, title, deadline FROM tasks WHERE deadline != '' AND project_id IN ` + in)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var x taskRow
-		if err := rows.Scan(&x.id, &x.title, &x.deadline); err != nil {
+		if err := rows.Scan(&x.id, &x.projectID, &x.title, &x.deadline); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -498,23 +543,23 @@ func (s *Store) kanbanEvents(projectID int64, from, to time.Time) ([]model.Calen
 		st := dl.Format(calTimeLayout)
 		out = append(out, model.CalendarEvent{
 			Title: x.title, Start: st, End: st,
-			Color: "#ef4444", Source: "task", RefID: x.id, CalName: "Kanban",
+			Color: "#ef4444", Source: "task", RefID: x.id, ProjectID: x.projectID, CalName: "Kanban",
 		})
 	}
 
 	type sprintRow struct {
-		id     int64
-		name   string
-		sd, ed string
+		id, projectID int64
+		name          string
+		sd, ed        string
 	}
 	var sprints []sprintRow
-	rows2, err := s.db.Query(`SELECT id, name, start_date, end_date FROM sprints WHERE start_date != '' AND end_date != '' AND project_id = ?`, projectID)
+	rows2, err := s.db.Query(`SELECT id, project_id, name, start_date, end_date FROM sprints WHERE start_date != '' AND end_date != '' AND project_id IN ` + in)
 	if err != nil {
 		return nil, err
 	}
 	for rows2.Next() {
 		var x sprintRow
-		if err := rows2.Scan(&x.id, &x.name, &x.sd, &x.ed); err != nil {
+		if err := rows2.Scan(&x.id, &x.projectID, &x.name, &x.sd, &x.ed); err != nil {
 			rows2.Close()
 			return nil, err
 		}
@@ -533,7 +578,7 @@ func (s *Store) kanbanEvents(projectID int64, from, to time.Time) ([]model.Calen
 		}
 		out = append(out, model.CalendarEvent{
 			Title: x.name, Start: sd.Format(calTimeLayout), End: ed.Format(calTimeLayout),
-			AllDay: true, Color: "#8b5cf6", Source: "sprint", RefID: x.id, CalName: "Kanban",
+			AllDay: true, Color: "#8b5cf6", Source: "sprint", RefID: x.id, ProjectID: x.projectID, CalName: "Kanban",
 		})
 	}
 	return out, nil
@@ -578,8 +623,8 @@ func (s *Store) MarkReminded(id int64) error {
 
 // UpcomingEventCount counts real (non-kanban) events visible to the user that
 // start within [from,to], for the rail badge.
-func (s *Store) UpcomingEventCount(userID int64, isAdmin bool, projectID int64, fromStr, toStr string) int {
-	events, err := s.ListCalendarEvents(userID, isAdmin, projectID, fromStr, toStr)
+func (s *Store) UpcomingEventCount(userID int64, isAdmin bool, fromStr, toStr string) int {
+	events, err := s.ListCalendarEvents(userID, isAdmin, fromStr, toStr)
 	if err != nil {
 		return 0
 	}
@@ -601,11 +646,11 @@ type CalendarSearchHit struct {
 }
 
 // SearchCalendarEvents does a LIKE search over events in calendars the user can see.
-func (s *Store) SearchCalendarEvents(userID int64, isAdmin bool, projectID int64, query string, limit int) ([]CalendarSearchHit, error) {
+func (s *Store) SearchCalendarEvents(userID int64, isAdmin bool, query string, limit int) ([]CalendarSearchHit, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	cals, err := s.ListCalendars(userID, isAdmin, projectID)
+	cals, err := s.ListCalendars(userID, isAdmin)
 	if err != nil {
 		return nil, err
 	}
