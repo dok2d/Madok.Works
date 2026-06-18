@@ -39,7 +39,6 @@ const ADMIN_TABS = [
   { key: 'services', i: 'adminTabServices', sections: ['services-section'], admin: true },
   { key: 'site', i: 'adminTabSite', render: renderAdminSite, admin: true },
   { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
-  { key: 'security', i: 'adminTabSecurity', render: renderAdmin2FA },
   { key: 'auditlog', i: 'adminTabAudit', render: renderAdminAuditLog, admin: true },
   { key: 'data', i: 'adminTabData', sections: ['export-import-section', 'backup-section'], admin: true },
 ];
@@ -72,9 +71,11 @@ function renderAdminAccount(panel) {
       </div>
     </div>
     ${tg}
+    <div id="acc-2fa" style="margin-top:20px"></div>
     <div class="admin-form" style="margin-top:20px">
       <div class="admin-row"><button class="btn btn-ghost btn-sm admin-danger" onclick="logout()">${t('logout')}</button></div>
     </div>`;
+  renderAdmin2FA(panel.querySelector('#acc-2fa'));
 }
 
 async function accUnlinkTelegram() {
@@ -85,7 +86,8 @@ async function accUnlinkTelegram() {
 
 // renderAdmin2FA renders the per-user two-factor (TOTP) settings.
 async function renderAdmin2FA(panel) {
-  panel.innerHTML = `<h2 class="admin-h">${t('twofaTitle')}</h2><div id="twofa-body" class="admin-form">${t('adminNoData')}</div>`;
+  if (!panel) return;
+  panel.innerHTML = `<h3 style="margin:0 0 8px">${t('twofaTitle')}</h3><div id="twofa-body" class="admin-form">${t('adminNoData')}</div>`;
   let st = { enabled: false };
   try { st = await api('/api/2fa/status'); } catch (e) {}
   const body = panel.querySelector('#twofa-body');
@@ -122,7 +124,7 @@ async function twofaEnable() {
 async function twofaDisable() {
   const code = (document.getElementById('twofa-disable-code').value || '').trim();
   try { await api('/api/2fa/disable', 'POST', { code }); } catch (e) { alert(e.message); return; }
-  renderAdmin2FA(document.getElementById('admin-panel-security'));
+  renderAdmin2FA(document.getElementById('acc-2fa'));
 }
 
 // renderAdminAuditLog shows the activity log with user/project/action filters.
