@@ -22,6 +22,56 @@ const CHAT_CHANNEL_KEY = 'kanban-chat-channel';
 // Quick-reaction emoji set (Telegram-style), positive and negative.
 const CHAT_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '🔥', '👏', '🙏', '👎', '😢', '😡', '💩'];
 
+// Categorized emoji set for the composer picker (a curated common subset).
+const CHAT_EMOJI_GRID = {
+  '😀': ['😀', '😁', '😂', '🤣', '😅', '😊', '😍', '😘', '😎', '🤩', '🤔', '😐', '😴', '😇', '🙃', '😉', '😋', '😜', '🤪', '😭', '😢', '😡', '😱', '😬', '🙄', '😏', '🥳', '🥺', '🤗', '🤐'],
+  '👍': ['👍', '👎', '👏', '🙏', '👌', '🤝', '💪', '🙌', '👋', '✌️', '🤞', '👈', '👉', '👆', '👇', '✋', '🤚', '🖐️', '🫶', '🤙'],
+  '❤️': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '⭐', '🌟', '✨'],
+  '🔥': ['🔥', '🎉', '🎊', '🎁', '🏆', '🥇', '✅', '❌', '⚠️', '❗', '❓', '💯', '🚀', '💡', '📌', '📎', '🔖', '🔔', '⏰', '📅'],
+  '🐱': ['🐱', '🐶', '🦊', '🐻', '🐼', '🐨', '🦁', '🐸', '🐵', '🦄', '🐝', '🦋', '🌹', '🌸', '🌳', '🍀', '☀️', '🌙', '⚡', '🌈'],
+  '🍕': ['🍕', '🍔', '🍟', '🌮', '🍣', '🍩', '🍰', '☕', '🍺', '🍷', '🥑', '🍎', '🍌', '🍇', '🍓', '🥕', '🧀', '🍿', '🍪', '🎂'],
+};
+
+// chatEmojiPicker shows the categorized grid; clicking an emoji inserts it into
+// the message input at the caret.
+function chatEmojiPicker(ev) {
+  ev.stopPropagation();
+  document.querySelectorAll('.chat-emoji-pop').forEach(p => p.remove());
+  const cats = Object.keys(CHAT_EMOJI_GRID);
+  const pop = document.createElement('div');
+  pop.className = 'chat-emoji-pop';
+  pop.innerHTML = `<div class="chat-emoji-tabs">${cats.map((c, i) => `<button data-cat="${i}" class="${i === 0 ? 'active' : ''}">${c}</button>`).join('')}</div>
+    <div class="chat-emoji-grid" id="chat-emoji-grid"></div>`;
+  document.body.appendChild(pop);
+  const grid = pop.querySelector('#chat-emoji-grid');
+  const fill = i => { grid.innerHTML = CHAT_EMOJI_GRID[cats[i]].map(e => `<button>${e}</button>`).join(''); };
+  fill(0);
+  pop.querySelectorAll('.chat-emoji-tabs button').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    pop.querySelectorAll('.chat-emoji-tabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    fill(Number(b.dataset.cat));
+  }));
+  grid.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    chatInsertEmoji(b.textContent);
+  });
+  const rect = ev.target.getBoundingClientRect();
+  pop.style.left = Math.max(8, rect.left) + 'px';
+  pop.style.top = (rect.top - 232) + 'px';
+  setTimeout(() => document.addEventListener('click', function close() { pop.remove(); document.removeEventListener('click', close); }), 0);
+}
+
+function chatInsertEmoji(emoji) {
+  const inp = document.getElementById('chat-input');
+  if (!inp) return;
+  const s = inp.selectionStart || inp.value.length, e = inp.selectionEnd || inp.value.length;
+  inp.value = inp.value.slice(0, s) + emoji + inp.value.slice(e);
+  inp.focus();
+  inp.selectionStart = inp.selectionEnd = s + emoji.length;
+}
+
 // === i18n ===
 // Chat strings are merged into the shared LANGS object on first render. ru/en are
 // translated; the other 8 languages fall back to en until the Phase D i18n sweep.
@@ -31,7 +81,7 @@ const CHAT_I18N = {
     chatNewChannel: 'New channel', chatNewGroup: 'New group', chatStartDM: 'New direct message',
     chatSearchPh: 'Search messages…', chatNoChannels: 'No channels yet',
     chatPickChannel: 'Pick a channel to start chatting', chatMessagePh: 'Write a message…',
-    chatSend: 'Send', chatEdit: 'Edit', chatDelete: 'Delete', chatEdited: 'edited',
+    chatEmoji: 'Emoji', chatSend: 'Send', chatEdit: 'Edit', chatDelete: 'Delete', chatEdited: 'edited',
     chatDeleted: 'message deleted', chatReadonly: 'Read-only access', chatMembers: 'Members',
     chatJoin: 'Join', chatLeave: 'Leave', chatChannelSettings: 'Channel settings',
     chatChannelName: 'Name', chatTopic: 'Topic', chatSave: 'Save', chatCancel: 'Cancel',
@@ -51,7 +101,7 @@ const CHAT_I18N = {
     chatNewChannel: 'Новый канал', chatNewGroup: 'Новая группа', chatStartDM: 'Новое личное сообщение',
     chatSearchPh: 'Поиск сообщений…', chatNoChannels: 'Пока нет каналов',
     chatPickChannel: 'Выберите канал, чтобы начать общение', chatMessagePh: 'Написать сообщение…',
-    chatSend: 'Отправить', chatEdit: 'Изменить', chatDelete: 'Удалить', chatEdited: 'изменено',
+    chatEmoji: 'Эмодзи', chatSend: 'Отправить', chatEdit: 'Изменить', chatDelete: 'Удалить', chatEdited: 'изменено',
     chatDeleted: 'сообщение удалено', chatReadonly: 'Только чтение', chatMembers: 'Участники',
     chatJoin: 'Вступить', chatLeave: 'Покинуть', chatChannelSettings: 'Настройки канала',
     chatChannelName: 'Название', chatTopic: 'Тема', chatSave: 'Сохранить', chatCancel: 'Отмена',
@@ -71,7 +121,7 @@ const CHAT_I18N = {
     chatNewChannel: "Nuevo canal", chatNewGroup: "Nuevo grupo", chatStartDM: "Nuevo mensaje directo",
     chatSearchPh: "Buscar mensajes…", chatNoChannels: "Aún no hay canales",
     chatPickChannel: "Elige un canal para empezar a chatear", chatMessagePh: "Escribe un mensaje…",
-    chatSend: "Enviar", chatEdit: "Editar", chatDelete: "Eliminar", chatEdited: "editado",
+    chatEmoji: "Emoji", chatSend: "Enviar", chatEdit: "Editar", chatDelete: "Eliminar", chatEdited: "editado",
     chatDeleted: "mensaje eliminado", chatReadonly: "Acceso de solo lectura", chatMembers: "Miembros",
     chatJoin: "Unirse", chatLeave: "Salir", chatChannelSettings: "Ajustes del canal",
     chatChannelName: "Nombre", chatTopic: "Tema", chatSave: "Guardar", chatCancel: "Cancelar",
@@ -86,7 +136,7 @@ const CHAT_I18N = {
     chatNewChannel: "Nouveau canal", chatNewGroup: "Nouveau groupe", chatStartDM: "Nouveau message direct",
     chatSearchPh: "Rechercher des messages…", chatNoChannels: "Aucun canal pour le moment",
     chatPickChannel: "Choisissez un canal pour discuter", chatMessagePh: "Écrire un message…",
-    chatSend: "Envoyer", chatEdit: "Modifier", chatDelete: "Supprimer", chatEdited: "modifié",
+    chatEmoji: "Émoji", chatSend: "Envoyer", chatEdit: "Modifier", chatDelete: "Supprimer", chatEdited: "modifié",
     chatDeleted: "message supprimé", chatReadonly: "Accès en lecture seule", chatMembers: "Membres",
     chatJoin: "Rejoindre", chatLeave: "Quitter", chatChannelSettings: "Paramètres du canal",
     chatChannelName: "Nom", chatTopic: "Sujet", chatSave: "Enregistrer", chatCancel: "Annuler",
@@ -101,7 +151,7 @@ const CHAT_I18N = {
     chatNewChannel: "Neuer Kanal", chatNewGroup: "Neue Gruppe", chatStartDM: "Neue Direktnachricht",
     chatSearchPh: "Nachrichten suchen…", chatNoChannels: "Noch keine Kanäle",
     chatPickChannel: "Wähle einen Kanal zum Chatten", chatMessagePh: "Nachricht schreiben…",
-    chatSend: "Senden", chatEdit: "Bearbeiten", chatDelete: "Löschen", chatEdited: "bearbeitet",
+    chatEmoji: "Emoji", chatSend: "Senden", chatEdit: "Bearbeiten", chatDelete: "Löschen", chatEdited: "bearbeitet",
     chatDeleted: "Nachricht gelöscht", chatReadonly: "Nur-Lese-Zugriff", chatMembers: "Mitglieder",
     chatJoin: "Beitreten", chatLeave: "Verlassen", chatChannelSettings: "Kanaleinstellungen",
     chatChannelName: "Name", chatTopic: "Thema", chatSave: "Speichern", chatCancel: "Abbrechen",
@@ -116,7 +166,7 @@ const CHAT_I18N = {
     chatNewChannel: "Novo canal", chatNewGroup: "Novo grupo", chatStartDM: "Nova mensagem direta",
     chatSearchPh: "Buscar mensagens…", chatNoChannels: "Ainda não há canais",
     chatPickChannel: "Escolha um canal para conversar", chatMessagePh: "Escreva uma mensagem…",
-    chatSend: "Enviar", chatEdit: "Editar", chatDelete: "Excluir", chatEdited: "editado",
+    chatEmoji: "Emoji", chatSend: "Enviar", chatEdit: "Editar", chatDelete: "Excluir", chatEdited: "editado",
     chatDeleted: "mensagem excluída", chatReadonly: "Acesso somente leitura", chatMembers: "Membros",
     chatJoin: "Entrar", chatLeave: "Sair", chatChannelSettings: "Configurações do canal",
     chatChannelName: "Nome", chatTopic: "Tópico", chatSave: "Salvar", chatCancel: "Cancelar",
@@ -375,6 +425,7 @@ function chatComposer() {
   <div class="chat-pending" id="chat-pending"></div>
   <div class="chat-composer">
     <button class="btn btn-ghost btn-sm chat-attach-btn" title="${t('chatAttach')}" onclick="chatAttachFile()">&#128206;</button>
+    <button class="btn btn-ghost btn-sm chat-emoji-btn" title="${t('chatEmoji')}" onclick="chatEmojiPicker(event)">&#128512;</button>
     <textarea id="chat-input" class="chat-input" rows="1" placeholder="${t('chatMessagePh')}"></textarea>
     <button class="btn btn-primary btn-sm" onclick="chatSend()">${t('chatSend')}</button>
   </div>`;
