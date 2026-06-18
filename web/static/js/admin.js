@@ -30,11 +30,11 @@ function ensureAdminI18n() {
 // section ids (ids preserved, so existing populate functions keep working); `render`
 // panels are drawn by a function. `admin:true` = admins only; `show()` = conditional.
 const ADMIN_TABS = [
-  // User-facing first
-  { key: 'account', i: 'adminTabAccount', render: renderAdminAccount },
-  { key: 'general', i: 'adminTabGeneral', sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
+  // User-facing first. Account also hosts the personal display settings (theme/
+  // language/font/timezone), relocated into its panel.
+  { key: 'account', i: 'adminTabAccount', render: renderAdminAccount, sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
   { key: 'mail', i: 'adminTabMail', render: renderAdminMail, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
-  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
+  { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && isAdmin() },
   // Admin-only service config (bot token, SSO, LLM, DB). Personal Telegram
   // linking lives in the Account tab instead.
   { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section', 'llm-section', 'db-section', 'git-section', 'calls-section'], admin: true },
@@ -53,7 +53,6 @@ const ADMIN_TABS = [
 // ADMIN_TABS entries. Order here defines the top-level tab order.
 const ADMIN_LAYOUT = [
   { leaf: 'account' },
-  { leaf: 'general' },
   { group: 'mailgrp', i: 'adminTabMail', children: ['mail', 'mailserver'] },
   { group: 'boardgrp', i: 'adminTabBoard', children: ['board', 'projects'] },
   { leaf: 'users' },
@@ -79,7 +78,14 @@ function renderAdminAccount(panel) {
            <div id="tg-hash-display" style="margin-top:4px;font-size:.85rem"></div>`}
     </div>`;
   }
-  panel.innerHTML = `<h2 class="admin-h">${t('adminTabAccount')}</h2>
+  // The personal display sections (theme/language/font/timezone) are relocated
+  // into this panel by ensureAdminPage; render account content into a host above
+  // them and the logout into a foot below them, without wiping those sections.
+  let host = panel.querySelector('#acc-render');
+  if (!host) { host = document.createElement('div'); host.id = 'acc-render'; panel.insertBefore(host, panel.firstChild); }
+  let foot = panel.querySelector('#acc-foot');
+  if (!foot) { foot = document.createElement('div'); foot.id = 'acc-foot'; panel.appendChild(foot); }
+  host.innerHTML = `<h2 class="admin-h">${t('adminTabAccount')}</h2>
     <div class="admin-form">
       <div class="admin-note">${esc(currentUser.username)} &middot; ${esc(t(currentUser.role) || currentUser.role)}</div>
       <div class="admin-row">
@@ -94,11 +100,11 @@ function renderAdminAccount(panel) {
         <input type="checkbox" id="acc-sound" ${(typeof localStorage !== 'undefined' && localStorage.getItem('chat-sound') === 'off') ? '' : 'checked'} onchange="accToggleSound(this.checked)" style="width:auto;margin:0"> ${t('accSound')}</label>
       <div class="admin-note">${t('accSoundHint')}</div>
     </div>
-    <div id="acc-2fa" style="margin-top:20px"></div>
-    <div class="admin-form" style="margin-top:20px">
+    <div id="acc-2fa" style="margin-top:20px"></div>`;
+  foot.innerHTML = `<div class="admin-form" style="margin-top:20px">
       <div class="admin-row"><button class="btn btn-ghost btn-sm admin-danger" onclick="logout()">${t('logout')}</button></div>
     </div>`;
-  renderAdmin2FA(panel.querySelector('#acc-2fa'));
+  renderAdmin2FA(host.querySelector('#acc-2fa'));
 }
 
 // accToggleSound flips the global new-message sound preference (per-user,
@@ -282,7 +288,7 @@ async function adminSetPrimaryAlias(id) {
 }
 
 let adminBuilt = false;
-let adminTab = 'general';
+let adminTab = 'account';
 
 function ensureAdminPage() {
   if (adminBuilt) return;

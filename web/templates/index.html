@@ -685,7 +685,7 @@ body.has-rail #app{margin-left:52px}
 .wiki-settings .entity-add select+select{flex:none}
 .wiki-owner-badge{font-size:.78rem;color:var(--fg3);white-space:nowrap}
 .wiki-members-hint{font-size:.8rem;color:var(--fg3);line-height:1.4;margin-bottom:10px}
-.header h1 a{color:inherit;text-decoration:none}
+.header h1 a{color:inherit;text-decoration:none;display:inline-block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .header-actions{display:flex;gap:8px;align-items:center}
 .hdr-sep{color:var(--fg3);margin:0 4px;font-family:'JetBrains Mono',monospace;font-size:1.1rem;user-select:none}
 .hdr-filter{position:relative;display:inline-flex;align-items:center}
@@ -1985,14 +1985,12 @@ function ensureValidView() {
 
 // applyAppName updates the live branding (title, header link, rail tooltip) after
 // an admin changes the application name, without a page reload.
-// appShort derives the compact brand mark (initials) from an app name, e.g.
-// "Madok.Works" → "MW". Mirrors the server-side appShort().
+// appShort is the compact header brand mark: the default name renders as "MW";
+// a custom name is shown in full (CSS ellipsises very long names). Mirrors the
+// server-side appShort().
 function appShort(name) {
-  const fields = (name || '').split(/[\s.,\-_/|:]+/).filter(Boolean);
-  let s = fields.map(f => f[0]).join('').toUpperCase();
-  if (s.length < 2 && fields.length) s = fields[0].slice(0, 2).toUpperCase();
-  if (s.length > 3) s = s.slice(0, 3);
-  return s || 'MW';
+  name = name || 'Madok.Works';
+  return name === 'Madok.Works' ? 'MW' : name;
 }
 function applyAppName(name) {
   window.APP_NAME = name || 'Madok.Works';

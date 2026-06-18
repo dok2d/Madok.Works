@@ -531,35 +531,16 @@ func (h *Handler) appName() string {
 	return "Madok.Works"
 }
 
-// appShort is the compact brand mark shown as a UI element (header logo): the
-// initials of the app name, e.g. "Madok.Works" → "MW". Falls back to the first
-// two letters for single-word names.
+// appShort is the compact brand mark shown in the header logo. The default
+// product name renders as "MW"; a custom name set by the admin is shown in full
+// (the header element ellipsises overly long names via CSS, keeping the full
+// name in the title attribute).
 func (h *Handler) appShort() string {
 	name := h.appName()
-	isDelim := func(r rune) bool { return strings.ContainsRune(" .,-_/|:", r) }
-	fields := strings.FieldsFunc(name, func(r rune) bool { return isDelim(r) })
-	var initials []rune
-	for _, f := range fields {
-		rs := []rune(f)
-		if len(rs) > 0 {
-			initials = append(initials, rs[0])
-		}
+	if name == "Madok.Works" {
+		return "MW"
 	}
-	s := strings.ToUpper(string(initials))
-	if len([]rune(s)) < 2 && len(fields) > 0 {
-		rs := []rune(fields[0])
-		if len(rs) > 2 {
-			rs = rs[:2]
-		}
-		s = strings.ToUpper(string(rs))
-	}
-	if rs := []rune(s); len(rs) > 3 {
-		s = string(rs[:3])
-	}
-	if s == "" {
-		s = "MW"
-	}
-	return s
+	return name
 }
 
 // supportedLangs mirrors the LANGS keys in the front-end. Used to validate the
