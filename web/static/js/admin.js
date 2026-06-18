@@ -49,7 +49,7 @@ async function renderAdmin2FA(panel) {
   const body = panel.querySelector('#twofa-body');
   if (st.enabled) {
     body.innerHTML = `<p>${t('twofaOn')}</p>
-      <label>${t('twofaCode')}<input id="twofa-disable-code" autocomplete="one-time-code"></label>
+      <label class="admin-fld">${t('twofaCode')}<input id="twofa-disable-code" autocomplete="one-time-code"></label>
       <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="twofaDisable()">${t('twofaDisable')}</button>`;
   } else {
     body.innerHTML = `<p>${t('twofaHint')}</p><button class="btn btn-primary btn-sm" onclick="twofaSetup()">${t('twofaEnable')}</button>`;
@@ -63,7 +63,7 @@ async function twofaSetup() {
   body.innerHTML = `<p>${t('twofaScan')}</p>
     <div class="twofa-secret">${esc(r.secret)}</div>
     <div style="font-size:.78rem;color:var(--fg3);word-break:break-all;margin:6px 0">${esc(r.uri)}</div>
-    <label>${t('twofaCode')}<input id="twofa-enable-code" autocomplete="one-time-code"></label>
+    <label class="admin-fld">${t('twofaCode')}<input id="twofa-enable-code" autocomplete="one-time-code"></label>
     <button class="btn btn-primary btn-sm" onclick="twofaEnable()">${t('twofaConfirm')}</button>`;
 }
 
