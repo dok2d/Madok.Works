@@ -228,6 +228,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path == "/api/auth/sso/config" ||
 		path == "/api/auth/oidc/login" || path == "/api/auth/oidc/callback" ||
 		path == "/wap/login" ||
+		strings.HasPrefix(path, "/api/integrations/git/webhook/") ||
 		strings.HasPrefix(path, "/static/") {
 		h.mux.ServeHTTP(w, r)
 		return
@@ -488,6 +489,9 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/2fa/", h.handle2FA)
 	h.mux.HandleFunc("/api/setup/onboarding", h.handleOnboarding)
 	h.mux.HandleFunc("/api/integrations/db-info", h.handleDBInfo)
+	h.mux.HandleFunc("/api/integrations/git/webhook/", h.handleGitWebhook)
+	h.mux.HandleFunc("/api/integrations/git/repos", h.handleGitRepos)
+	h.mux.HandleFunc("/api/integrations/git/repos/", h.handleGitRepoItem)
 	h.mux.HandleFunc("/api/admin/audit", h.handleAdminAudit)
 
 	h.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
@@ -1440,6 +1444,10 @@ func (h *Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(path, "/subscribed") {
 		taskID := extractID(strings.TrimSuffix(path, "/subscribed"), "/api/tasks/")
 		h.handleTaskSubscribed(w, r, taskID)
+		return
+	}
+	if strings.HasSuffix(path, "/gitevents") {
+		h.handleTaskGitEvents(w, r)
 		return
 	}
 

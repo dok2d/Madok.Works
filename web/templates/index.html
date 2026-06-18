@@ -552,6 +552,14 @@ body.has-rail #app{margin-left:52px}
 .wiki-backlinks ul{margin:0;padding-left:1.2em}
 .wiki-backlinks a{color:var(--accent);text-decoration:none}
 .wiki-backlinks a:hover{text-decoration:underline}
+.git-event{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:.88rem}
+.git-event-ico{flex-shrink:0}
+.git-event-body{display:flex;flex-direction:column}
+.git-event-meta{color:var(--fg3);font-size:.78rem}
+.git-event a{color:var(--accent);text-decoration:none}
+.git-event a:hover{text-decoration:underline}
+.git-repo-row{padding:8px 0;border-bottom:1px solid var(--bg3)}
+.git-repo-row code{font-size:.72rem;word-break:break-all;color:var(--fg2)}
 .wiki-comments-section{max-width:860px;margin:28px 0 0;padding-top:14px;border-top:1px solid var(--bg4)}
 .wiki-comments-title{font-size:1rem;margin:6px 0 12px}
 .wiki-page-reactions{margin-bottom:14px}
@@ -1213,6 +1221,12 @@ body.has-rail .search-results{left:52px}
   <div class="sidebar-section" id="db-section" style="display:none">
     <h3 data-i18n="dbTitle"></h3>
     <div id="db-content"></div>
+  </div>
+  <div class="sidebar-section" id="git-section" style="display:none">
+    <h3 data-i18n="gitTitle"></h3>
+    <div class="admin-note" data-i18n="gitHint"></div>
+    <div id="git-repos-list"></div>
+    <div class="admin-row" style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="gitAddRepo()" data-i18n="gitAddRepo"></button></div>
   </div>
   <div class="sidebar-section" id="users-section" style="display:none">
     <h3 data-i18n="users"></h3>
@@ -2983,6 +2997,9 @@ async function renderTaskPage(taskId) {
     html += '</div></div>';
   }
 
+  // Git activity (filled async if any events are linked)
+  html += `<div class="task-page-section" id="git-activity" style="display:none"></div>`;
+
   // Comments
   html += `<div class="task-page-section"><h3>${t('comments')} (${(task.comments||[]).length})
     <button class="btn btn-ghost btn-sm comment-sort-toggle" onclick="toggleCommentSort()" title="${escAttr(t('commentSortToggle'))}">${commentSortPref()==='newest'?'&#8593;':'&#8595;'} ${commentSortPref()==='newest'?t('commentNewest'):t('commentOldest')}</button>
@@ -3013,6 +3030,28 @@ async function renderTaskPage(taskId) {
     setupPaste(ta);
     ta.addEventListener('input', () => saveCommentDraft(task.id, ta.value));
   }
+
+  loadGitActivity(task.id);
+}
+
+// loadGitActivity fills the task's git activity block if any events are linked.
+async function loadGitActivity(taskId) {
+  const box = document.getElementById('git-activity');
+  if (!box) return;
+  let events = [];
+  try { events = await api('/api/tasks/' + taskId + '/gitevents'); } catch (e) { return; }
+  if (!events || !events.length) return;
+  const icon = k => k === 'mr' ? '\u{1F500}' : (k === 'pipeline' ? '⚙️' : '\u{1F4DD}');
+  const rows = events.map(e => {
+    const title = e.url
+      ? `<a href="${escAttr(e.url)}" target="_blank" rel="noopener noreferrer">${esc(e.title || e.ref || e.kind)}</a>`
+      : esc(e.title || e.ref || e.kind);
+    const meta = [e.repo_label, e.status, e.author].filter(Boolean).map(esc).join(' · ');
+    return `<div class="git-event"><span class="git-event-ico">${icon(e.kind)}</span>
+      <span class="git-event-body">${title}${meta ? `<span class="git-event-meta">${meta}</span>` : ''}</span></div>`;
+  }).join('');
+  box.innerHTML = `<h3>${t('gitActivity') || 'Git'}</h3>${rows}`;
+  box.style.display = '';
 }
 
 // === Comment draft preservation ===

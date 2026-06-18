@@ -290,6 +290,33 @@ type ChatChannel struct {
 	PeerLastRead int64  `json:"peer_last_read,omitempty"` // DM: peer's last_read_id (for read ticks)
 }
 
+// GitRepo is a connected source-control repository scoped to a project.
+type GitRepo struct {
+	ID           int64  `json:"id"`
+	ProjectID    int64  `json:"project_id"`
+	Kind         string `json:"kind"`  // github | gitlab | gitea
+	Label        string `json:"label"` // display name
+	Repo         string `json:"repo"`  // owner/name
+	Secret       string `json:"secret,omitempty"`
+	MoveColumnID *int64 `json:"move_column_id,omitempty"` // move linked task here on "merged"
+	CreatedAt    string `json:"created_at"`
+}
+
+// GitEvent is normalized git activity linked to a task.
+type GitEvent struct {
+	ID        int64  `json:"id"`
+	RepoID    int64  `json:"repo_id"`
+	TaskID    int64  `json:"task_id"`
+	Kind      string `json:"kind"` // push | branch | mr | pipeline
+	Title     string `json:"title"`
+	Ref       string `json:"ref"`
+	URL       string `json:"url"`
+	Status    string `json:"status"`
+	Author    string `json:"author"`
+	CreatedAt string `json:"created_at"`
+	RepoLabel string `json:"repo_label,omitempty"`
+}
+
 // ChatAttachment links an uploaded file to a chat message.
 type ChatAttachment struct {
 	ID       int64  `json:"id"`

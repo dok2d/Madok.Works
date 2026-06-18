@@ -11,6 +11,7 @@ import (
 var ecosystemTables = []string{
 	"wiki_spaces", "wiki_space_members", "wiki_pages", "wiki_revisions", "wiki_links", "wiki_comments", "wiki_reactions", "wiki_diagrams", "wiki_page_pins",
 	"chat_channels", "chat_members", "chat_messages", "chat_attachments", "chat_reactions", "chat_pins", "chat_mutes",
+	"git_repos", "git_events",
 	"calendars", "calendar_events", "calendar_reminders",
 	"calendar_subscriptions", "calendar_sub_events",
 	"mail_messages", "mail_box", "mail_attachments",

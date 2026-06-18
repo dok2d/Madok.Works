@@ -341,6 +341,32 @@ func (s *Store) migrate() error {
 			joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (channel_id, user_id)
 		)`,
+		// === Git integration ===
+		// A connected repository (per project). secret verifies inbound webhooks;
+		// move_column_id (optional) is where a linked task moves on "merged".
+		`CREATE TABLE IF NOT EXISTS git_repos (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id) ON DELETE CASCADE,
+			kind TEXT NOT NULL DEFAULT 'github',
+			label TEXT NOT NULL DEFAULT '',
+			repo TEXT NOT NULL DEFAULT '',
+			secret TEXT NOT NULL DEFAULT '',
+			move_column_id INTEGER,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Normalized git activity linked to a task (push/branch/mr/pipeline).
+		`CREATE TABLE IF NOT EXISTS git_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			repo_id INTEGER NOT NULL REFERENCES git_repos(id) ON DELETE CASCADE,
+			task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+			kind TEXT NOT NULL DEFAULT '',
+			title TEXT NOT NULL DEFAULT '',
+			ref TEXT NOT NULL DEFAULT '',
+			url TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT '',
+			author TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 		// Per-user per-channel mute. until=0 → forever; until>0 → unix expiry.
 		`CREATE TABLE IF NOT EXISTS chat_mutes (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

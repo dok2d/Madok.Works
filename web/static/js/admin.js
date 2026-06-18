@@ -4,8 +4,10 @@
 // existing populate functions keep working). Phase 7 adds Mail server / Mailboxes.
 
 const ADMIN_I18N = {
-  en: { adminTitle: 'Administration', settingsTitle: 'Settings', adminTabGeneral: 'My settings', adminTabAccount: 'Account', accProfile: 'Open profile', adminTabSite: 'Site', adminAppName: 'Application name', adminAppNameHint: 'Shown in the page title, header and backup names.', adminDefaultLang: 'Default language', adminDefaultLangHint: 'Interface language for new users (each user can change their own afterwards).', adminWap: 'Enable WAP interface (legacy phones)', adminWapHint: 'Exposes a minimal WML interface at /wap/ for very old devices. Off by default.', obReplayTitle: 'First-run wizard', obReplay: 'Show setup wizard again', obReplayHint: 'Re-open the one-time service-setup wizard (clears the completed flag).', adminTabTelegram: 'Telegram', adminTabMail: 'Mail', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabProjects: 'Projects', adminProjNew: 'New project', adminProjVisibility: 'Visibility', adminProjMembers: 'Members', adminProjManage: 'Manage', adminProjNoneSel: 'Select a project to manage its members and settings.', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key', llmTitle: 'AI summaries (LLM)', dbTitle: 'Database', llmHint: 'Connect an OpenAI-compatible API (e.g. llama.cpp). When enabled: a "Summary" button on wiki pages and "✨ Generate" (description + TODO) in the task form.', llmEnabledOn: 'Enabled', llmBaseUrl: 'API base URL', llmModel: 'Model', llmApiKey: 'API key', llmApiKeyOptional: 'optional', llmEnable: 'Enable (tests connection)', llmTest: 'Test connection', llmTesting: 'Testing…', llmOk: 'Connection OK', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User', dbPath: 'File', adminTabAudit: 'Audit log', auditTime: 'Time', auditUser: 'User', auditAction: 'Action', auditProject: 'Project', auditDetails: 'Details', auditAllProjects: 'All projects', adminTabSecurity: 'Security', twofaTitle: 'Two-factor authentication', twofaHint: 'Add a time-based one-time code (TOTP) from an authenticator app as a second login step.', twofaOn: 'Two-factor authentication is enabled.', twofaEnable: 'Enable 2FA', twofaDisable: 'Disable 2FA', twofaCode: 'Code', twofaScan: 'Add this secret to your authenticator app (or scan the otpauth URL), then enter the current code:', twofaConfirm: 'Confirm', twofaEnabled: '2FA enabled.', twofaRecovery: 'Save these one-time recovery codes somewhere safe:' },
-  ru: { adminTitle: 'Администрирование', settingsTitle: 'Настройки', adminTabGeneral: 'Мои настройки', adminTabAccount: 'Аккаунт', accProfile: 'Открыть профиль', adminTabSite: 'Сайт', adminAppName: 'Название приложения', adminAppNameHint: 'Показывается в заголовке вкладки, шапке и именах бэкапов.', adminDefaultLang: 'Язык по умолчанию', adminDefaultLangHint: 'Язык интерфейса для новых пользователей (каждый может потом сменить свой).', adminWap: 'Включить WAP-интерфейс (старые телефоны)', adminWapHint: 'Открывает минимальный WML-интерфейс по адресу /wap/ для очень старых устройств. По умолчанию выключен.', obReplayTitle: 'Визард первого запуска', obReplay: 'Показать визард заново', obReplayHint: 'Заново открыть одноразовый визард настройки сервисов (сбрасывает флаг завершения).', adminTabTelegram: 'Telegram', adminTabMail: 'Почта', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabProjects: 'Проекты', adminProjNew: 'Новый проект', adminProjVisibility: 'Видимость', adminProjMembers: 'Участники', adminProjManage: 'Управлять', adminProjNoneSel: 'Выберите проект, чтобы управлять его участниками и настройками.', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ', llmTitle: 'ИИ-саммари (LLM)', dbTitle: 'База данных', llmHint: 'Подключите OpenAI-совместимый API (напр. llama.cpp). После включения появятся: кнопка «Саммари» на wiki-страницах и «✨ Сгенерировать» (описание + TODO) в форме задачи.', llmEnabledOn: 'Включено', llmBaseUrl: 'Базовый URL API', llmModel: 'Модель', llmApiKey: 'API-ключ', llmApiKeyOptional: 'необязательно', llmEnable: 'Включить (с проверкой подключения)', llmTest: 'Проверить подключение', llmTesting: 'Проверка…', llmOk: 'Подключение успешно', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База', dbUser: 'Пользователь', dbPath: 'Файл', adminTabAudit: 'Журнал аудита', auditTime: 'Время', auditUser: 'Пользователь', auditAction: 'Действие', auditProject: 'Проект', auditDetails: 'Детали', auditAllProjects: 'Все проекты', adminTabSecurity: 'Безопасность', twofaTitle: 'Двухфакторная аутентификация', twofaHint: 'Добавьте одноразовый код (TOTP) из приложения-аутентификатора как второй шаг входа.', twofaOn: 'Двухфакторная аутентификация включена.', twofaEnable: 'Включить 2FA', twofaDisable: 'Отключить 2FA', twofaCode: 'Код', twofaScan: 'Добавьте этот секрет в приложение-аутентификатор (или отсканируйте otpauth-ссылку), затем введите текущий код:', twofaConfirm: 'Подтвердить', twofaEnabled: '2FA включена.', twofaRecovery: 'Сохраните эти одноразовые коды восстановления в надёжном месте:' },
+  en: { adminTitle: 'Administration', settingsTitle: 'Settings', adminTabGeneral: 'My settings', adminTabAccount: 'Account', accProfile: 'Open profile', adminTabSite: 'Site', adminAppName: 'Application name', adminAppNameHint: 'Shown in the page title, header and backup names.', adminDefaultLang: 'Default language', adminDefaultLangHint: 'Interface language for new users (each user can change their own afterwards).', adminWap: 'Enable WAP interface (legacy phones)', adminWapHint: 'Exposes a minimal WML interface at /wap/ for very old devices. Off by default.', obReplayTitle: 'First-run wizard', obReplay: 'Show setup wizard again', obReplayHint: 'Re-open the one-time service-setup wizard (clears the completed flag).', adminTabTelegram: 'Telegram', adminTabMail: 'Mail', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabProjects: 'Projects', adminProjNew: 'New project', adminProjVisibility: 'Visibility', adminProjMembers: 'Members', adminProjManage: 'Manage', adminProjNoneSel: 'Select a project to manage its members and settings.', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key', gitTitle: 'Git repositories', gitHint: 'Connect GitHub/GitLab/Gitea: incoming webhooks link commits/branches/MRs to tasks by KEY-<n> / #<n>; a merged MR can auto-move the task. Add the shown webhook URL in your repo settings (with the secret).', gitAddRepo: 'Add repository', gitWebhookUrl: 'Webhook URL', gitKind: 'Provider', gitLabel: 'Label', gitRepo: 'Repository (owner/name)', gitSecret: 'Webhook secret', gitMoveCol: 'On merge → move to column', gitActivity: 'Git activity',
+llmTitle: 'AI summaries (LLM)', dbTitle: 'Database', llmHint: 'Connect an OpenAI-compatible API (e.g. llama.cpp). When enabled: a "Summary" button on wiki pages and "✨ Generate" (description + TODO) in the task form.', llmEnabledOn: 'Enabled', llmBaseUrl: 'API base URL', llmModel: 'Model', llmApiKey: 'API key', llmApiKeyOptional: 'optional', llmEnable: 'Enable (tests connection)', llmTest: 'Test connection', llmTesting: 'Testing…', llmOk: 'Connection OK', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User', dbPath: 'File', adminTabAudit: 'Audit log', auditTime: 'Time', auditUser: 'User', auditAction: 'Action', auditProject: 'Project', auditDetails: 'Details', auditAllProjects: 'All projects', adminTabSecurity: 'Security', twofaTitle: 'Two-factor authentication', twofaHint: 'Add a time-based one-time code (TOTP) from an authenticator app as a second login step.', twofaOn: 'Two-factor authentication is enabled.', twofaEnable: 'Enable 2FA', twofaDisable: 'Disable 2FA', twofaCode: 'Code', twofaScan: 'Add this secret to your authenticator app (or scan the otpauth URL), then enter the current code:', twofaConfirm: 'Confirm', twofaEnabled: '2FA enabled.', twofaRecovery: 'Save these one-time recovery codes somewhere safe:' },
+  ru: { adminTitle: 'Администрирование', settingsTitle: 'Настройки', adminTabGeneral: 'Мои настройки', adminTabAccount: 'Аккаунт', accProfile: 'Открыть профиль', adminTabSite: 'Сайт', adminAppName: 'Название приложения', adminAppNameHint: 'Показывается в заголовке вкладки, шапке и именах бэкапов.', adminDefaultLang: 'Язык по умолчанию', adminDefaultLangHint: 'Язык интерфейса для новых пользователей (каждый может потом сменить свой).', adminWap: 'Включить WAP-интерфейс (старые телефоны)', adminWapHint: 'Открывает минимальный WML-интерфейс по адресу /wap/ для очень старых устройств. По умолчанию выключен.', obReplayTitle: 'Визард первого запуска', obReplay: 'Показать визард заново', obReplayHint: 'Заново открыть одноразовый визард настройки сервисов (сбрасывает флаг завершения).', adminTabTelegram: 'Telegram', adminTabMail: 'Почта', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabProjects: 'Проекты', adminProjNew: 'Новый проект', adminProjVisibility: 'Видимость', adminProjMembers: 'Участники', adminProjManage: 'Управлять', adminProjNoneSel: 'Выберите проект, чтобы управлять его участниками и настройками.', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ', gitTitle: 'Git-репозитории', gitHint: 'Подключите GitHub/GitLab/Gitea: входящие вебхуки связывают коммиты/ветки/MR с задачами по KEY-<n> / #<n>; смёрженный MR может авто-переместить задачу. Добавьте показанный webhook URL в настройках репозитория (с секретом).', gitAddRepo: 'Добавить репозиторий', gitWebhookUrl: 'Webhook URL', gitKind: 'Провайдер', gitLabel: 'Метка', gitRepo: 'Репозиторий (owner/name)', gitSecret: 'Секрет вебхука', gitMoveCol: 'При мёрже → в колонку', gitActivity: 'Git-активность',
+llmTitle: 'ИИ-саммари (LLM)', dbTitle: 'База данных', llmHint: 'Подключите OpenAI-совместимый API (напр. llama.cpp). После включения появятся: кнопка «Саммари» на wiki-страницах и «✨ Сгенерировать» (описание + TODO) в форме задачи.', llmEnabledOn: 'Включено', llmBaseUrl: 'Базовый URL API', llmModel: 'Модель', llmApiKey: 'API-ключ', llmApiKeyOptional: 'необязательно', llmEnable: 'Включить (с проверкой подключения)', llmTest: 'Проверить подключение', llmTesting: 'Проверка…', llmOk: 'Подключение успешно', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База', dbUser: 'Пользователь', dbPath: 'Файл', adminTabAudit: 'Журнал аудита', auditTime: 'Время', auditUser: 'Пользователь', auditAction: 'Действие', auditProject: 'Проект', auditDetails: 'Детали', auditAllProjects: 'Все проекты', adminTabSecurity: 'Безопасность', twofaTitle: 'Двухфакторная аутентификация', twofaHint: 'Добавьте одноразовый код (TOTP) из приложения-аутентификатора как второй шаг входа.', twofaOn: 'Двухфакторная аутентификация включена.', twofaEnable: 'Включить 2FA', twofaDisable: 'Отключить 2FA', twofaCode: 'Код', twofaScan: 'Добавьте этот секрет в приложение-аутентификатор (или отсканируйте otpauth-ссылку), затем введите текущий код:', twofaConfirm: 'Подтвердить', twofaEnabled: '2FA включена.', twofaRecovery: 'Сохраните эти одноразовые коды восстановления в надёжном месте:' },
   es: { adminTitle: 'Administración', adminTabUsers: 'Usuarios', adminTabBoard: 'Tablero', adminTabServices: 'Servicios', adminTabIntegrations: 'Integraciones', adminTabData: 'Datos', adminTabMailServer: 'Servidor de correo', adminTabMailboxes: 'Buzones' },
   fr: { adminTitle: 'Administration', adminTabUsers: 'Utilisateurs', adminTabBoard: 'Tableau', adminTabServices: 'Services', adminTabIntegrations: 'Intégrations', adminTabData: 'Données', adminTabMailServer: 'Serveur de messagerie', adminTabMailboxes: 'Boîtes' },
   de: { adminTitle: 'Verwaltung', adminTabUsers: 'Benutzer', adminTabBoard: 'Board', adminTabServices: 'Dienste', adminTabIntegrations: 'Integrationen', adminTabData: 'Daten', adminTabMailServer: 'Mailserver', adminTabMailboxes: 'Postfächer' },
@@ -33,7 +35,7 @@ const ADMIN_TABS = [
   { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true },
   // Admin-only service config (bot token, SSO, LLM, DB). Personal Telegram
   // linking lives in the Account tab instead.
-  { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section', 'llm-section', 'db-section'], admin: true },
+  { key: 'integrations', i: 'adminTabIntegrations', sections: ['telegram-section', 'sso-section', 'llm-section', 'db-section', 'git-section'], admin: true },
   // Admin configuration
   { key: 'board', i: 'adminTabBoard', sections: ['columns-section', 'epics-section', 'sprints-section', 'tags-section'], admin: true },
   { key: 'projects', i: 'adminTabProjects', render: renderAdminProjects, admin: true },
@@ -347,6 +349,7 @@ function adminSetTab(k) {
   renderAdminTabs();
   const td = ADMIN_TABS.find(t => t.key === k);
   if (td && typeof td.render === 'function') td.render(document.getElementById('admin-panel-' + k));
+  if (k === 'integrations' && typeof gitLoadRepos === 'function') gitLoadRepos();
 }
 
 function renderAdminView() {
@@ -434,6 +437,80 @@ async function adminSaveAppName() {
     if (typeof applyAppName === 'function') applyAppName(r.name || name || 'Madok.Works');
     if (typeof toast === 'function') toast(t('settingsSaved') || 'OK', 'success');
   } catch (e) { alert(e.message); }
+}
+
+// === Git integration (Settings → Integrations) ===
+async function gitLoadRepos() {
+  const el = document.getElementById('git-repos-list');
+  if (!el) return;
+  const pid = (typeof currentProjectId !== 'undefined' && currentProjectId) || 1;
+  let repos = [];
+  try { repos = await api('/api/integrations/git/repos?project=' + pid); } catch (e) { el.innerHTML = ''; return; }
+  const origin = location.origin;
+  el.innerHTML = repos.map(r => `<div class="git-repo-row">
+      <div><b>${esc(r.label || r.repo || r.kind)}</b> <span class="admin-note">${esc(r.kind)}${r.repo ? ' · ' + esc(r.repo) : ''}</span></div>
+      <div class="admin-note">${t('gitWebhookUrl')}: <code>${origin}/api/integrations/git/webhook/${r.id}</code></div>
+      <div class="admin-row">
+        <button class="btn btn-ghost btn-sm" onclick="gitEditRepo(${r.id})">${t('edit')}</button>
+        <button class="btn btn-ghost btn-sm admin-danger" onclick="gitDeleteRepo(${r.id})">${t('delete')}</button>
+      </div>
+    </div>`).join('') || `<div class="admin-note">${t('adminNoData')}</div>`;
+}
+
+function gitRepoModal(repo) {
+  const pid = (typeof currentProjectId !== 'undefined' && currentProjectId) || 1;
+  const cols = (typeof state !== 'undefined' && state.columns) ? state.columns : [];
+  const kinds = ['github', 'gitlab', 'gitea'];
+  const kindOpts = kinds.map(k => `<option value="${k}" ${repo && repo.kind === k ? 'selected' : ''}>${k}</option>`).join('');
+  const colOpts = `<option value="">—</option>` + cols.map(c => `<option value="${c.id}" ${repo && repo.move_column_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML = `<div class="modal"><div class="modal-header"><h2>${t('gitTitle')}</h2>
+      <button class="btn-icon" onclick="this.closest('.modal-overlay').remove()">&#10005;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>${t('gitKind')}</label><select id="git-kind">${kindOpts}</select></div>
+      <div class="field"><label>${t('gitLabel')}</label><input id="git-label" maxlength="60" value="${repo ? escAttr(repo.label) : ''}"></div>
+      <div class="field"><label>${t('gitRepo')}</label><input id="git-repo" maxlength="200" placeholder="owner/name" value="${repo ? escAttr(repo.repo) : ''}"></div>
+      <div class="field"><label>${t('gitSecret')}</label><input id="git-secret" maxlength="200" placeholder="${repo && repo.secret === 'set' ? '••••••' : ''}" value=""></div>
+      <div class="field"><label>${t('gitMoveCol')}</label><select id="git-move">${colOpts}</select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">${t('cancel')}</button>
+      <button class="btn btn-primary" onclick="gitSaveRepo(${repo ? repo.id : 0})">${t('adminSave')}</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+}
+
+function gitAddRepo() { gitRepoModal(null); }
+async function gitEditRepo(id) {
+  const pid = (typeof currentProjectId !== 'undefined' && currentProjectId) || 1;
+  let repos = [];
+  try { repos = await api('/api/integrations/git/repos?project=' + pid); } catch (e) { return; }
+  const repo = repos.find(r => r.id === id);
+  if (repo) gitRepoModal(repo);
+}
+async function gitSaveRepo(id) {
+  const pid = (typeof currentProjectId !== 'undefined' && currentProjectId) || 1;
+  const mv = document.getElementById('git-move').value;
+  const body = {
+    kind: document.getElementById('git-kind').value,
+    label: document.getElementById('git-label').value.trim(),
+    repo: document.getElementById('git-repo').value.trim(),
+    secret: document.getElementById('git-secret').value,
+    move_column_id: mv ? Number(mv) : null,
+  };
+  // Empty secret on edit → keep current (server treats "set" sentinel specially).
+  if (id && body.secret === '') body.secret = 'set';
+  try {
+    if (id) await api('/api/integrations/git/repos/' + id, 'PUT', body);
+    else await api('/api/integrations/git/repos?project=' + pid, 'POST', body);
+    document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
+    gitLoadRepos();
+  } catch (e) { alert(e.message); }
+}
+async function gitDeleteRepo(id) {
+  if (!await uiConfirm(t('delete') + '?')) return;
+  try { await api('/api/integrations/git/repos/' + id, 'DELETE'); gitLoadRepos(); } catch (e) { alert(e.message); }
 }
 
 // === Mail tab (per-user distribution rules + admin mailboxes/aliases) ===
