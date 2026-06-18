@@ -547,6 +547,22 @@ func (h *Handler) appShort() string {
 	return s
 }
 
+// supportedLangs mirrors the LANGS keys in the front-end. Used to validate the
+// language chosen during admin setup / in Site settings.
+var supportedLangs = map[string]bool{
+	"ru": true, "en": true, "zh": true, "es": true, "fr": true,
+	"de": true, "pt": true, "ja": true, "ko": true, "ar": true,
+}
+
+// defaultLang is the interface language new users start in (chosen at admin
+// registration, changeable in Settings → Site). Falls back to Russian.
+func (h *Handler) defaultLang() string {
+	if l := strings.TrimSpace(h.store.GetSetting("default_lang")); supportedLangs[l] {
+		return l
+	}
+	return "ru"
+}
+
 // appSlug is a filesystem/URL-safe form of the app name (for backup filenames).
 func (h *Handler) appSlug() string {
 	var b strings.Builder
@@ -580,11 +596,13 @@ func (h *Handler) serveBrandedHTML(w http.ResponseWriter, path string) {
 	jsName, _ := json.Marshal(name)
 	short := h.appShort()
 	jsShort, _ := json.Marshal(short)
+	jsLang, _ := json.Marshal(h.defaultLang())
 	s := string(data)
 	s = strings.ReplaceAll(s, "__APP_NAME_JS__", string(jsName))
 	s = strings.ReplaceAll(s, "__APP_NAME__", html.EscapeString(name))
 	s = strings.ReplaceAll(s, "__APP_SHORT_JS__", string(jsShort))
 	s = strings.ReplaceAll(s, "__APP_SHORT__", html.EscapeString(short))
+	s = strings.ReplaceAll(s, "__DEFAULT_LANG_JS__", string(jsLang))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(s))
 }
@@ -1998,6 +2016,7 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
+		Lang       string `json:"lang"`
 		DBExternal bool   `json:"db_external"`
 		DBHost     string `json:"db_host"`
 		DBPort     string `json:"db_port"`
@@ -2012,6 +2031,11 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if req.Username == "" || len(req.Password) < minPasswordLen {
 		http.Error(w, "username required, password min 6 chars", http.StatusBadRequest)
 		return
+	}
+	// The flag chosen on the registration page becomes the default interface
+	// language for everyone (the admin's own browser remembers it client-side).
+	if !supportedLangs[req.Lang] {
+		req.Lang = ""
 	}
 
 	// First-run choice of an external PostgreSQL: provision it (connect +
@@ -2029,6 +2053,9 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 			newStore.Close()
 			http.Error(w, "create admin in PostgreSQL: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if req.Lang != "" {
+			newStore.SetSetting("default_lang", req.Lang)
 		}
 		token, err := newStore.CreateSession(id)
 		if err != nil {
@@ -2055,6 +2082,9 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if req.Lang != "" {
+		h.store.SetSetting("default_lang", req.Lang)
 	}
 	token, err := h.store.CreateSession(id)
 	if err != nil {
@@ -2884,7 +2914,7 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		jsonResp(w, map[string]string{"name": h.appName()})
+		jsonResp(w, map[string]string{"name": h.appName(), "default_lang": h.defaultLang()})
 	case http.MethodPost:
 		if !user.IsAdmin {
 			http.Error(w, "admin only", http.StatusForbidden)
@@ -2892,6 +2922,7 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		var req struct {
 			Name string `json:"name"`
+			Lang string `json:"lang"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -2906,7 +2937,15 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		jsonResp(w, map[string]string{"status": "ok", "name": h.appName()})
+		// Default interface language is optional — only update when a supported
+		// value is sent, so a name-only POST never clears it.
+		if req.Lang != "" && supportedLangs[req.Lang] {
+			if err := h.store.SetSetting("default_lang", req.Lang); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		jsonResp(w, map[string]string{"status": "ok", "name": h.appName(), "default_lang": h.defaultLang()})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

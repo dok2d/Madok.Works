@@ -26,10 +26,30 @@ body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',san
 .btn-sso{display:block;width:100%;padding:10px;border:1px solid var(--bg4);border-radius:var(--radius);cursor:pointer;font-size:.9rem;font-family:inherit;font-weight:600;transition:all .15s;background:var(--bg3);color:var(--fg);margin-top:8px;text-align:center;text-decoration:none}
 .btn-sso:hover{border-color:var(--accent);background:var(--bg4)}
 .btn-sso svg{vertical-align:middle;margin-right:6px}
+.login-card{position:relative}
+.lang-picker{position:absolute;top:14px;right:14px;z-index:20}
+.lang-current{display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:5px 8px;cursor:pointer;transition:border .15s,background .15s;user-select:none}
+.lang-current:hover{border-color:var(--accent)}
+.lang-current .lang-flag{font-size:1.15rem;line-height:1}
+.lang-current .lang-caret{color:var(--fg3);font-size:.65rem;transition:transform .18s}
+.lang-picker.open .lang-current{border-color:var(--accent)}
+.lang-picker.open .lang-current .lang-caret{transform:rotate(180deg)}
+.lang-menu{position:absolute;top:calc(100% + 6px);right:0;min-width:150px;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.45);padding:4px;opacity:0;transform:translateY(-6px) scale(.97);transform-origin:top right;pointer-events:none;transition:opacity .16s,transform .16s;max-height:280px;overflow-y:auto}
+.lang-picker.open .lang-menu{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+.lang-opt{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:var(--fg);font-family:inherit;font-size:.85rem;padding:7px 9px;border-radius:var(--radius);cursor:pointer;white-space:nowrap}
+.lang-opt:hover{background:var(--bg4)}
+.lang-opt.sel{color:var(--accent2);font-weight:600}
+.lang-opt .lang-flag{font-size:1.1rem;line-height:1}
 </style>
 </head>
 <body>
 <div class="login-card">
+  <div class="lang-picker" id="lang-picker" style="display:none">
+    <div class="lang-current" onclick="toggleLangMenu(event)" title="Язык интерфейса">
+      <span class="lang-flag">🇷🇺</span><span class="lang-caret">▼</span>
+    </div>
+    <div class="lang-menu"></div>
+  </div>
   <h1>&#x2B21; __APP_NAME__</h1>
   <div class="subtitle" id="subtitle">Вход в систему</div>
 
@@ -105,6 +125,58 @@ body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',san
 let isSetup = false;
 let resetUsername = '';
 
+// Language picker shown during admin registration: the chosen flag sets the
+// admin's own interface language and the default for everyone else.
+const SETUP_LANGS = [
+  {code:'ru', flag:'🇷🇺', name:'Русский'},
+  {code:'en', flag:'🇬🇧', name:'English'},
+  {code:'zh', flag:'🇨🇳', name:'中文'},
+  {code:'es', flag:'🇪🇸', name:'Español'},
+  {code:'fr', flag:'🇫🇷', name:'Français'},
+  {code:'de', flag:'🇩🇪', name:'Deutsch'},
+  {code:'pt', flag:'🇵🇹', name:'Português'},
+  {code:'ja', flag:'🇯🇵', name:'日本語'},
+  {code:'ko', flag:'🇰🇷', name:'한국어'},
+  {code:'ar', flag:'🇸🇦', name:'العربية'},
+];
+let selectedLang = 'ru';
+
+// detectBrowserLang picks the first browser-preferred language we support;
+// falls back to Russian when there's no match or no info.
+function detectBrowserLang() {
+  const codes = SETUP_LANGS.map(l => l.code);
+  const cands = (navigator.languages && navigator.languages.length)
+    ? navigator.languages : [navigator.language || ''];
+  for (const c of cands) {
+    const two = (c || '').slice(0, 2).toLowerCase();
+    if (codes.includes(two)) return two;
+  }
+  return 'ru';
+}
+
+function renderLangPicker() {
+  const wrap = document.getElementById('lang-picker');
+  if (!wrap) return;
+  const cur = SETUP_LANGS.find(l => l.code === selectedLang) || SETUP_LANGS[0];
+  wrap.querySelector('.lang-current .lang-flag').textContent = cur.flag;
+  wrap.querySelector('.lang-menu').innerHTML = SETUP_LANGS.map(l =>
+    `<button type="button" class="lang-opt${l.code === selectedLang ? ' sel' : ''}" onclick="pickLang('${l.code}')"><span class="lang-flag">${l.flag}</span> ${escHTML(l.name)}</button>`
+  ).join('');
+}
+function toggleLangMenu(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('lang-picker').classList.toggle('open');
+}
+function pickLang(code) {
+  selectedLang = code;
+  renderLangPicker();
+  document.getElementById('lang-picker').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  const p = document.getElementById('lang-picker');
+  if (p && p.classList.contains('open') && !p.contains(e.target)) p.classList.remove('open');
+});
+
 async function checkSetup() {
   try {
     const r = await fetch('/api/auth/me');
@@ -117,6 +189,9 @@ async function checkSetup() {
       const text = await r.text();
       if (text.trim() === 'setup required') {
         isSetup = true;
+        selectedLang = detectBrowserLang();
+        renderLangPicker();
+        document.getElementById('lang-picker').style.display = '';
         document.getElementById('subtitle').textContent = 'Создание администратора';
         document.getElementById('submit-btn').textContent = 'Создать и войти';
         document.getElementById('setup-note').style.display = '';
@@ -179,7 +254,7 @@ async function submit() {
       errorEl.textContent = 'Пароль минимум 6 символов';
       return;
     }
-    const payload = {username, password};
+    const payload = {username, password, lang: selectedLang};
     const ext = document.getElementById('db-external');
     if (ext && ext.checked) {
       Object.assign(payload, dbPayload(), {db_external: true});
@@ -200,6 +275,7 @@ async function submit() {
       }
       let data = {};
       try { data = await r.json(); } catch {}
+      try { localStorage.setItem('kanban-lang', selectedLang); } catch {}
       if (data.restarting) {
         document.getElementById('subtitle').textContent = 'Применение настроек…';
         errorEl.style.color = 'var(--accent2)';
