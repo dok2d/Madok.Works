@@ -2147,13 +2147,27 @@ function tourShow() {
       <button class="btn btn-ghost btn-sm" onclick="tourEnd()">${esc(t('tourSkip'))}</button>
       <button class="btn btn-primary btn-sm" onclick="tourNext()">${esc(last ? t('tourDone') : t('tourNext'))}</button>
     </div>`;
-  // Position the popover below the target (or above if no room).
+  // Position the popover: prefer below the target, then above; for tall edge
+  // elements (e.g. the full-height services rail) put it to the side so it never
+  // covers the highlighted element.
   pop.style.visibility = 'hidden';
   pop.style.left = '0px'; pop.style.top = '0px';
-  const pw = Math.min(320, window.innerWidth - 20);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const pw = Math.min(320, vw - 20);
   pop.style.width = pw + 'px';
-  let top = r.bottom + 12, left = Math.min(Math.max(8, r.left), window.innerWidth - pw - 8);
-  if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - pop.offsetHeight - 12);
+  const ph = pop.offsetHeight;
+  const clampX = x => Math.min(Math.max(8, x), vw - pw - 8);
+  const clampY = y => Math.min(Math.max(8, y), vh - ph - 8);
+  let top, left;
+  if (r.bottom + 12 + ph <= vh - 8) {            // below
+    top = r.bottom + 12; left = clampX(r.left);
+  } else if (r.top - 12 - ph >= 8) {             // above
+    top = r.top - 12 - ph; left = clampX(r.left);
+  } else if (r.right + 12 + pw <= vw - 8) {      // to the right
+    left = r.right + 12; top = clampY(r.top);
+  } else {                                        // to the left
+    left = Math.max(8, r.left - 12 - pw); top = clampY(r.top);
+  }
   pop.style.left = left + 'px';
   pop.style.top = top + 'px';
   pop.style.visibility = 'visible';
