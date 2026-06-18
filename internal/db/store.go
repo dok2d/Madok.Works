@@ -663,7 +663,7 @@ func (s *Store) migrate() error {
 
 	// Seed the default project "Общее" (open to everyone, key GEN). Must exist
 	// before any project-scoped seeding. Idempotent via ON CONFLICT.
-	if _, err := s.db.Exec(`INSERT INTO projects(id,name,key,description,visibility) VALUES(1,'Общее','GEN','',?) ON CONFLICT(id) DO NOTHING`, "open"); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO projects(id,name,key,description,visibility) VALUES(1,'General','GEN','',?) ON CONFLICT(id) DO NOTHING`, "open"); err != nil {
 		return fmt.Errorf("seed default project: %w", err)
 	}
 	// Postgres IDENTITY isn't advanced by the explicit id=1 insert, so the next

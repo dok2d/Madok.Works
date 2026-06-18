@@ -1462,7 +1462,7 @@ async function openProjectSettings(id) {
       <div class="field"><label>${t('projectName')}</label><input id="proj-name" value="${escAttr(cur.name)}" maxlength="200"></div>
       <div class="field"><label>${t('description')}</label><input id="proj-desc" value="${escAttr(cur.description)}" maxlength="500"></div>
       <div class="field"><label>${t('projectVisibility')}</label>
-        <select id="proj-vis" ${isDefault ? 'disabled title="Общее"' : ''}>
+        <select id="proj-vis" ${isDefault ? 'disabled title="General"' : ''}>
           <option value="open" ${cur.visibility === 'open' ? 'selected' : ''}>${t('projectOpen')}</option>
           <option value="restricted" ${cur.visibility === 'restricted' ? 'selected' : ''}>${t('projectRestricted')}</option>
         </select></div>

@@ -76,7 +76,7 @@ func convert(jsonBytes []byte) ([]byte, error) {
 	if _, done := m["projects"]; !done {
 		m["projects"] = []any{map[string]any{
 			"id":          1,
-			"name":        "Общее",
+			"name":        "General",
 			"key":         "GEN",
 			"description": "",
 			"visibility":  "open",

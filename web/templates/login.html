@@ -45,51 +45,51 @@ body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',san
 <body>
 <div class="login-card">
   <div class="lang-picker" id="lang-picker" style="display:none">
-    <div class="lang-current" onclick="toggleLangMenu(event)" title="Язык интерфейса">
+    <div class="lang-current" onclick="toggleLangMenu(event)" data-i18n-title="langTitle" title="Язык интерфейса">
       <span class="lang-flag">🇷🇺</span><span class="lang-caret">▼</span>
     </div>
     <div class="lang-menu"></div>
   </div>
   <h1>&#x2B21; __APP_NAME__</h1>
-  <div class="subtitle" id="subtitle">Вход в систему</div>
+  <div class="subtitle" id="subtitle" data-i18n="subtitleLogin">Вход в систему</div>
 
   <div id="login-form">
     <div class="field">
-      <label for="username">Имя пользователя</label>
+      <label for="username" data-i18n="username">Имя пользователя</label>
       <input type="text" id="username" autocomplete="username" autofocus>
     </div>
     <div class="field">
-      <label for="password">Пароль</label>
+      <label for="password" data-i18n="password">Пароль</label>
       <input type="password" id="password" autocomplete="current-password">
     </div>
     <div id="password-confirm-field" class="field" style="display:none">
-      <label for="password2">Подтверждение пароля</label>
+      <label for="password2" data-i18n="passwordConfirm">Подтверждение пароля</label>
       <input type="password" id="password2" autocomplete="new-password">
     </div>
     <div id="totp-field" class="field" style="display:none">
-      <label for="totp-code">Код двухфакторной аутентификации</label>
-      <input type="text" id="totp-code" autocomplete="one-time-code" inputmode="text" placeholder="123456 или код восстановления">
+      <label for="totp-code" data-i18n="totpLabel">Код двухфакторной аутентификации</label>
+      <input type="text" id="totp-code" autocomplete="one-time-code" inputmode="text" data-i18n-ph="totpPlaceholder" placeholder="123456 или код восстановления">
     </div>
     <div id="db-setup" style="display:none;margin:14px 0;padding-top:14px;border-top:1px solid var(--bg4)">
       <label style="display:flex;align-items:center;gap:8px;color:var(--fg2);font-size:.85rem;cursor:pointer">
-        <input type="checkbox" id="db-external" onchange="toggleDbFields()" style="width:auto;margin:0"> Использовать внешний PostgreSQL
+        <input type="checkbox" id="db-external" onchange="toggleDbFields()" style="width:auto;margin:0"> <span data-i18n="dbExternal">Использовать внешний PostgreSQL</span>
       </label>
       <div id="db-fields" style="display:none;margin-top:12px">
-        <div class="field"><label for="db-host">Хост</label><input type="text" id="db-host" placeholder="db или 192.168.1.10"></div>
-        <div class="field"><label for="db-port">Порт</label><input type="text" id="db-port" placeholder="5432"></div>
-        <div class="field"><label for="db-name">База данных</label><input type="text" id="db-name" placeholder="kanban"></div>
-        <div class="field"><label for="db-user">Пользователь</label><input type="text" id="db-user" placeholder="kanban"></div>
-        <div class="field"><label for="db-pass">Пароль БД</label><input type="password" id="db-pass" autocomplete="off"></div>
-        <button class="btn" type="button" onclick="testDb()" style="background:var(--bg3);color:var(--fg)">Проверить подключение</button>
+        <div class="field"><label for="db-host" data-i18n="dbHost">Хост</label><input type="text" id="db-host" placeholder="db или 192.168.1.10"></div>
+        <div class="field"><label for="db-port" data-i18n="dbPort">Порт</label><input type="text" id="db-port" placeholder="5432"></div>
+        <div class="field"><label for="db-name" data-i18n="dbName">База данных</label><input type="text" id="db-name" placeholder="kanban"></div>
+        <div class="field"><label for="db-user" data-i18n="dbUser">Пользователь</label><input type="text" id="db-user" placeholder="kanban"></div>
+        <div class="field"><label for="db-pass" data-i18n="dbPass">Пароль БД</label><input type="password" id="db-pass" autocomplete="off"></div>
+        <button class="btn" type="button" onclick="testDb()" data-i18n="dbTest" style="background:var(--bg3);color:var(--fg)">Проверить подключение</button>
         <div class="setup-note" id="db-test-status" style="margin-top:8px"></div>
       </div>
     </div>
-    <button class="btn" id="submit-btn" onclick="submit()">Войти</button>
+    <button class="btn" id="submit-btn" onclick="submit()" data-i18n="signIn">Войти</button>
     <div class="error" id="error"></div>
     <div id="forgot-link" style="text-align:center;margin-top:12px">
-      <a href="#" onclick="showResetForm();return false" style="color:var(--accent2);font-size:.82rem;text-decoration:none">Забыли пароль?</a>
+      <a href="#" onclick="showResetForm();return false" data-i18n="forgot" style="color:var(--accent2);font-size:.82rem;text-decoration:none">Забыли пароль?</a>
     </div>
-    <div class="setup-note" id="setup-note" style="display:none">
+    <div class="setup-note" id="setup-note" data-i18n="setupNote" style="display:none">
       Первый запуск — создайте учётную запись администратора
     </div>
     <div id="sso-buttons" style="display:none"></div>
@@ -98,25 +98,25 @@ body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',san
   <div id="reset-form" style="display:none">
     <div id="reset-step-1">
       <div class="field">
-        <label for="reset-username">Имя пользователя</label>
+        <label for="reset-username" data-i18n="username">Имя пользователя</label>
         <input type="text" id="reset-username" autocomplete="username">
       </div>
-      <button class="btn" onclick="requestReset()">Отправить код в Telegram</button>
+      <button class="btn" onclick="requestReset()" data-i18n="resetSend">Отправить код в Telegram</button>
     </div>
     <div id="reset-step-2" style="display:none">
       <div class="field">
-        <label for="reset-code">Код из Telegram</label>
+        <label for="reset-code" data-i18n="resetCodeLabel">Код из Telegram</label>
         <input type="text" id="reset-code" autocomplete="off" maxlength="8" inputmode="numeric">
       </div>
       <div class="field">
-        <label for="reset-newpw">Новый пароль</label>
+        <label for="reset-newpw" data-i18n="resetNewPw">Новый пароль</label>
         <input type="password" id="reset-newpw" autocomplete="new-password">
       </div>
-      <button class="btn" onclick="confirmReset()">Сменить пароль</button>
+      <button class="btn" onclick="confirmReset()" data-i18n="resetChange">Сменить пароль</button>
     </div>
     <div class="error" id="reset-error"></div>
     <div style="text-align:center;margin-top:12px">
-      <a href="#" onclick="hideResetForm();return false" style="color:var(--accent2);font-size:.82rem;text-decoration:none">← Вернуться ко входу</a>
+      <a href="#" onclick="hideResetForm();return false" data-i18n="backToLogin" style="color:var(--accent2);font-size:.82rem;text-decoration:none">← Вернуться ко входу</a>
     </div>
   </div>
 </div>
@@ -140,6 +140,103 @@ const SETUP_LANGS = [
   {code:'ar', flag:'🇸🇦', name:'العربية'},
 ];
 let selectedLang = 'ru';
+
+// Login-page localization. en holds every key (base); other languages override
+// the visible strings and fall back to en for the rest.
+const LOGIN_I18N = {
+  en: { langTitle: 'Interface language', subtitleLogin: 'Sign in', subtitleSetup: 'Create administrator',
+    subtitleReset: 'Password recovery', subtitleApplying: 'Applying settings…',
+    username: 'Username', password: 'Password', passwordConfirm: 'Confirm password',
+    totpLabel: 'Two-factor code', totpPlaceholder: '123456 or recovery code',
+    dbExternal: 'Use external PostgreSQL', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User',
+    dbPass: 'DB password', dbTest: 'Test connection', dbTesting: 'Testing…', dbOk: '✓ Connection successful',
+    signIn: 'Sign in', createAndSignIn: 'Create and sign in', forgot: 'Forgot password?',
+    setupNote: 'First launch — create an administrator account',
+    resetSend: 'Send code to Telegram', resetCodeLabel: 'Code from Telegram', resetNewPw: 'New password',
+    resetChange: 'Change password', backToLogin: '← Back to login', titleSuffix: 'Sign in',
+    errEnterCreds: 'Enter username and password', errPwMismatch: 'Passwords do not match',
+    errPwShort: 'Password min 6 characters', errFillPg: 'Fill in host, database and PostgreSQL user',
+    restartingMsg: 'PostgreSQL connection saved. Restarting the server…',
+    errBadCreds: 'Wrong username or password', enterTotp: 'Enter the two-factor code', badTotp: 'Invalid code',
+    errPrefix: 'Error: ', resetEnterUser: 'Enter username',
+    resetSentMsg: 'If the account is linked to Telegram, a code was sent (10 min)',
+    resetFill: 'Fill in all fields', resetBadCode: 'Invalid or expired code',
+    resetDone: 'Password changed! Sign in with the new one.', errGeneric: 'Error',
+    or: 'or', ldapHint: 'use your domain login and password above' },
+  ru: { langTitle: 'Язык интерфейса', subtitleLogin: 'Вход в систему', subtitleSetup: 'Создание администратора',
+    subtitleReset: 'Восстановление пароля', subtitleApplying: 'Применение настроек…',
+    username: 'Имя пользователя', password: 'Пароль', passwordConfirm: 'Подтверждение пароля',
+    totpLabel: 'Код двухфакторной аутентификации', totpPlaceholder: '123456 или код восстановления',
+    dbExternal: 'Использовать внешний PostgreSQL', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База данных', dbUser: 'Пользователь',
+    dbPass: 'Пароль БД', dbTest: 'Проверить подключение', dbTesting: 'Проверка…', dbOk: '✓ Подключение успешно',
+    signIn: 'Войти', createAndSignIn: 'Создать и войти', forgot: 'Забыли пароль?',
+    setupNote: 'Первый запуск — создайте учётную запись администратора',
+    resetSend: 'Отправить код в Telegram', resetCodeLabel: 'Код из Telegram', resetNewPw: 'Новый пароль',
+    resetChange: 'Сменить пароль', backToLogin: '← Вернуться ко входу', titleSuffix: 'Вход',
+    errEnterCreds: 'Введите имя пользователя и пароль', errPwMismatch: 'Пароли не совпадают',
+    errPwShort: 'Пароль минимум 6 символов', errFillPg: 'Заполните хост, базу и пользователя PostgreSQL',
+    restartingMsg: 'Подключение к PostgreSQL сохранено. Перезапуск сервера…',
+    errBadCreds: 'Неверное имя пользователя или пароль', enterTotp: 'Введите код двухфакторной аутентификации', badTotp: 'Неверный код',
+    errPrefix: 'Ошибка: ', resetEnterUser: 'Введите имя пользователя',
+    resetSentMsg: 'Если аккаунт привязан к Telegram, код будет отправлен (10 мин)',
+    resetFill: 'Заполните все поля', resetBadCode: 'Неверный или просроченный код',
+    resetDone: 'Пароль изменён! Войдите с новым паролем.', errGeneric: 'Ошибка',
+    or: 'или', ldapHint: 'используйте доменный логин и пароль выше' },
+  zh: { langTitle: '界面语言', subtitleLogin: '登录', subtitleSetup: '创建管理员', subtitleReset: '找回密码',
+    username: '用户名', password: '密码', passwordConfirm: '确认密码', totpLabel: '两步验证码',
+    signIn: '登录', createAndSignIn: '创建并登录', forgot: '忘记密码？', setupNote: '首次启动 — 创建管理员账户',
+    resetSend: '发送验证码到 Telegram', resetCodeLabel: 'Telegram 验证码', resetNewPw: '新密码',
+    resetChange: '修改密码', backToLogin: '← 返回登录', titleSuffix: '登录', dbExternal: '使用外部 PostgreSQL' },
+  es: { langTitle: 'Idioma de la interfaz', subtitleLogin: 'Iniciar sesión', subtitleSetup: 'Crear administrador', subtitleReset: 'Recuperar contraseña',
+    username: 'Usuario', password: 'Contraseña', passwordConfirm: 'Confirmar contraseña', totpLabel: 'Código de doble factor',
+    signIn: 'Entrar', createAndSignIn: 'Crear y entrar', forgot: '¿Olvidó la contraseña?', setupNote: 'Primer inicio: cree una cuenta de administrador',
+    resetSend: 'Enviar código a Telegram', resetCodeLabel: 'Código de Telegram', resetNewPw: 'Nueva contraseña',
+    resetChange: 'Cambiar contraseña', backToLogin: '← Volver al inicio', titleSuffix: 'Entrar', dbExternal: 'Usar PostgreSQL externo' },
+  fr: { langTitle: "Langue de l'interface", subtitleLogin: 'Connexion', subtitleSetup: "Créer l'administrateur", subtitleReset: 'Récupération du mot de passe',
+    username: "Nom d'utilisateur", password: 'Mot de passe', passwordConfirm: 'Confirmer le mot de passe', totpLabel: 'Code à deux facteurs',
+    signIn: 'Se connecter', createAndSignIn: 'Créer et se connecter', forgot: 'Mot de passe oublié ?', setupNote: 'Premier lancement — créez un compte administrateur',
+    resetSend: 'Envoyer le code sur Telegram', resetCodeLabel: 'Code Telegram', resetNewPw: 'Nouveau mot de passe',
+    resetChange: 'Changer le mot de passe', backToLogin: '← Retour à la connexion', titleSuffix: 'Connexion', dbExternal: 'Utiliser PostgreSQL externe' },
+  de: { langTitle: 'Sprache der Oberfläche', subtitleLogin: 'Anmelden', subtitleSetup: 'Administrator erstellen', subtitleReset: 'Passwort wiederherstellen',
+    username: 'Benutzername', password: 'Passwort', passwordConfirm: 'Passwort bestätigen', totpLabel: 'Zwei-Faktor-Code',
+    signIn: 'Anmelden', createAndSignIn: 'Erstellen und anmelden', forgot: 'Passwort vergessen?', setupNote: 'Erster Start — erstellen Sie ein Administratorkonto',
+    resetSend: 'Code an Telegram senden', resetCodeLabel: 'Code aus Telegram', resetNewPw: 'Neues Passwort',
+    resetChange: 'Passwort ändern', backToLogin: '← Zurück zur Anmeldung', titleSuffix: 'Anmelden', dbExternal: 'Externes PostgreSQL verwenden' },
+  pt: { langTitle: 'Idioma da interface', subtitleLogin: 'Entrar', subtitleSetup: 'Criar administrador', subtitleReset: 'Recuperar senha',
+    username: 'Usuário', password: 'Senha', passwordConfirm: 'Confirmar senha', totpLabel: 'Código de dois fatores',
+    signIn: 'Entrar', createAndSignIn: 'Criar e entrar', forgot: 'Esqueceu a senha?', setupNote: 'Primeira execução — crie uma conta de administrador',
+    resetSend: 'Enviar código ao Telegram', resetCodeLabel: 'Código do Telegram', resetNewPw: 'Nova senha',
+    resetChange: 'Alterar senha', backToLogin: '← Voltar ao login', titleSuffix: 'Entrar', dbExternal: 'Usar PostgreSQL externo' },
+  ja: { langTitle: 'インターフェースの言語', subtitleLogin: 'ログイン', subtitleSetup: '管理者を作成', subtitleReset: 'パスワードの復旧',
+    username: 'ユーザー名', password: 'パスワード', passwordConfirm: 'パスワードの確認', totpLabel: '二要素コード',
+    signIn: 'ログイン', createAndSignIn: '作成してログイン', forgot: 'パスワードをお忘れですか？', setupNote: '初回起動 — 管理者アカウントを作成してください',
+    resetSend: 'Telegram にコードを送信', resetCodeLabel: 'Telegram のコード', resetNewPw: '新しいパスワード',
+    resetChange: 'パスワードを変更', backToLogin: '← ログインに戻る', titleSuffix: 'ログイン', dbExternal: '外部 PostgreSQL を使用' },
+  ko: { langTitle: '인터페이스 언어', subtitleLogin: '로그인', subtitleSetup: '관리자 생성', subtitleReset: '비밀번호 복구',
+    username: '사용자 이름', password: '비밀번호', passwordConfirm: '비밀번호 확인', totpLabel: '2단계 코드',
+    signIn: '로그인', createAndSignIn: '생성 후 로그인', forgot: '비밀번호를 잊으셨나요?', setupNote: '첫 실행 — 관리자 계정을 만드세요',
+    resetSend: 'Telegram으로 코드 보내기', resetCodeLabel: 'Telegram 코드', resetNewPw: '새 비밀번호',
+    resetChange: '비밀번호 변경', backToLogin: '← 로그인으로 돌아가기', titleSuffix: '로그인', dbExternal: '외부 PostgreSQL 사용' },
+  ar: { langTitle: 'لغة الواجهة', subtitleLogin: 'تسجيل الدخول', subtitleSetup: 'إنشاء مسؤول', subtitleReset: 'استعادة كلمة المرور',
+    username: 'اسم المستخدم', password: 'كلمة المرور', passwordConfirm: 'تأكيد كلمة المرور', totpLabel: 'رمز التحقق بخطوتين',
+    signIn: 'دخول', createAndSignIn: 'إنشاء ودخول', forgot: 'هل نسيت كلمة المرور؟', setupNote: 'التشغيل الأول — أنشئ حساب مسؤول',
+    resetSend: 'إرسال الرمز إلى Telegram', resetCodeLabel: 'رمز Telegram', resetNewPw: 'كلمة مرور جديدة',
+    resetChange: 'تغيير كلمة المرور', backToLogin: '← العودة لتسجيل الدخول', titleSuffix: 'دخول', dbExternal: 'استخدام PostgreSQL خارجي' },
+};
+function loginT(key) {
+  const l = LOGIN_I18N[selectedLang];
+  return (l && l[key] != null ? l[key] : (LOGIN_I18N.en[key] != null ? LOGIN_I18N.en[key] : key));
+}
+// loginApplyI18n localizes every static element (and the document title/dir).
+function loginApplyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = loginT(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = loginT(el.dataset.i18nPh); });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = loginT(el.dataset.i18nTitle); });
+  document.documentElement.setAttribute('lang', selectedLang);
+  document.documentElement.setAttribute('dir', selectedLang === 'ar' ? 'rtl' : 'ltr');
+  const fullName = (typeof window.APP_NAME === 'string' && window.APP_NAME) || document.title.split(' — ')[0];
+  document.title = fullName + ' — ' + loginT('titleSuffix');
+}
 
 // detectBrowserLang picks the first browser-preferred language we support;
 // falls back to Russian when there's no match or no info.
@@ -170,6 +267,7 @@ function toggleLangMenu(e) {
 function pickLang(code) {
   selectedLang = code;
   renderLangPicker();
+  loginApplyI18n();
   document.getElementById('lang-picker').classList.remove('open');
 }
 document.addEventListener('click', e => {
@@ -192,9 +290,10 @@ async function checkSetup() {
         selectedLang = detectBrowserLang();
         renderLangPicker();
         document.getElementById('lang-picker').style.display = '';
-        document.getElementById('subtitle').textContent = 'Создание администратора';
-        document.getElementById('submit-btn').textContent = 'Создать и войти';
+        document.getElementById('subtitle').dataset.i18n = 'subtitleSetup';
+        document.getElementById('submit-btn').dataset.i18n = 'createAndSignIn';
         document.getElementById('setup-note').style.display = '';
+        loginApplyI18n();
         document.getElementById('password-confirm-field').style.display = '';
         document.getElementById('password').autocomplete = 'new-password';
         // Offer an external DB only if we're not already running on Postgres.
@@ -221,15 +320,15 @@ function toggleDbFields() {
 async function testDb() {
   const el = document.getElementById('db-test-status');
   el.style.color = 'var(--fg3)';
-  el.textContent = 'Проверка…';
+  el.textContent = loginT('dbTesting');
   try {
     const r = await fetch('/api/setup/test-db', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(dbPayload())
     });
     const d = await r.json();
-    if (d.ok) { el.style.color = '#22c55e'; el.textContent = '✓ Подключение успешно'; }
-    else { el.style.color = 'var(--red)'; el.textContent = '✗ ' + (d.error || 'ошибка подключения'); }
+    if (d.ok) { el.style.color = '#22c55e'; el.textContent = loginT('dbOk'); }
+    else { el.style.color = 'var(--red)'; el.textContent = '✗ ' + (d.error || loginT('errGeneric')); }
   } catch (e) { el.style.color = 'var(--red)'; el.textContent = '✗ ' + e.message; }
 }
 
@@ -240,18 +339,18 @@ async function submit() {
   errorEl.textContent = '';
 
   if (!username || !password) {
-    errorEl.textContent = 'Введите имя пользователя и пароль';
+    errorEl.textContent = loginT('errEnterCreds');
     return;
   }
 
   if (isSetup) {
     const password2 = document.getElementById('password2').value;
     if (password !== password2) {
-      errorEl.textContent = 'Пароли не совпадают';
+      errorEl.textContent = loginT('errPwMismatch');
       return;
     }
     if (password.length < 6) {
-      errorEl.textContent = 'Пароль минимум 6 символов';
+      errorEl.textContent = loginT('errPwShort');
       return;
     }
     const payload = {username, password, lang: selectedLang};
@@ -259,7 +358,7 @@ async function submit() {
     if (ext && ext.checked) {
       Object.assign(payload, dbPayload(), {db_external: true});
       if (!payload.db_host || !payload.db_name || !payload.db_user) {
-        errorEl.textContent = 'Заполните хост, базу и пользователя PostgreSQL';
+        errorEl.textContent = loginT('errFillPg');
         return;
       }
     }
@@ -277,15 +376,16 @@ async function submit() {
       try { data = await r.json(); } catch {}
       try { localStorage.setItem('kanban-lang', selectedLang); } catch {}
       if (data.restarting) {
-        document.getElementById('subtitle').textContent = 'Применение настроек…';
+        const sub = document.getElementById('subtitle');
+        sub.dataset.i18n = 'subtitleApplying'; sub.textContent = loginT('subtitleApplying');
         errorEl.style.color = 'var(--accent2)';
-        errorEl.textContent = 'Подключение к PostgreSQL сохранено. Перезапуск сервера…';
+        errorEl.textContent = loginT('restartingMsg');
         setTimeout(() => location.href = '/', 3500);
         return;
       }
       location.href = '/';
     } catch (e) {
-      errorEl.textContent = 'Ошибка: ' + e.message;
+      errorEl.textContent = loginT('errPrefix') + e.message;
     }
   } else {
     try {
@@ -301,15 +401,15 @@ async function submit() {
         if (body.totp_required) {
           document.getElementById('totp-field').style.display = '';
           document.getElementById('totp-code').focus();
-          errorEl.textContent = body.error ? 'Неверный код' : 'Введите код двухфакторной аутентификации';
+          errorEl.textContent = body.error ? loginT('badTotp') : loginT('enterTotp');
           return;
         }
-        errorEl.textContent = 'Неверное имя пользователя или пароль';
+        errorEl.textContent = loginT('errBadCreds');
         return;
       }
       location.href = '/';
     } catch (e) {
-      errorEl.textContent = 'Ошибка: ' + e.message;
+      errorEl.textContent = loginT('errPrefix') + e.message;
     }
   }
 }
@@ -317,13 +417,15 @@ async function submit() {
 function showResetForm() {
   document.getElementById('login-form').style.display = 'none';
   document.getElementById('reset-form').style.display = '';
-  document.getElementById('subtitle').textContent = 'Восстановление пароля';
+  const sub = document.getElementById('subtitle');
+  sub.dataset.i18n = 'subtitleReset'; sub.textContent = loginT('subtitleReset');
   document.getElementById('forgot-link').style.display = 'none';
 }
 function hideResetForm() {
   document.getElementById('login-form').style.display = '';
   document.getElementById('reset-form').style.display = 'none';
-  document.getElementById('subtitle').textContent = 'Вход в систему';
+  const sub = document.getElementById('subtitle');
+  sub.dataset.i18n = isSetup ? 'subtitleSetup' : 'subtitleLogin'; sub.textContent = loginT(sub.dataset.i18n);
   document.getElementById('forgot-link').style.display = '';
   document.getElementById('reset-step-1').style.display = '';
   document.getElementById('reset-step-2').style.display = 'none';
@@ -337,19 +439,19 @@ async function requestReset() {
   const errEl = document.getElementById('reset-error');
   errEl.textContent = '';
   errEl.style.color = 'var(--red)';
-  if (!username) { errEl.textContent = 'Введите имя пользователя'; return; }
+  if (!username) { errEl.textContent = loginT('resetEnterUser'); return; }
   try {
     const r = await fetch('/api/auth/reset-request', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({username})
     });
-    if (!r.ok) { errEl.textContent = 'Ошибка'; return; }
+    if (!r.ok) { errEl.textContent = loginT('errGeneric'); return; }
     resetUsername = username;
     document.getElementById('reset-step-1').style.display = 'none';
     document.getElementById('reset-step-2').style.display = '';
     errEl.style.color = 'var(--accent2)';
-    errEl.textContent = 'Если аккаунт привязан к Telegram, код будет отправлен (10 мин)';
-  } catch(e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    errEl.textContent = loginT('resetSentMsg');
+  } catch(e) { errEl.textContent = loginT('errPrefix') + e.message; }
 }
 
 async function confirmReset() {
@@ -358,18 +460,18 @@ async function confirmReset() {
   const errEl = document.getElementById('reset-error');
   errEl.style.color = 'var(--red)';
   errEl.textContent = '';
-  if (!code || !newpw) { errEl.textContent = 'Заполните все поля'; return; }
-  if (newpw.length < 6) { errEl.textContent = 'Пароль минимум 6 символов'; return; }
+  if (!code || !newpw) { errEl.textContent = loginT('resetFill'); return; }
+  if (newpw.length < 6) { errEl.textContent = loginT('errPwShort'); return; }
   try {
     const r = await fetch('/api/auth/reset-confirm', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({username: resetUsername, code, new_password: newpw})
     });
-    if (!r.ok) { errEl.textContent = 'Неверный или просроченный код'; return; }
+    if (!r.ok) { errEl.textContent = loginT('resetBadCode'); return; }
     errEl.style.color = 'var(--accent2)';
-    errEl.textContent = 'Пароль изменён! Войдите с новым паролем.';
+    errEl.textContent = loginT('resetDone');
     setTimeout(() => hideResetForm(), 2000);
-  } catch(e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  } catch(e) { errEl.textContent = loginT('errPrefix') + e.message; }
 }
 
 // SSO buttons
@@ -381,13 +483,13 @@ async function loadSSOConfig() {
     const container = document.getElementById('sso-buttons');
     let html = '';
     if (cfg.oidc_enabled || cfg.ldap_enabled) {
-      html += '<div class="sso-divider">или</div>';
+      html += `<div class="sso-divider">${escHTML(loginT('or'))}</div>`;
     }
     if (cfg.oidc_enabled) {
       html += `<a href="/api/auth/oidc/login" class="btn-sso"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>${escHTML(cfg.oidc_label)}</a>`;
     }
     if (cfg.ldap_enabled) {
-      html += `<div class="setup-note" style="margin-top:8px;color:var(--fg3)">${escHTML(cfg.ldap_label)} — используйте доменный логин и пароль выше</div>`;
+      html += `<div class="setup-note" style="margin-top:8px;color:var(--fg3)">${escHTML(cfg.ldap_label)} — ${escHTML(loginT('ldapHint'))}</div>`;
     }
     if (html) {
       container.innerHTML = html;
@@ -407,6 +509,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter') submit();
 });
 
+// Localize the page to the browser language on load; the setup flag picker can
+// override it (and sets the instance default).
+selectedLang = detectBrowserLang();
+loginApplyI18n();
 checkSetup();
 loadSSOConfig();
 </script>
