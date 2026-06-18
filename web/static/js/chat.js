@@ -414,6 +414,8 @@ function chatRenderMain() {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } });
     inp.addEventListener('input', chatAutoGrow);
     inp.addEventListener('input', chatOnType);
+    // Paste images from the clipboard → upload and insert a markdown image link.
+    if (typeof setupPaste === 'function') setupPaste(inp);
   }
   chatRenderTyping();
 }
@@ -478,7 +480,8 @@ function chatRenderAttachments(msg) {
   if (!msg.attachments || !msg.attachments.length) return '';
   return `<div class="chat-atts">` + msg.attachments.map(a => {
     if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(a.filename)) {
-      return `<a href="${escAttr(a.url)}" target="_blank" rel="noopener"><img class="chat-att-img" src="${escAttr(a.url)}" alt="${escAttr(a.filename)}"></a>`;
+      // Open in the shared lightbox instead of downloading.
+      return `<img class="chat-att-img" src="${escAttr(a.url)}" alt="${escAttr(a.filename)}" onclick="openLightbox('${escAttr(a.url)}')">`;
     }
     return `<a class="chat-att" href="${escAttr(a.url)}" target="_blank" rel="noopener" download>&#128206; ${esc(a.filename)}</a>`;
   }).join('') + `</div>`;
@@ -525,7 +528,7 @@ function chatRenderMsg(msg, grouped) {
       <div class="chat-bubble" ondblclick="chatStartReply(${msg.id})" title="${escAttr(t('chatReply'))}">
         ${showName ? `<div class="chat-bubble-author" style="color:${chatAvatarColor(msg.author_name || '?')}">${esc(msg.author_name || '?')}</div>` : ''}
         ${msg.reply_to ? chatReplyQuote(msg) : ''}
-        <span class="chat-text">${chatFormatText(msg.text)}</span>
+        <div class="chat-text md-content">${chatFormatText(msg.text)}</div>
         ${chatRenderAttachments(msg)}
         ${meta}
       </div>
@@ -583,16 +586,15 @@ function chatReactionChips(msg) {
   ).join('') + `</div>`;
 }
 
-// chatFormatText escapes the text, then highlights @mentions of known users and
-// turns newlines into <br>. Runs on already-escaped text so it cannot inject HTML.
+// chatFormatText renders a message as Markdown (same renderer as task
+// descriptions/comments): markdown, @mentions, links opening in a new tab, and
+// inline images (pasted/linked). The result is wrapped in .md-content by the
+// caller, so images get the shared lightbox on click.
 function chatFormatText(text) {
+  if (typeof renderMd === 'function') return renderMd(text || '');
+  // Fallback: escaped text with linkify + mentions.
   let h = esc(text).replace(/\n/g, '<br>');
-  // Linkify http(s) URLs; external links open in a new tab safely. Runs on
-  // already-escaped text, so the captured URL contains no raw HTML.
-  h = h.replace(/(https?:\/\/[^\s<]+)/g, url =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-  // Mentions: only at a word boundary (start, whitespace or a tag's '>'), so an
-  // '@' inside a linkified URL is left untouched.
+  h = h.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
   h = h.replace(/(^|[\s>])@([\p{L}\p{N}_.\-]+)/gu, (full, pre, name) => {
     const u = (state.users || []).find(x => x.username === name);
     return u ? `${pre}<span class="chat-mention">@${esc(name)}</span>` : full;
