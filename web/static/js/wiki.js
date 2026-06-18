@@ -313,7 +313,9 @@ function wikiRenderCommentsSection(el, p) {
   sec.className = 'wiki-comments-section';
   sec.innerHTML = `
     <div id="wiki-page-reactions" class="wiki-page-reactions">${wikiReactBarHtml('page', p.id, p.reactions)}</div>
-    <h3 class="wiki-comments-title">${t('comments')}</h3>
+    <h3 class="wiki-comments-title">${t('comments')}
+      <button class="btn btn-ghost btn-sm comment-sort-toggle" onclick="toggleCommentSort()" title="${escAttr(t('commentSortToggle'))}">${commentSortPref() === 'newest' ? '&#8593; ' + t('commentNewest') : '&#8595; ' + t('commentOldest')}</button>
+    </h3>
     <div id="wiki-comment-list"></div>
     ${currentUser && currentUser.role !== 'readonly' ? `<div class="wiki-comment-form">
       <textarea id="wiki-comment-input" rows="2" placeholder="${escAttr(t('writeComment'))}"></textarea>
