@@ -127,6 +127,27 @@ type ActivityEntry struct {
 
 // === Wiki (ecosystem service) ===
 
+// Project is the top-level container: it owns its own kanban board, wiki spaces
+// and calendars. Visibility mirrors wiki spaces ("open" = all users, "restricted"
+// = members only). Project id 1 is the default "Общее".
+type Project struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility"`
+	CreatedBy   *int64 `json:"created_by"`
+	CreatedAt   string `json:"created_at"`
+	MyRole      string `json:"my_role"` // effective role of the requesting user: "admin"/"editor"/"viewer"/""
+}
+
+// ProjectMember is an entry in a project's access list.
+type ProjectMember struct {
+	ProjectID int64  `json:"project_id"`
+	UserID    int64  `json:"user_id"`
+	Role      string `json:"role"` // "admin", "editor", "viewer"
+	Username  string `json:"username"`
+}
+
 // WikiSpace is a documentation space — a tree of pages with its own access list.
 type WikiSpace struct {
 	ID          int64  `json:"id"`

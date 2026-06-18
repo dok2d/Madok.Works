@@ -403,6 +403,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/services", h.handleServices)
 	h.mux.HandleFunc("/api/services/reorder", h.handleServicesReorder)
 
+	// Projects (top-level container)
+	h.mux.HandleFunc("/api/projects", h.handleProjects)
+	h.mux.HandleFunc("/api/projects/", h.handleProjectRoute)
+
 	// Wiki
 	h.mux.HandleFunc("/api/wiki/spaces", h.handleWikiSpaces)
 	h.mux.HandleFunc("/api/wiki/spaces/", h.handleWikiSpaceRoute)

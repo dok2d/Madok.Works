@@ -106,6 +106,32 @@ func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) migrate() error {
 	stmts := []string{
+		// users is created first: projects/project_members (and later kanban
+		// tables) reference it, and Postgres requires the FK target to pre-exist.
+		`CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			is_admin INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// === Projects (top-level container; owns kanban/wiki/calendar) ===
+		// Created before the tables that reference it. Visibility mirrors wiki:
+		// 'open' = every user is an implicit member, 'restricted' = members only.
+		`CREATE TABLE IF NOT EXISTS projects (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT 'restricted',
+			created_by INTEGER REFERENCES users(id),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS project_members (
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			role TEXT NOT NULL DEFAULT 'editor',
+			PRIMARY KEY (project_id, user_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS columns (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
@@ -161,13 +187,6 @@ func (s *Store) migrate() error {
 			task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 			depends_on_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 			PRIMARY KEY (task_id, depends_on_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT NOT NULL UNIQUE,
-			password_hash TEXT NOT NULL,
-			is_admin INTEGER NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			token TEXT PRIMARY KEY,
@@ -524,6 +543,17 @@ func (s *Store) migrate() error {
 
 	// Migrate existing users: set role based on is_admin
 	s.db.Exec("UPDATE users SET role='admin' WHERE is_admin=1 AND role='regular'")
+
+	// Seed the default project "Общее" (open to everyone). Must exist before any
+	// project-scoped seeding/backfill. Idempotent via ON CONFLICT.
+	if _, err := s.db.Exec(`INSERT INTO projects(id,name,description,visibility) VALUES(1,'Общее','',?) ON CONFLICT(id) DO NOTHING`, "open"); err != nil {
+		return fmt.Errorf("seed default project: %w", err)
+	}
+	// Postgres IDENTITY isn't advanced by the explicit id=1 insert, so the next
+	// CreateProject would collide on id=1 — resync the sequence (no-op on SQLite).
+	if s.db.d == dialectPostgres {
+		s.db.Exec(`SELECT setval(pg_get_serial_sequence('projects','id'), (SELECT MAX(id) FROM projects))`)
+	}
 
 	// seed default columns if empty
 	var cnt int

@@ -1,0 +1,131 @@
+# TODO / Roadmap
+
+Рабочие планы проекта. ПЛАН 1 (мультипроектность) — в работе на ветке
+`feature/projects`; ПЛАН 2 (фичи) — после него.
+
+## Статус
+- [~] **ПЛАН 1: Мультипроектность** (ветка `feature/projects`)
+  - [~] Фаза A — ядро проектов + селектор + UI управления *(в работе)*
+  - [ ] Фаза B — скоуп канбана
+  - [ ] Фаза C — календарь
+  - [ ] Фаза D — вики
+  - [ ] Фаза E — поиск/экспорт/импорт + конвертер `cmd/backupconv`
+- [ ] **ПЛАН 2: фичи после мультипроектности** (1–11 + draw.io)
+
+---
+
+# Проекты как верхний уровень структуры (мультипроектность)
+
+## Контекст
+Сейчас канбан полностью **глобальный** (columns/epics/sprints/tasks/tags без контейнера) — система заточена под один проект. При нескольких командах всё превращается в «кашу». Нужно ввести **Проект** как верхний контейнер: у каждого проекта свой канбан, своя вики и свой календарь. Дефолтный проект «Общее», куда мигрируют все текущие данные — никто ничего не теряет.
+
+Подход соответствует best practice (Jira/GitLab/Azure DevOps: Project → boards/wiki/calendar). В коде уже есть готовый эталон контейнера-с-ролями — **wiki-пространства** (`wiki_spaces` + `wiki_space_members` + `effectiveWikiRole`); поднимаем этот паттерн на уровень «Проект».
+
+## Решения (согласованы)
+- **Проект = контейнер** с участниками на проект (без отдельной сущности «Команда»).
+- Per-project сервисы: **канбан, вики, календарь**. **Чат остаётся глобальным**, **почта — персональной** (не трогаем).
+- **Вики**: пространство принадлежит проекту (`wiki_spaces.project_id`), но `project_id` **NULLABLE** — возможны личные пространства (null). Существующие пространства мигрируют в «Общее».
+- **Видимость проекта** по модели вики: `open` (все пользователи — неявные участники, readonly→viewer) / `restricted` (только участники). «Общее» = `open`; новые проекты — `restricted`.
+- **Теги — per-project** (`tags UNIQUE(project_id,name)`), полная изоляция.
+- **Создавать проекты** может любой не-readonly (как wiki-пространства); создатель → admin своего проекта.
+- **Личные календари разрешены**: `calendars.project_id` **NULLABLE** (null = личный, виден только владельцу, вне проектов) — симметрично личным wiki-пространствам.
+- **Удаление проекта**: канбан и календари проекта удаляются каскадом; его **wiki-пространства переносятся в личные** (`project_id=NULL`, доки не теряются). «Общее» (id 1) удалить нельзя.
+
+## Ветка
+Новая ветка от текущей (`feature/postgres-backend`), напр. `feature/projects`. Коммитить каждую фазу; SQLite-дефолт не должен регрессировать; проверять и на SQLite, и на локальном Postgres.
+
+## Архитектура
+
+### Контекст «текущего проекта» — query-параметр `?project=N`
+Как вики передаёт `space_id`. Минимум изменений, без переписывания роутинга.
+- **Бэкенд:** хелпер `(h *Handler) projectID(r) int64` (читает `?project=`, дефолт 1). Для записи — опциональное поле `project_id` в теле. Каждый канбан/календарь-хендлер: `pid := h.projectID(r)` → проверка доступа → передача `pid` в store.
+- **Фронт:** глобальные `currentProjectId` (localStorage `kanban-project`, дефолт 1) и `projects` (из `/api/projects`). Загрузочные вызовы (`loadBoard`, календарь, поиск, список вики-пространств) добавляют `?project=`. `switchProject(id)` перезагружает активный сервис-вид (канбан/календарь/вики; чат/почта — нет). Селектор проекта — первый сегмент шапки (`#project-hdr`), по образцу селектора пространств вики (`wiki.js:119-140`).
+
+### Доступ — `effectiveProjectRole` (копия `effectiveWikiRole`)
+`store_wiki.go:64-78` → `internal/db/store_project.go`: глобальный admin→admin, создатель→admin, участник→его роль, `open`→editor (readonly→viewer), `restricted`+не участник→`""` (запрет). «Общее» (`open`) даёт неявный доступ всем — **без строк членства**. Хендлерный гейт `(h *Handler) projectRole(user, pid)` + `projectRoleAtLeast`: read ≥ viewer, write ≥ editor, настройки/участники = admin. Глобальный readonly уже блокируется в `ServeHTTP`.
+
+### Переиспользовать
+- Роли/членство: `effectiveWikiRole`, `ListWikiSpaceMembers/SetWikiSpaceMember/RemoveWikiSpaceMember` (`store_wiki.go:64-147`) — скопированы как `*Project*`.
+- DDL-портируемость: `translateDDL` (`translate.go`) — новые `CREATE TABLE`/`ADD COLUMN IF NOT EXISTS` работают на SQLite и PG.
+- PG-инфра тестов: `newTestStore` + `KANBAN_TEST_PG_URL` (`store_chat_test.go`).
+- Селектор/настройки в шапке и диалог настроек пространства вики — образец для селектора проекта и диалога настроек/участников.
+
+## Миграция данных — БЕЗ обратной совместимости + конвертер бэкапа
+Новая сборка **не поддерживает апгрейд старой БД на месте**. Новая схема собирается с чистого листа. Перенос существующих данных — отдельным **скриптом-конвертером**: старый JSON-бэкап (`ExportAll`) → новый формат → импорт в новую сборку.
+
+**Конвертер** — standalone Go-CLI `cmd/backupconv`, читает старый `.json`/`.json.gz`, парсит в `map[string]any`, и:
+- добавляет `projects: [{id:1,name:"Общее",visibility:"open"}]`;
+- проставляет `"project_id":1` каждому объекту в `columns/epics/sprints/tags/tasks`;
+- в `ecosystem.calendars` и `ecosystem.wiki_spaces` — `project_id=1`;
+- пишет новый `.json`/`.json.gz`. Round-trip покрыть тестом.
+
+## Схема (в `migrate()`, `store.go`) — сразу финальная
+Новые таблицы: `projects(id,name,description,visibility default 'restricted',created_by,created_at)`, `project_members(project_id,user_id,role default 'editor', PK(project_id,user_id))`.
+
+`project_id` **прямо в `CREATE TABLE`**: `columns/epics/sprints/tasks` — `INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id)`; `calendars` и `wiki_spaces` — **NULLABLE** (null=личный/личное). `tags` сразу с `project_id INTEGER NOT NULL DEFAULT 1` и `UNIQUE(project_id,name)`. Дети (`comments,task_tags,task_dependencies,task_subscriptions,calendar_events,wiki_pages,wiki_revisions`) `project_id` НЕ получают — наследуют через родителя.
+
+`tasks.project_id` денормализуем (фильтры без join, защита от cross-project move). `MoveTask/UpdateTask` не меняют `project_id`.
+
+Индексы: `idx_tasks_project(project_id,column_id,position)`, аналогично columns/epics/sprints/tags/calendars/wiki_spaces, `idx_project_members_user`.
+
+Модель (`model.go`): `Project`/`ProjectMember`; поле `ProjectID` в Column/Epic/Sprint/Tag/Task/Calendar и `*int64` в WikiSpace.
+
+### Порядок в `migrate()`
+1. `stmts` создаёт `projects`/`project_members` и все таблицы (с `project_id`). `projects` — раньше зависящих таблиц.
+2. Сид: `INSERT INTO projects(id,name,visibility) VALUES(1,'Общее','open') ON CONFLICT(id) DO NOTHING` — до сида колонок (PG: после явного id=1 подравнять IDENTITY-сиквенс).
+3. Сид 5 колонок — в проект 1 (Фаза B: вынести в `seedDefaultColumns(tx, projectID)`, звать из migrate и `CreateProject`).
+
+## Поэтапный план (каждая фаза тестируема и коммитится отдельно)
+
+**Фаза A — ядро проектов + селектор + UI управления.** Схема `projects`/`project_members`, сид «Общее» (open). `store_project.go` (CRUD, участники, `effectiveProjectRole`), `handler/project.go` (`projectID`, `projectRole`, роуты `/api/projects`, `/api/projects/`). Фронт: `currentProjectId`+localStorage, селектор проекта в шапке, диалоги «новый проект»/настройки/участники. Канбан ещё не скоупится — всё в проекте 1.
+
+**Фаза B — скоуп канбана.** `project_id` в `CREATE TABLE` (columns/epics/sprints/tasks) + `tags UNIQUE(project_id,name)` + индексы. Протянуть `projectID` через ~48 методов store и ~20 хендлеров: **явный первый параметр `projectID int64`**. Методы по id (GetTask/UpdateTask/…) — проверка владения в хендлере по `project_id`. `handleBoard` per-project. `seedDefaultColumns` из `CreateProject`. WAP по умолчанию проект 1.
+
+**Фаза C — календарь.** `project_id` (NULLABLE) у calendars. `ListCalendars` = календари текущего проекта + **личные** (`project_id IS NULL`). `kanbanEvents`/`ListCalendarEvents` скоупятся. Напоминания/cron — глобальные. Фронт шлёт `?project=`.
+
+**Фаза D — вики.** Nullable `wiki_spaces.project_id`. `ListWikiSpaces` = `project_id=? OR project_id IS NULL`. `CreateWikiSpace` принимает `projectID *int64`. `wikiRole`: для project-bound пространства сперва `projectRole`; личные (NULL) — как сейчас. `DeleteProject` переносит пространства в личные.
+
+**Фаза E — поиск/экспорт/импорт + конвертер.** `projects`/`project_members` в `ecosystemTables` + порядок в `ImportAll`. `ProjectID` в типизированных экспорт-структурах. `?project=` для экспорта и поиска. **Конвертер `cmd/backupconv`** + тест round-trip.
+
+## Ключевые файлы
+- Новые: `internal/db/store_project.go`, `internal/handler/project.go`, `cmd/backupconv/main.go`.
+- `internal/db/store.go`, `internal/model/model.go`, `internal/handler/handler.go`, `internal/handler/wap.go`.
+- `internal/db/store_calendar.go` + `internal/handler/calendar.go`; `internal/db/store_wiki.go` + `internal/handler/wiki.go` + `web/static/js/wiki.js`.
+- `internal/db/store_ecosystem_export.go`, `internal/handler/search_global.go`, `web/templates/index.html`.
+
+## Риски
+1. **Порядок в `migrate()`**: проект 1 — до сида колонок; `projects` — до зависящих таблиц.
+2. **`ImportAll`/`ecosystemTables`**: `projects`/`project_members` импортируются и чистятся до канбан-таблиц.
+3. **Удаление проекта**: `DeleteProject` чистит канбан+календари в коде (FK-порядок) и **переносит wiki-пространства в личные**; запрещает удаление проекта 1.
+4. **Конвертер**: на `map[string]any`, не падать на старых бэкапах без ecosystem; покрыть тестом.
+
+## Проверка
+- `go test ./...` (SQLite) после каждой фазы. Фреш-инсталл: «Общее» + 5 колонок; уникальность тегов per-project.
+- Конвертер: round-trip (старый бэкап → `cmd/backupconv` → импорт → всё в проекте 1).
+- Postgres-парити: `initdb`/`pg_ctl` + `KANBAN_TEST_PG_URL=… go test ./internal/db/...`.
+- Ручной мультипроектный smoke: проекты A и B (B restricted), второй пользователь только в B → изоляция канбана/календаря/вики; 403 на чужой `?project=`; «Общее» открыт всем; экспорт/импорт; удаление; WAP → проект 1.
+
+---
+
+# ПЛАН 2 — фичи после мультипроектности
+После мультипроектности (многое опирается на проект-скоуп). Отдельная ветка от завершённого `feature/projects`. Каждый пункт получает свой детальный дизайн при старте. Принципы: SQLite-дефолт не ломаем, парити с PG, i18n во всех 10 языках, юзер-текст санитайзим, podman не запускаем.
+
+### Группа «Вики» (1–4 + 4b)
+1. **@-упоминания, `[[вики-ссылки]]`, backlinks.** На сохранении: `@username` → уведомление; `[[Заголовок]]`/`[[KEY:Заголовок]]` → ссылка на страницу. Таблица `wiki_links(from_page_id,to_page_id)`; блок «Ссылаются сюда». Парсер в `wikiMdToHtml` (как `[[subpages]]`).
+2. **Комментарии к страницам + реакции/лайки.** `wiki_comments(page_id,author_id,parent_id,text,created_at)`; реакции по образцу `chat_reactions`.
+3. **Экспорт в Markdown/PDF.** Markdown — есть `content_md` (эндпоинт `.md`/zip). **PDF — печать браузера** (print-CSS + `window.print()`).
+4. **Шаблоны страниц, TOC по заголовкам, ссылки на задачи.** Шаблоны: «создать из шаблона». TOC: парс h1–h3 (маркер `[[toc]]`). `[[task:123]]`/`#123` → ссылка на задачу.
+4b. **draw.io — self-host в образе** (офлайн/LAN): ассеты drawio в образе, embed-iframe на свой хост, postMessage save/load, диаграмма как XML + превью SVG. Учесть размер образа.
+
+### Группа «Поиск/интеграции/безопасность» (5–8)
+5. **Импорт + Git-связки.** Импортёры (по образцу `cmd/backupconv`). Связки commit/PR — **webhooks** (`/api/integrations/<src>/webhook` с секретом; `#id` → `task_links`+коммент). **GitHub, GitLab, Gitea.** **Приоритет: импорт GitHub Issues + Git-связки; Jira/Trello позже.**
+6. **2FA (TOTP) — опционально.** Opt-in: `users.totp_secret`+recovery; enrollment `otpauth://` QR; код на логине, если включён пользователем. Без принуждения. Go HMAC-TOTP.
+7. **Audit log в UI (админ) + журнал по проекту.** `project_id` в `activity_log`; вью `/api/admin/audit` (фильтры user/project/action).
+8. **Полнотекстовый поиск FTS5 (SQLite) / tsvector+GIN (PG)** вместо LIKE. Ветвление по `dialect`. Сохранить проект-скоуп.
+
+### Группа «UX/LLM/бот» (9–11)
+9. **Эмодзи-пикер в чате.** Сетка эмодзи для сообщений и реакций. (Drag-n-drop — не делаем.)
+10. **LLM-генерация описания и TODO задачи.** `llm.go`: эндпоинт генерации, кнопка «✨ Сгенерировать» в форме задачи (только при включённом LLM; фоном, как саммари).
+11. **Актуализировать Telegram-бота.** Контекст проекта в уведомлениях, команды с учётом проектов, уведомления по @-упоминаниям, сверка с `telegram.go`.
+
+**Решения по ПЛАНУ 2:** PDF — печать браузера; draw.io — self-host в образе; связки — webhooks; приоритет — GitHub Issues импорт + Git-связки; 2FA — опционально; drag-n-drop — не делаем.
