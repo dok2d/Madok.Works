@@ -25,11 +25,11 @@ const CALLS_I18N = {
   en: { callAudio: 'Audio call', callVideo: 'Video call', callIncoming: 'Incoming call', callFrom: 'from',
         callAccept: 'Accept', callDecline: 'Decline', callHangup: 'Hang up', callMute: 'Mute', callUnmute: 'Unmute',
         callCam: 'Camera', callAddPeople: 'Add participant', callCalling: 'Calling…', callConnecting: 'Connecting…',
-        callEnded: 'Call ended', callNoMedia: 'Microphone/camera unavailable', callBusy: 'You are already in a call' },
+        callEnded: 'Call ended', callNoMedia: 'Microphone/camera unavailable', callBusy: 'You are already in a call', callYou: 'you' },
   ru: { callAudio: 'Аудиозвонок', callVideo: 'Видеозвонок', callIncoming: 'Входящий звонок', callFrom: 'от',
         callAccept: 'Принять', callDecline: 'Отклонить', callHangup: 'Завершить', callMute: 'Выкл. микрофон', callUnmute: 'Вкл. микрофон',
         callCam: 'Камера', callAddPeople: 'Добавить участника', callCalling: 'Вызов…', callConnecting: 'Соединение…',
-        callEnded: 'Звонок завершён', callNoMedia: 'Микрофон/камера недоступны', callBusy: 'Вы уже в звонке' },
+        callEnded: 'Звонок завершён', callNoMedia: 'Микрофон/камера недоступны', callBusy: 'Вы уже в звонке', callYou: 'вы' },
 };
 let callsI18nMerged = false;
 function callsEnsureI18n() {
@@ -327,7 +327,7 @@ function callRenderUI() {
   const grid = ui.querySelector('#call-grid');
   // Build/refresh tiles: local + each peer.
   const tiles = [];
-  tiles.push(callTileHtml('local', currentUser.username + ' (вы)'));
+  tiles.push(callTileHtml('local', currentUser.username + ' (' + ct('callYou') + ')'));
   for (const pid of Object.keys(callState.peers)) tiles.push(callTileHtml('peer-' + pid, callState.peers[pid].name || '?'));
   grid.innerHTML = tiles.join('');
   // Attach streams to video elements.
