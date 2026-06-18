@@ -1881,9 +1881,10 @@ func (h *Handler) handleBackups(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		// List backups
 		dir := h.backupDir()
+		free, total := diskUsage(h.dataDir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			jsonResp(w, map[string]any{"backups": []backupInfo{}})
+			jsonResp(w, map[string]any{"backups": []backupInfo{}, "disk_free": free, "disk_total": total})
 			return
 		}
 		var backups []backupInfo
@@ -1902,7 +1903,7 @@ func (h *Handler) handleBackups(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		sort.Slice(backups, func(i, j int) bool { return backups[i].Created > backups[j].Created })
-		jsonResp(w, map[string]any{"backups": backups})
+		jsonResp(w, map[string]any{"backups": backups, "disk_free": free, "disk_total": total})
 
 	case http.MethodPost:
 		// Create backup
