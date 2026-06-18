@@ -121,6 +121,7 @@ func (s *Store) migrate() error {
 		`CREATE TABLE IF NOT EXISTS projects (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
+			key TEXT NOT NULL DEFAULT '' UNIQUE,
 			description TEXT NOT NULL DEFAULT '',
 			visibility TEXT NOT NULL DEFAULT 'restricted',
 			created_by INTEGER REFERENCES users(id),
@@ -134,21 +135,27 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS columns (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			position INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS epics (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			color TEXT NOT NULL DEFAULT '#6366f1'
 		)`,
 		`CREATE TABLE IF NOT EXISTS tags (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE,
-			color TEXT NOT NULL DEFAULT '#64748b'
+			project_id INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			color TEXT NOT NULL DEFAULT '#64748b',
+			UNIQUE(project_id, name)
 		)`,
 		`CREATE TABLE IF NOT EXISTS tasks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id) ON DELETE CASCADE,
+			number INTEGER NOT NULL DEFAULT 0,
 			title TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			column_id INTEGER NOT NULL REFERENCES columns(id),
@@ -226,6 +233,7 @@ func (s *Store) migrate() error {
 		// Sprints
 		`CREATE TABLE IF NOT EXISTS sprints (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id INTEGER NOT NULL DEFAULT 1 REFERENCES projects(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			start_date TEXT NOT NULL DEFAULT '',
 			end_date TEXT NOT NULL DEFAULT '',
@@ -475,6 +483,13 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id)`,
+		// project scoping
+		`CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id, column_id, position)`,
+		`CREATE INDEX IF NOT EXISTS idx_columns_project ON columns(project_id, position)`,
+		`CREATE INDEX IF NOT EXISTS idx_epics_project ON epics(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tags_project ON tags(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(translateDDL(s.db.d, q)); err != nil {
@@ -544,9 +559,9 @@ func (s *Store) migrate() error {
 	// Migrate existing users: set role based on is_admin
 	s.db.Exec("UPDATE users SET role='admin' WHERE is_admin=1 AND role='regular'")
 
-	// Seed the default project "Общее" (open to everyone). Must exist before any
-	// project-scoped seeding/backfill. Idempotent via ON CONFLICT.
-	if _, err := s.db.Exec(`INSERT INTO projects(id,name,description,visibility) VALUES(1,'Общее','',?) ON CONFLICT(id) DO NOTHING`, "open"); err != nil {
+	// Seed the default project "Общее" (open to everyone, key GEN). Must exist
+	// before any project-scoped seeding. Idempotent via ON CONFLICT.
+	if _, err := s.db.Exec(`INSERT INTO projects(id,name,key,description,visibility) VALUES(1,'Общее','GEN','',?) ON CONFLICT(id) DO NOTHING`, "open"); err != nil {
 		return fmt.Errorf("seed default project: %w", err)
 	}
 	// Postgres IDENTITY isn't advanced by the explicit id=1 insert, so the next
@@ -555,16 +570,27 @@ func (s *Store) migrate() error {
 		s.db.Exec(`SELECT setval(pg_get_serial_sequence('projects','id'), (SELECT MAX(id) FROM projects))`)
 	}
 
-	// seed default columns if empty
+	// seed default columns into the default project if it has none
 	var cnt int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM columns").Scan(&cnt); err != nil {
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM columns WHERE project_id=1").Scan(&cnt); err != nil {
 		return fmt.Errorf("count columns: %w", err)
 	}
 	if cnt == 0 {
-		for i, name := range []string{"Backlog", "To Do", "In Progress", "Review", "Done"} {
-			if _, err := s.db.Exec("INSERT INTO columns(name,position) VALUES(?,?)", name, i); err != nil {
-				return fmt.Errorf("seed column %q: %w", name, err)
-			}
+		if err := s.seedDefaultColumns(1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// defaultColumns is the starter board for every new project.
+var defaultColumns = []string{"Backlog", "To Do", "In Progress", "Review", "Done"}
+
+// seedDefaultColumns creates the starter columns for a project.
+func (s *Store) seedDefaultColumns(projectID int64) error {
+	for i, name := range defaultColumns {
+		if _, err := s.db.Exec("INSERT INTO columns(project_id,name,position) VALUES(?,?,?)", projectID, name, i); err != nil {
+			return fmt.Errorf("seed column %q: %w", name, err)
 		}
 	}
 	return nil
@@ -572,8 +598,8 @@ func (s *Store) migrate() error {
 
 // --- Columns ---
 
-func (s *Store) ListColumns() ([]model.Column, error) {
-	rows, err := s.db.Query("SELECT id,name,position FROM columns ORDER BY position")
+func (s *Store) ListColumns(projectID int64) ([]model.Column, error) {
+	rows, err := s.db.Query("SELECT id,project_id,name,position FROM columns WHERE project_id=? ORDER BY position", projectID)
 	if err != nil {
 		s.logf("ListColumns error: %v", err)
 		return nil, err
@@ -582,7 +608,7 @@ func (s *Store) ListColumns() ([]model.Column, error) {
 	cols := make([]model.Column, 0)
 	for rows.Next() {
 		var c model.Column
-		if err := rows.Scan(&c.ID, &c.Name, &c.Position); err != nil {
+		if err := rows.Scan(&c.ID, &c.ProjectID, &c.Name, &c.Position); err != nil {
 			s.logf("ListColumns scan error: %v", err)
 			return nil, fmt.Errorf("scan column: %w", err)
 		}
@@ -596,10 +622,10 @@ func (s *Store) ListColumns() ([]model.Column, error) {
 	return cols, nil
 }
 
-func (s *Store) CreateColumn(name string) (int64, error) {
+func (s *Store) CreateColumn(projectID int64, name string) (int64, error) {
 	id, err := s.db.ExecInsert(
-		"INSERT INTO columns(name,position) VALUES(?, (SELECT COALESCE(MAX(position),0)+1 FROM columns))",
-		name,
+		"INSERT INTO columns(project_id,name,position) VALUES(?,?, (SELECT COALESCE(MAX(position),0)+1 FROM columns WHERE project_id=?))",
+		projectID, name, projectID,
 	)
 	if err != nil {
 		s.logf("CreateColumn(%q) error: %v", name, err)
@@ -629,7 +655,7 @@ func (s *Store) DeleteColumn(id int64) error {
 	return nil
 }
 
-func (s *Store) ReorderColumns(ids []int64) error {
+func (s *Store) ReorderColumns(projectID int64, ids []int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -637,7 +663,7 @@ func (s *Store) ReorderColumns(ids []int64) error {
 	defer tx.Rollback()
 
 	var cnt int
-	if err := tx.QueryRow("SELECT COUNT(*) FROM columns").Scan(&cnt); err != nil {
+	if err := tx.QueryRow("SELECT COUNT(*) FROM columns WHERE project_id=?", projectID).Scan(&cnt); err != nil {
 		return err
 	}
 	if cnt != len(ids) {
@@ -645,7 +671,7 @@ func (s *Store) ReorderColumns(ids []int64) error {
 	}
 
 	for i, id := range ids {
-		res, err := tx.Exec("UPDATE columns SET position=? WHERE id=?", i, id)
+		res, err := tx.Exec("UPDATE columns SET position=? WHERE id=? AND project_id=?", i, id, projectID)
 		if err != nil {
 			return err
 		}
@@ -659,8 +685,8 @@ func (s *Store) ReorderColumns(ids []int64) error {
 
 // --- Epics ---
 
-func (s *Store) ListEpics() ([]model.Epic, error) {
-	rows, err := s.db.Query("SELECT id,name,color,description FROM epics ORDER BY name")
+func (s *Store) ListEpics(projectID int64) ([]model.Epic, error) {
+	rows, err := s.db.Query("SELECT id,project_id,name,color,description FROM epics WHERE project_id=? ORDER BY name", projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +694,7 @@ func (s *Store) ListEpics() ([]model.Epic, error) {
 	epics := make([]model.Epic, 0)
 	for rows.Next() {
 		var e model.Epic
-		if err := rows.Scan(&e.ID, &e.Name, &e.Color, &e.Description); err != nil {
+		if err := rows.Scan(&e.ID, &e.ProjectID, &e.Name, &e.Color, &e.Description); err != nil {
 			return nil, fmt.Errorf("scan epic: %w", err)
 		}
 		epics = append(epics, e)
@@ -681,16 +707,16 @@ func (s *Store) ListEpics() ([]model.Epic, error) {
 
 func (s *Store) GetEpic(id int64) (*model.Epic, error) {
 	var e model.Epic
-	err := s.db.QueryRow("SELECT id,name,color,description FROM epics WHERE id=?", id).
-		Scan(&e.ID, &e.Name, &e.Color, &e.Description)
+	err := s.db.QueryRow("SELECT id,project_id,name,color,description FROM epics WHERE id=?", id).
+		Scan(&e.ID, &e.ProjectID, &e.Name, &e.Color, &e.Description)
 	if err != nil {
 		return nil, err
 	}
 	return &e, nil
 }
 
-func (s *Store) CreateEpic(name, color string) (int64, error) {
-	return s.db.ExecInsert("INSERT INTO epics(name,color) VALUES(?,?)", name, color)
+func (s *Store) CreateEpic(projectID int64, name, color string) (int64, error) {
+	return s.db.ExecInsert("INSERT INTO epics(project_id,name,color) VALUES(?,?,?)", projectID, name, color)
 }
 
 func (s *Store) UpdateEpic(id int64, name, color, description string) error {
@@ -715,8 +741,8 @@ func (s *Store) DeleteEpic(id int64) error {
 
 // --- Sprints ---
 
-func (s *Store) ListSprints() ([]model.Sprint, error) {
-	rows, err := s.db.Query("SELECT id,name,start_date,end_date,status FROM sprints ORDER BY id")
+func (s *Store) ListSprints(projectID int64) ([]model.Sprint, error) {
+	rows, err := s.db.Query("SELECT id,project_id,name,start_date,end_date,status FROM sprints WHERE project_id=? ORDER BY id", projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -724,7 +750,7 @@ func (s *Store) ListSprints() ([]model.Sprint, error) {
 	sprints := make([]model.Sprint, 0)
 	for rows.Next() {
 		var sp model.Sprint
-		if err := rows.Scan(&sp.ID, &sp.Name, &sp.StartDate, &sp.EndDate, &sp.Status); err != nil {
+		if err := rows.Scan(&sp.ID, &sp.ProjectID, &sp.Name, &sp.StartDate, &sp.EndDate, &sp.Status); err != nil {
 			return nil, fmt.Errorf("scan sprint: %w", err)
 		}
 		sprints = append(sprints, sp)
@@ -734,19 +760,19 @@ func (s *Store) ListSprints() ([]model.Sprint, error) {
 
 func (s *Store) GetSprint(id int64) (*model.Sprint, error) {
 	var sp model.Sprint
-	err := s.db.QueryRow("SELECT id,name,start_date,end_date,status FROM sprints WHERE id=?", id).
-		Scan(&sp.ID, &sp.Name, &sp.StartDate, &sp.EndDate, &sp.Status)
+	err := s.db.QueryRow("SELECT id,project_id,name,start_date,end_date,status FROM sprints WHERE id=?", id).
+		Scan(&sp.ID, &sp.ProjectID, &sp.Name, &sp.StartDate, &sp.EndDate, &sp.Status)
 	if err != nil {
 		return nil, err
 	}
 	return &sp, nil
 }
 
-func (s *Store) CreateSprint(name, startDate, endDate, status string) (int64, error) {
+func (s *Store) CreateSprint(projectID int64, name, startDate, endDate, status string) (int64, error) {
 	if status == "" {
 		status = "planning"
 	}
-	return s.db.ExecInsert("INSERT INTO sprints(name,start_date,end_date,status) VALUES(?,?,?,?)", name, startDate, endDate, status)
+	return s.db.ExecInsert("INSERT INTO sprints(project_id,name,start_date,end_date,status) VALUES(?,?,?,?,?)", projectID, name, startDate, endDate, status)
 }
 
 func (s *Store) UpdateSprint(id int64, name, startDate, endDate, status string) error {
@@ -769,7 +795,7 @@ func (s *Store) DeleteSprint(id int64) error {
 	return tx.Commit()
 }
 
-func (s *Store) CompleteSprint(id int64, moveToSprintID *int64) error {
+func (s *Store) CompleteSprint(projectID, id int64, moveToSprintID *int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -777,13 +803,13 @@ func (s *Store) CompleteSprint(id int64, moveToSprintID *int64) error {
 	defer tx.Rollback()
 
 	// Mark sprint as completed
-	if _, err := tx.Exec("UPDATE sprints SET status='completed' WHERE id=?", id); err != nil {
+	if _, err := tx.Exec("UPDATE sprints SET status='completed' WHERE id=? AND project_id=?", id, projectID); err != nil {
 		return err
 	}
 
-	// Find last column (Done)
+	// Find last column (Done) within this project
 	var lastColID int64
-	err = tx.QueryRow("SELECT id FROM columns ORDER BY position DESC LIMIT 1").Scan(&lastColID)
+	err = tx.QueryRow("SELECT id FROM columns WHERE project_id=? ORDER BY position DESC LIMIT 1", projectID).Scan(&lastColID)
 	if err != nil {
 		return err
 	}
@@ -803,7 +829,7 @@ func (s *Store) CompleteSprint(id int64, moveToSprintID *int64) error {
 
 func (s *Store) SprintTasks(sprintID int64) ([]model.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT t.id, t.title, t.description, t.todo, t.project_url,
+		SELECT t.id, t.project_id, t.number, t.title, t.description, t.todo, t.project_url,
 		       t.column_id, t.epic_id, t.sprint_id, t.assignee_id, t.position, t.priority, t.deadline, t.created_at, t.updated_at
 		FROM tasks t WHERE t.sprint_id=? ORDER BY t.position, t.id`, sprintID)
 	if err != nil {
@@ -816,7 +842,7 @@ func (s *Store) SprintTasks(sprintID int64) ([]model.Task, error) {
 		var t model.Task
 		var eid, sid, aid sql.NullInt64
 		var ca, ua string
-		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Todo, &t.ProjectURL,
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description, &t.Todo, &t.ProjectURL,
 			&t.ColumnID, &eid, &sid, &aid, &t.Position, &t.Priority, &t.Deadline, &ca, &ua); err != nil {
 			return nil, fmt.Errorf("scan sprint task: %w", err)
 		}
@@ -853,7 +879,7 @@ func (s *Store) SprintTasks(sprintID int64) ([]model.Task, error) {
 
 func (s *Store) EpicTasks(epicID int64) ([]model.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT t.id, t.title, t.description, t.todo, t.project_url,
+		SELECT t.id, t.project_id, t.number, t.title, t.description, t.todo, t.project_url,
 		       t.column_id, t.epic_id, t.sprint_id, t.assignee_id, t.position, t.priority, t.deadline, t.created_at, t.updated_at
 		FROM tasks t WHERE t.epic_id=? ORDER BY t.position, t.id`, epicID)
 	if err != nil {
@@ -866,7 +892,7 @@ func (s *Store) EpicTasks(epicID int64) ([]model.Task, error) {
 		var t model.Task
 		var eid, sid, aid sql.NullInt64
 		var ca, ua string
-		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Todo, &t.ProjectURL,
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description, &t.Todo, &t.ProjectURL,
 			&t.ColumnID, &eid, &sid, &aid, &t.Position, &t.Priority, &t.Deadline, &ca, &ua); err != nil {
 			return nil, fmt.Errorf("scan epic task: %w", err)
 		}
@@ -903,8 +929,8 @@ func (s *Store) EpicTasks(epicID int64) ([]model.Task, error) {
 
 // --- Tags ---
 
-func (s *Store) ListTags() ([]model.Tag, error) {
-	rows, err := s.db.Query("SELECT id,name,color FROM tags ORDER BY name")
+func (s *Store) ListTags(projectID int64) ([]model.Tag, error) {
+	rows, err := s.db.Query("SELECT id,project_id,name,color FROM tags WHERE project_id=? ORDER BY name", projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -912,7 +938,7 @@ func (s *Store) ListTags() ([]model.Tag, error) {
 	tags := make([]model.Tag, 0)
 	for rows.Next() {
 		var t model.Tag
-		if err := rows.Scan(&t.ID, &t.Name, &t.Color); err != nil {
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Color); err != nil {
 			return nil, fmt.Errorf("scan tag: %w", err)
 		}
 		tags = append(tags, t)
@@ -923,8 +949,8 @@ func (s *Store) ListTags() ([]model.Tag, error) {
 	return tags, nil
 }
 
-func (s *Store) CreateTag(name, color string) (int64, error) {
-	return s.db.ExecInsert("INSERT INTO tags(name,color) VALUES(?,?)", name, color)
+func (s *Store) CreateTag(projectID int64, name, color string) (int64, error) {
+	return s.db.ExecInsert("INSERT INTO tags(project_id,name,color) VALUES(?,?,?)", projectID, name, color)
 }
 
 func (s *Store) DeleteTag(id int64) error {
@@ -944,9 +970,9 @@ func (s *Store) DeleteTag(id int64) error {
 
 // --- Tasks ---
 
-func (s *Store) ListTasks() ([]model.Task, error) {
+func (s *Store) ListTasks(projectID int64) ([]model.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT t.id, t.title, t.description, t.todo, t.project_url,
+		SELECT t.id, t.project_id, t.number, t.title, t.description, t.todo, t.project_url,
 		       t.column_id, t.epic_id, t.sprint_id, t.assignee_id,
 		       t.position, t.priority, t.deadline, t.created_at, t.updated_at,
 		       e.id, e.name, e.color,
@@ -956,7 +982,8 @@ func (s *Store) ListTasks() ([]model.Task, error) {
 		LEFT JOIN epics e ON t.epic_id = e.id
 		LEFT JOIN sprints sp ON t.sprint_id = sp.id
 		LEFT JOIN users u ON t.assignee_id = u.id
-		ORDER BY t.position, t.id`)
+		WHERE t.project_id = ?
+		ORDER BY t.position, t.id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -973,7 +1000,7 @@ func (s *Store) ListTasks() ([]model.Task, error) {
 		var assigneeID sql.NullInt64
 		var assigneeName sql.NullString
 		var ca, ua string
-		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Todo, &t.ProjectURL,
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description, &t.Todo, &t.ProjectURL,
 			&t.ColumnID, &eid, &sid, &aid,
 			&t.Position, &t.Priority, &t.Deadline, &ca, &ua,
 			&eid, &epicName, &epicColor,
@@ -1023,8 +1050,8 @@ func (s *Store) GetTask(id int64) (*model.Task, error) {
 	var t model.Task
 	var eid, sid, aid sql.NullInt64
 	var ca, ua string
-	err := s.db.QueryRow(`SELECT id,title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline,created_at,updated_at
-		FROM tasks WHERE id=?`, id).Scan(&t.ID, &t.Title, &t.Description, &t.Todo, &t.ProjectURL, &t.ColumnID, &eid, &sid, &aid,
+	err := s.db.QueryRow(`SELECT id,project_id,number,title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline,created_at,updated_at
+		FROM tasks WHERE id=?`, id).Scan(&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description, &t.Todo, &t.ProjectURL, &t.ColumnID, &eid, &sid, &aid,
 		&t.Position, &t.Priority, &t.Deadline, &ca, &ua)
 	if err != nil {
 		return nil, err
@@ -1063,8 +1090,8 @@ func (s *Store) GetTask(id int64) (*model.Task, error) {
 	return &t, nil
 }
 
-func (s *Store) CreateTask(title, desc, todo, projectURL string, colID int64, epicID *int64, sprintID *int64, assigneeID *int64, priority int, tagIDs []int64, deadline string) (int64, error) {
-	s.logf("CreateTask(%q, col=%d, prio=%d, tags=%v)", title, colID, priority, tagIDs)
+func (s *Store) CreateTask(projectID int64, title, desc, todo, projectURL string, colID int64, epicID *int64, sprintID *int64, assigneeID *int64, priority int, tagIDs []int64, deadline string) (int64, error) {
+	s.logf("CreateTask(project=%d, %q, col=%d, prio=%d, tags=%v)", projectID, title, colID, priority, tagIDs)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -1075,8 +1102,12 @@ func (s *Store) CreateTask(title, desc, todo, projectURL string, colID int64, ep
 	if err := tx.QueryRow("SELECT COALESCE(MAX(position),0) FROM tasks WHERE column_id=?", colID).Scan(&maxPos); err != nil {
 		return 0, fmt.Errorf("get max position: %w", err)
 	}
-	id, err := tx.ExecInsert(`INSERT INTO tasks(title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)`, title, desc, todo, projectURL, colID, epicID, sprintID, assigneeID, maxPos+1, priority, deadline)
+	var nextNum int
+	if err := tx.QueryRow("SELECT COALESCE(MAX(number),0)+1 FROM tasks WHERE project_id=?", projectID).Scan(&nextNum); err != nil {
+		return 0, fmt.Errorf("get next number: %w", err)
+	}
+	id, err := tx.ExecInsert(`INSERT INTO tasks(project_id,number,title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, projectID, nextNum, title, desc, todo, projectURL, colID, epicID, sprintID, assigneeID, maxPos+1, priority, deadline)
 	if err != nil {
 		s.logf("CreateTask error: %v", err)
 		return 0, err
@@ -1550,9 +1581,9 @@ func (s *Store) CleanupOrphanFiles() (int, error) {
 
 // SearchTasks searches across tasks (title, description, todo), comments, epics, tags.
 // When isRegex is true, it loads all tasks and filters in Go using regexp.
-func (s *Store) SearchTasks(query string, isRegex bool) ([]int64, error) {
+func (s *Store) SearchTasks(projectID int64, query string, isRegex bool) ([]int64, error) {
 	if isRegex {
-		return s.searchTasksRegex(query)
+		return s.searchTasksRegex(projectID, query)
 	}
 	like := "%" + query + "%"
 	rows, err := s.db.Query(`
@@ -1561,10 +1592,10 @@ func (s *Store) SearchTasks(query string, isRegex bool) ([]int64, error) {
 		LEFT JOIN task_tags tt ON tt.task_id = t.id
 		LEFT JOIN tags tg ON tg.id = tt.tag_id
 		LEFT JOIN epics e ON e.id = t.epic_id
-		WHERE t.title LIKE ? OR t.description LIKE ? OR t.todo LIKE ? OR t.project_url LIKE ?
-		   OR c.text LIKE ? OR tg.name LIKE ? OR e.name LIKE ? OR e.description LIKE ?
+		WHERE t.project_id = ? AND (t.title LIKE ? OR t.description LIKE ? OR t.todo LIKE ? OR t.project_url LIKE ?
+		   OR c.text LIKE ? OR tg.name LIKE ? OR e.name LIKE ? OR e.description LIKE ?)
 		ORDER BY t.id`,
-		like, like, like, like, like, like, like, like)
+		projectID, like, like, like, like, like, like, like, like)
 	if err != nil {
 		return nil, err
 	}
@@ -1580,7 +1611,7 @@ func (s *Store) SearchTasks(query string, isRegex bool) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-func (s *Store) searchTasksRegex(pattern string) ([]int64, error) {
+func (s *Store) searchTasksRegex(projectID int64, pattern string) ([]int64, error) {
 	re, err := regexp.Compile("(?i)" + pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid regex: %w", err)
@@ -1591,7 +1622,8 @@ func (s *Store) searchTasksRegex(pattern string) ([]int64, error) {
 		       COALESCE(e.name,''), COALESCE(e.description,'')
 		FROM tasks t
 		LEFT JOIN epics e ON e.id = t.epic_id
-		ORDER BY t.id`)
+		WHERE t.project_id = ?
+		ORDER BY t.id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -1614,7 +1646,7 @@ func (s *Store) searchTasksRegex(pattern string) ([]int64, error) {
 	}
 
 	// Also search comments and tags
-	cRows, err := s.db.Query("SELECT task_id, text FROM comments")
+	cRows, err := s.db.Query("SELECT c.task_id, c.text FROM comments c JOIN tasks t ON t.id=c.task_id WHERE t.project_id=?", projectID)
 	if err == nil {
 		defer cRows.Close()
 		for cRows.Next() {
@@ -1626,7 +1658,8 @@ func (s *Store) searchTasksRegex(pattern string) ([]int64, error) {
 		}
 	}
 
-	tRows, err := s.db.Query(`SELECT tt.task_id, tg.name FROM task_tags tt JOIN tags tg ON tg.id = tt.tag_id`)
+	tRows, err := s.db.Query(`SELECT tt.task_id, tg.name FROM task_tags tt JOIN tags tg ON tg.id = tt.tag_id
+		JOIN tasks t ON t.id = tt.task_id WHERE t.project_id=?`, projectID)
 	if err == nil {
 		defer tRows.Close()
 		for tRows.Next() {
@@ -1656,25 +1689,42 @@ func (s *Store) searchTasksRegex(pattern string) ([]int64, error) {
 // --- Export / Import ---
 
 func (s *Store) ExportAll() (*model.ExportData, error) {
-	cols, err := s.ListColumns()
+	projects, members, err := s.exportProjects()
 	if err != nil {
 		return nil, err
 	}
-	epics, err := s.ListEpics()
-	if err != nil {
-		return nil, err
-	}
-	sprints, err := s.ListSprints()
-	if err != nil {
-		return nil, err
-	}
-	tags, err := s.ListTags()
-	if err != nil {
-		return nil, err
-	}
-	tasks, err := s.ListTasks()
-	if err != nil {
-		return nil, err
+	// Kanban data is per-project; export every project's board.
+	var cols []model.Column
+	var epics []model.Epic
+	var sprints []model.Sprint
+	var tags []model.Tag
+	var tasks []model.Task
+	for _, p := range projects {
+		c, err := s.ListColumns(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		cols = append(cols, c...)
+		e, err := s.ListEpics(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		epics = append(epics, e...)
+		sp, err := s.ListSprints(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		sprints = append(sprints, sp...)
+		tg, err := s.ListTags(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		tags = append(tags, tg...)
+		ts, err := s.ListTasks(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, ts...)
 	}
 	// Load full task data (comments, tags) for each task
 	for i := range tasks {
@@ -1706,20 +1756,56 @@ func (s *Store) ExportAll() (*model.ExportData, error) {
 	images := s.exportImages()
 
 	return &model.ExportData{
-		Columns:       cols,
-		Epics:         epics,
-		Sprints:       sprints,
-		Tags:          tags,
-		Tasks:         tasks,
-		Comments:      allComments,
-		Users:         users,
-		Settings:      settings,
-		Dependencies:  deps,
-		Subscriptions: subs,
-		Files:         files,
-		Images:        images,
-		Ecosystem:     s.exportEcosystem(),
+		Projects:       projects,
+		ProjectMembers: members,
+		Columns:        cols,
+		Epics:          epics,
+		Sprints:        sprints,
+		Tags:           tags,
+		Tasks:          tasks,
+		Comments:       allComments,
+		Users:          users,
+		Settings:       settings,
+		Dependencies:   deps,
+		Subscriptions:  subs,
+		Files:          files,
+		Images:         images,
+		Ecosystem:      s.exportEcosystem(),
 	}, nil
+}
+
+// exportProjects dumps all projects and their members for a full backup.
+func (s *Store) exportProjects() ([]model.Project, []model.ProjectMember, error) {
+	rows, err := s.db.Query(`SELECT id, name, key, description, visibility, created_by, created_at FROM projects ORDER BY id`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	var projects []model.Project
+	for rows.Next() {
+		var p model.Project
+		if err := rows.Scan(&p.ID, &p.Name, &p.Key, &p.Description, &p.Visibility, &p.CreatedBy, &p.CreatedAt); err != nil {
+			return nil, nil, err
+		}
+		projects = append(projects, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	mRows, err := s.db.Query(`SELECT project_id, user_id, role FROM project_members ORDER BY project_id, user_id`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer mRows.Close()
+	var members []model.ProjectMember
+	for mRows.Next() {
+		var m model.ProjectMember
+		if err := mRows.Scan(&m.ProjectID, &m.UserID, &m.Role); err != nil {
+			return nil, nil, err
+		}
+		members = append(members, m)
+	}
+	return projects, members, mRows.Err()
 }
 
 func (s *Store) exportUsers() []model.ExportUser {
@@ -2438,10 +2524,18 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 	}
 	defer tx.Rollback()
 
-	// Clear existing data
-	for _, tbl := range []string{"task_subscriptions", "task_dependencies", "comments", "task_tags", "tasks", "tags", "epics", "sprints", "columns"} {
+	// Clear existing data (children before parents; project_members is cleared so
+	// the later DELETE FROM users has no referencing rows).
+	for _, tbl := range []string{"task_subscriptions", "task_dependencies", "comments", "task_tags", "tasks", "tags", "epics", "sprints", "columns", "project_members"} {
 		if _, err := tx.Exec("DELETE FROM " + tbl); err != nil {
 			return fmt.Errorf("clear %s: %w", tbl, err)
+		}
+	}
+	// Drop non-default projects only when the backup carries its own project list
+	// (new-format export); otherwise keep the seeded default project "Общее".
+	if len(data.Projects) > 0 {
+		if _, err := tx.Exec("DELETE FROM projects WHERE id<>1"); err != nil {
+			return fmt.Errorf("clear projects: %w", err)
 		}
 	}
 
@@ -2477,35 +2571,50 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 		}
 	}
 
+	// Import projects (after users, before kanban tables that reference them).
+	// The default project 1 already exists from the seed, so upsert it.
+	for _, p := range data.Projects {
+		if _, err := tx.Exec(`INSERT INTO projects(id,name,key,description,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?)
+			ON CONFLICT(id) DO UPDATE SET name=excluded.name, key=excluded.key, description=excluded.description, visibility=excluded.visibility, created_by=excluded.created_by`,
+			p.ID, p.Name, p.Key, p.Description, p.Visibility, p.CreatedBy, p.CreatedAt); err != nil {
+			return fmt.Errorf("import project: %w", err)
+		}
+	}
+	// Import project members
+	for _, m := range data.ProjectMembers {
+		if _, err := tx.Exec("INSERT INTO project_members(project_id,user_id,role) VALUES(?,?,?)", m.ProjectID, m.UserID, m.Role); err != nil {
+			return fmt.Errorf("import project member: %w", err)
+		}
+	}
 	// Import columns
 	for _, c := range data.Columns {
-		if _, err := tx.Exec("INSERT INTO columns(id,name,position) VALUES(?,?,?)", c.ID, c.Name, c.Position); err != nil {
+		if _, err := tx.Exec("INSERT INTO columns(id,project_id,name,position) VALUES(?,?,?,?)", c.ID, projectIDOrDefault(c.ProjectID), c.Name, c.Position); err != nil {
 			return fmt.Errorf("import column: %w", err)
 		}
 	}
 	// Import epics
 	for _, e := range data.Epics {
-		if _, err := tx.Exec("INSERT INTO epics(id,name,color,description) VALUES(?,?,?,?)", e.ID, e.Name, e.Color, e.Description); err != nil {
+		if _, err := tx.Exec("INSERT INTO epics(id,project_id,name,color,description) VALUES(?,?,?,?,?)", e.ID, projectIDOrDefault(e.ProjectID), e.Name, e.Color, e.Description); err != nil {
 			return fmt.Errorf("import epic: %w", err)
 		}
 	}
 	// Import sprints
 	for _, sp := range data.Sprints {
-		if _, err := tx.Exec("INSERT INTO sprints(id,name,start_date,end_date,status) VALUES(?,?,?,?,?)", sp.ID, sp.Name, sp.StartDate, sp.EndDate, sp.Status); err != nil {
+		if _, err := tx.Exec("INSERT INTO sprints(id,project_id,name,start_date,end_date,status) VALUES(?,?,?,?,?,?)", sp.ID, projectIDOrDefault(sp.ProjectID), sp.Name, sp.StartDate, sp.EndDate, sp.Status); err != nil {
 			return fmt.Errorf("import sprint: %w", err)
 		}
 	}
 	// Import tags
 	for _, t := range data.Tags {
-		if _, err := tx.Exec("INSERT INTO tags(id,name,color) VALUES(?,?,?)", t.ID, t.Name, t.Color); err != nil {
+		if _, err := tx.Exec("INSERT INTO tags(id,project_id,name,color) VALUES(?,?,?,?)", t.ID, projectIDOrDefault(t.ProjectID), t.Name, t.Color); err != nil {
 			return fmt.Errorf("import tag: %w", err)
 		}
 	}
 	// Import tasks
 	for _, t := range data.Tasks {
-		if _, err := tx.Exec(`INSERT INTO tasks(id,title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			t.ID, t.Title, t.Description, t.Todo, t.ProjectURL, t.ColumnID, t.EpicID, t.SprintID, t.AssigneeID, t.Position, t.Priority, t.Deadline,
+		if _, err := tx.Exec(`INSERT INTO tasks(id,project_id,number,title,description,todo,project_url,column_id,epic_id,sprint_id,assignee_id,position,priority,deadline,created_at,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			t.ID, projectIDOrDefault(t.ProjectID), t.Number, t.Title, t.Description, t.Todo, t.ProjectURL, t.ColumnID, t.EpicID, t.SprintID, t.AssigneeID, t.Position, t.Priority, t.Deadline,
 			t.CreatedAt.Format("2006-01-02 15:04:05"), t.UpdatedAt.Format("2006-01-02 15:04:05")); err != nil {
 			return fmt.Errorf("import task: %w", err)
 		}
@@ -2563,6 +2672,15 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 	return tx.Commit()
 }
 
+// projectIDOrDefault maps a missing/zero project id to the default project (1),
+// so older single-project exports import cleanly into the project-scoped schema.
+func projectIDOrDefault(id int64) int64 {
+	if id == 0 {
+		return 1
+	}
+	return id
+}
+
 // resetSequences re-syncs id generators after an explicit-id bulk import. For
 // SQLite it clears sqlite_sequence; for Postgres it sets each IDENTITY sequence
 // to MAX(id) (is_called=true when the table has rows, so nextval = MAX(id)+1).
@@ -2572,6 +2690,7 @@ func (s *Store) resetSequences(tx *dbTx) {
 		return
 	}
 	tables := []string{
+		"projects",
 		"columns", "epics", "tags", "tasks", "comments", "images", "files", "sprints",
 		"users", "notifications", "activity_log",
 		"wiki_spaces", "wiki_pages", "wiki_revisions",

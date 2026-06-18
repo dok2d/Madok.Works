@@ -35,9 +35,10 @@ func (h *Handler) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
 	want := func(s string) bool { return scope == "" || scope == "all" || scope == s }
 	out := []globalHit{}
 
-	// Kanban tasks
+	// Kanban tasks (scoped to the current project)
 	if want("kanban") {
-		if ids, err := h.store.SearchTasks(q, false); err == nil {
+		pid := h.projectID(r)
+		if ids, err := h.store.SearchTasks(pid, q, false); err == nil {
 			for i, id := range ids {
 				if i >= globalSearchPerService {
 					break

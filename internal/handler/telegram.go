@@ -458,13 +458,13 @@ func (h *Handler) handleTelegramTasks(token string, chatID int64, onlyMine bool)
 		return
 	}
 
-	tasks, err := h.store.ListTasks()
+	tasks, err := h.store.ListTasks(1)
 	if err != nil {
 		h.sendTelegramMessage(token, chatID, "❌ Ошибка загрузки задач.")
 		return
 	}
 
-	cols, _ := h.store.ListColumns()
+	cols, _ := h.store.ListColumns(1)
 	colMap := make(map[int64]string)
 	for _, c := range cols {
 		colMap[c.ID] = c.Name
@@ -595,7 +595,7 @@ func (h *Handler) handleTelegramTaskView(token string, chatID int64, taskID int6
 		return
 	}
 
-	cols, _ := h.store.ListColumns()
+	cols, _ := h.store.ListColumns(1)
 	colName := ""
 	for _, c := range cols {
 		if c.ID == task.ColumnID {
@@ -683,7 +683,7 @@ func (h *Handler) handleTelegramTaskView(token string, chatID int64, taskID int6
 
 // showColumnSelection shows available columns to move a task to
 func (h *Handler) showColumnSelection(token string, chatID int64, taskID int64) {
-	cols, _ := h.store.ListColumns()
+	cols, _ := h.store.ListColumns(1)
 	if len(cols) == 0 {
 		h.sendTelegramMessage(token, chatID, "❌ Нет колонок.")
 		return
@@ -730,7 +730,7 @@ func (h *Handler) handleTelegramMoveTask(token string, chatID int64, taskID int6
 		return
 	}
 
-	cols, _ := h.store.ListColumns()
+	cols, _ := h.store.ListColumns(1)
 	colName := ""
 	for _, c := range cols {
 		if c.ID == colID {

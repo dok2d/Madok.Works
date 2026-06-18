@@ -42,6 +42,75 @@ func (h *Handler) projectRole(user *model.User, projectID int64) (string, *model
 // projectRoleAtLeast reuses the wiki role ranking ("" < viewer < editor < admin).
 func projectRoleAtLeast(role, min string) bool { return wikiRoleAtLeast(role, min) }
 
+// requireProject resolves the current project (?project=) and enforces a minimum
+// role. On failure it writes the HTTP error and returns ok=false. Use "viewer"
+// for reads, "editor" for writes, "admin" for settings.
+func (h *Handler) requireProject(w http.ResponseWriter, r *http.Request, user *model.User, min string) (int64, bool) {
+	pid := h.projectID(r)
+	role, _, err := h.projectRole(user, pid)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return 0, false
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return 0, false
+	}
+	if !projectRoleAtLeast(role, min) {
+		http.Error(w, "no access to this project", http.StatusForbidden)
+		return 0, false
+	}
+	return pid, true
+}
+
+// requireProjectOf enforces a minimum role in the project that owns an entity.
+// Unlike requireProject, the project id comes from the row (not ?project=), which
+// is the ownership check for by-id operations (epics/sprints/tasks/tags).
+func (h *Handler) requireProjectOf(w http.ResponseWriter, r *http.Request, user *model.User, projectID int64, min string) (string, bool) {
+	role, _, err := h.projectRole(user, projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return "", false
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return "", false
+	}
+	if !projectRoleAtLeast(role, min) {
+		http.Error(w, "no access to this project", http.StatusForbidden)
+		return "", false
+	}
+	return role, true
+}
+
+// columnInProject reports whether a column belongs to the given project.
+func (h *Handler) columnInProject(columnID, projectID int64) bool {
+	cols, err := h.store.ListColumns(projectID)
+	if err != nil {
+		return false
+	}
+	for _, c := range cols {
+		if c.ID == columnID {
+			return true
+		}
+	}
+	return false
+}
+
+// tagInProject reports whether a tag belongs to the given project.
+func (h *Handler) tagInProject(tagID, projectID int64) bool {
+	tags, err := h.store.ListTags(projectID)
+	if err != nil {
+		return false
+	}
+	for _, t := range tags {
+		if t.ID == tagID {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) handleProjects(w http.ResponseWriter, r *http.Request) {
 	user := h.currentUser(r)
 	if user == nil {

@@ -88,12 +88,12 @@ func (h *Handler) wapLoginPage(w http.ResponseWriter, errMsg string) {
 
 // handleWapBoard shows the kanban board as a list of columns with task counts.
 func (h *Handler) handleWapBoard(w http.ResponseWriter, r *http.Request) {
-	cols, err := h.store.ListColumns()
+	cols, err := h.store.ListColumns(1)
 	if err != nil {
 		h.wapError(w, "Ошибка загрузки")
 		return
 	}
-	tasks, err := h.store.ListTasks()
+	tasks, err := h.store.ListTasks(1)
 	if err != nil {
 		h.wapError(w, "Ошибка загрузки")
 		return
@@ -132,7 +132,7 @@ func (h *Handler) handleWapColumn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cols, err := h.store.ListColumns()
+	cols, err := h.store.ListColumns(1)
 	if err != nil {
 		h.wapError(w, "Ошибка загрузки")
 		return
@@ -150,7 +150,7 @@ func (h *Handler) handleWapColumn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.store.ListTasks()
+	tasks, err := h.store.ListTasks(1)
 	if err != nil {
 		h.wapError(w, "Ошибка загрузки")
 		return
@@ -290,7 +290,7 @@ func (h *Handler) handleWapTask(w http.ResponseWriter, r *http.Request) {
 
 // handleWapBacklog shows tasks not assigned to any sprint.
 func (h *Handler) handleWapBacklog(w http.ResponseWriter, r *http.Request) {
-	tasks, err := h.store.ListTasks()
+	tasks, err := h.store.ListTasks(1)
 	if err != nil {
 		h.wapError(w, "Ошибка загрузки")
 		return

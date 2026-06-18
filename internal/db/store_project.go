@@ -2,6 +2,8 @@ package db
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"kanban/internal/model"
 )
@@ -31,7 +33,7 @@ func effectiveProjectRole(visibility, memberRole string, userID int64, createdBy
 
 // ListProjects returns the projects visible to the user with their effective role.
 func (s *Store) ListProjects(userID int64, isAdmin bool) ([]model.Project, error) {
-	rows, err := s.db.Query(`SELECT p.id, p.name, p.description, p.visibility, p.created_by, p.created_at,
+	rows, err := s.db.Query(`SELECT p.id, p.name, p.key, p.description, p.visibility, p.created_by, p.created_at,
 		COALESCE((SELECT m.role FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?), '')
 		FROM projects p ORDER BY (p.id=1) DESC, p.name COLLATE NOCASE`, userID)
 	if err != nil {
@@ -42,7 +44,7 @@ func (s *Store) ListProjects(userID int64, isAdmin bool) ([]model.Project, error
 	for rows.Next() {
 		var p model.Project
 		var memberRole string
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Visibility, &p.CreatedBy, &p.CreatedAt, &memberRole); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Key, &p.Description, &p.Visibility, &p.CreatedBy, &p.CreatedAt, &memberRole); err != nil {
 			return nil, err
 		}
 		p.MyRole = effectiveProjectRole(p.Visibility, memberRole, userID, p.CreatedBy, isAdmin)
@@ -61,10 +63,10 @@ func (s *Store) ListProjects(userID int64, isAdmin bool) ([]model.Project, error
 func (s *Store) GetProject(id, userID int64, isAdmin bool) (*model.Project, error) {
 	var p model.Project
 	var memberRole string
-	err := s.db.QueryRow(`SELECT p.id, p.name, p.description, p.visibility, p.created_by, p.created_at,
+	err := s.db.QueryRow(`SELECT p.id, p.name, p.key, p.description, p.visibility, p.created_by, p.created_at,
 		COALESCE((SELECT m.role FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?), '')
 		FROM projects p WHERE p.id = ?`, userID, id).
-		Scan(&p.ID, &p.Name, &p.Description, &p.Visibility, &p.CreatedBy, &p.CreatedAt, &memberRole)
+		Scan(&p.ID, &p.Name, &p.Key, &p.Description, &p.Visibility, &p.CreatedBy, &p.CreatedAt, &memberRole)
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +87,64 @@ func (s *Store) CreateProject(name, description, visibility string, createdBy in
 	if visibility != "open" {
 		visibility = "restricted"
 	}
-	return s.db.ExecInsert(`INSERT INTO projects(name, description, visibility, created_by) VALUES(?,?,?,?)`,
-		name, description, visibility, createdBy)
-	// NOTE: Phase B seeds default columns for the new project here.
+	key := s.uniqueProjectKey(name)
+	id, err := s.db.ExecInsert(`INSERT INTO projects(name, key, description, visibility, created_by) VALUES(?,?,?,?,?)`,
+		name, key, description, visibility, createdBy)
+	if err != nil {
+		return 0, err
+	}
+	// Seed the starter board for the new project.
+	if err := s.seedDefaultColumns(id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// cyrillic→latin transliteration for deriving project keys from a name.
+var keyTranslit = map[rune]string{
+	'а': "A", 'б': "B", 'в': "V", 'г': "G", 'д': "D", 'е': "E", 'ж': "ZH", 'з': "Z",
+	'и': "I", 'й': "Y", 'к': "K", 'л': "L", 'м': "M", 'н': "N", 'о': "O", 'п': "P",
+	'р': "R", 'с': "S", 'т': "T", 'у': "U", 'ф': "F", 'х': "H", 'ц': "C", 'ч': "CH",
+	'ш': "SH", 'щ': "SCH", 'ъ': "", 'ы': "Y", 'ь': "", 'э': "E", 'ю': "YU", 'я': "YA",
+}
+
+// deriveProjectKey builds a short uppercase key from a name (e.g. "Команда A" → "KOMANDAA").
+func deriveProjectKey(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r - 32) // uppercase ASCII
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		default:
+			if t, ok := keyTranslit[r]; ok {
+				b.WriteString(t)
+			}
+		}
+		if b.Len() >= 6 {
+			break
+		}
+	}
+	key := b.String()
+	if key == "" {
+		key = "PRJ"
+	}
+	return key
+}
+
+// uniqueProjectKey returns a key not yet used by another project.
+func (s *Store) uniqueProjectKey(name string) string {
+	base := deriveProjectKey(name)
+	key := base
+	for n := 2; ; n++ {
+		var cnt int
+		s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE key=?", key).Scan(&cnt)
+		if cnt == 0 {
+			return key
+		}
+		key = base + strconv.Itoa(n)
+	}
 }
 
 func (s *Store) UpdateProject(id int64, name, description, visibility string) error {

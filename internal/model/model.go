@@ -3,26 +3,30 @@ package model
 import "time"
 
 type Column struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Position int    `json:"position"`
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
+	Position  int    `json:"position"`
 }
 
 type Epic struct {
 	ID          int64  `json:"id"`
+	ProjectID   int64  `json:"project_id"`
 	Name        string `json:"name"`
 	Color       string `json:"color"`
 	Description string `json:"description"`
 }
 
 type Tag struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
 }
 
 type Sprint struct {
 	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
 	Name      string `json:"name"`
 	StartDate string `json:"start_date"` // ISO date YYYY-MM-DD
 	EndDate   string `json:"end_date"`   // ISO date YYYY-MM-DD
@@ -37,6 +41,8 @@ type TaskDep struct {
 
 type Task struct {
 	ID          int64     `json:"id"`
+	ProjectID   int64     `json:"project_id"`
+	Number      int       `json:"number"` // per-project sequential number; displayed as KEY-<number>
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Todo        string    `json:"todo"`
@@ -133,6 +139,8 @@ type ActivityEntry struct {
 type Project struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
+	Key         string `json:"key"` // short uppercase, e.g. "GEN"; task refs are KEY-<number>
+
 	Description string `json:"description"`
 	Visibility  string `json:"visibility"`
 	CreatedBy   *int64 `json:"created_by"`
@@ -477,7 +485,9 @@ type ExportFile struct {
 
 // ExportData is the full board export structure
 type ExportData struct {
-	Columns       []Column             `json:"columns"`
+	Projects       []Project       `json:"projects,omitempty"`
+	ProjectMembers []ProjectMember `json:"project_members,omitempty"`
+	Columns        []Column             `json:"columns"`
 	Epics         []Epic               `json:"epics"`
 	Sprints       []Sprint             `json:"sprints,omitempty"`
 	Tags          []Tag                `json:"tags"`

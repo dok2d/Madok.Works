@@ -1182,6 +1182,17 @@ async function loadProjects() {
 }
 function currentProject() { return projects.find(p => p.id === currentProjectId) || null; }
 
+// taskRef renders a task reference as KEY-<number> (e.g. "GEN-12") using the
+// owning project's key, falling back to #<id> when key/number are unavailable.
+function taskRef(task) {
+  if (!task) return '';
+  if (task.number) {
+    const p = projects.find(x => x.id === (task.project_id || currentProjectId)) || currentProject();
+    if (p && p.key) return p.key + '-' + task.number;
+  }
+  return '#' + task.id;
+}
+
 function renderProjectHeader() {
   const el = document.getElementById('project-hdr');
   if (!el) return;
@@ -1494,7 +1505,17 @@ function epicProgress(epicId) {
 }
 
 // === API ===
+// Kanban endpoints are scoped to the current project via a ?project= query param
+// (mirrors how wiki passes space_id). By-id endpoints ignore it server-side.
+const _projectScoped = ['/api/board', '/api/columns', '/api/epics', '/api/sprints', '/api/tags', '/api/tasks', '/api/search'];
+function withProject(path) {
+  const base = path.split('?')[0];
+  if (!_projectScoped.some(p => base === p || base.startsWith(p + '/'))) return path;
+  const sep = path.includes('?') ? '&' : '?';
+  return path + sep + 'project=' + encodeURIComponent(currentProjectId);
+}
 async function api(path, method = 'GET', body = null) {
+  path = withProject(path);
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
@@ -2462,7 +2483,7 @@ function renderCard(task) {
     ${pClass}
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div class="card-title" style="margin-bottom:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(task.title)}</div>
-      <span class="card-id" style="margin-left:8px;flex-shrink:0">#${task.id}</span>
+      <span class="card-id" style="margin-left:8px;flex-shrink:0">${taskRef(task)}</span>
     </div>
     <div class="card-meta">${sprintHtml}${deadlineHtml}${epicHtml}${tagsHtml}${assigneeHtml}${todoHtml}${linkHtml}${commentsHtml}</div>
   </div>`;
@@ -2574,7 +2595,7 @@ async function renderTaskPage(taskId) {
 
   let html = `<div class="task-page" id="task-page-root" data-task-id="${task.id}">
     <div class="task-page-header">
-      <h2><button class="btn btn-ghost btn-sm" onclick="goBack()" style="font-size:1.2em;padding:2px 8px;margin-right:6px" title="${prevPath ? t('goBack') : t('backToBoard')}">&#8624;</button><span class="task-id-badge">#${task.id}</span> ${esc(task.title)}</h2>
+      <h2><button class="btn btn-ghost btn-sm" onclick="goBack()" style="font-size:1.2em;padding:2px 8px;margin-right:6px" title="${prevPath ? t('goBack') : t('backToBoard')}">&#8624;</button><span class="task-id-badge">${taskRef(task)}</span> ${esc(task.title)}</h2>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${!isReadonly() ? `<button class="btn btn-ghost btn-sm" onclick="showEditTask(${task.id})">${t('editTask')}</button>` : ''}
         ${!isReadonly() ? `<button class="btn btn-ghost btn-sm" id="sub-btn-${task.id}" onclick="toggleSubscription(${task.id}, ${subscribed})">${subscribed ? t('unsubscribe') : t('subscribe')}</button>` : ''}
@@ -2970,7 +2991,7 @@ async function renderEpicPage(epicId) {
       colSelect = `<select class="epic-task-col-select" onclick="event.stopPropagation()" onchange="event.stopPropagation();moveEpicTask(${task.id},+this.value,${epicId})" style="background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:2px 6px;color:var(--fg);font-size:.78rem;cursor:pointer">${opts}</select>`;
     }
     return `<div class="epic-task-row" onclick="navigateTo('/task/${task.id}')">
-      <span class="card-id">#${task.id}</span>
+      <span class="card-id">${taskRef(task)}</span>
       <span class="epic-task-title">${esc(task.title)}</span>
       ${task.priority > 0 ? `<span class="epic-task-prio" style="color:${prioColors[task.priority]}">P${task.priority}</span>` : ''}
       ${colSelect || `<span class="epic-task-status">${colName ? esc(colName.name) : ''}</span>`}
@@ -3077,7 +3098,7 @@ async function renderUserPage(userId) {
     for (const task of assigned) {
       const colName = state.columns.find(c => c.id === task.column_id);
       html += `<div class="epic-task-row" onclick="navigateTo('/task/${task.id}')">
-        <span class="card-id">#${task.id}</span>
+        <span class="card-id">${taskRef(task)}</span>
         <span class="epic-task-title">${esc(task.title)}</span>
         <span class="epic-task-status">${colName ? esc(colName.name) : ''}</span>
       </div>`;
@@ -3607,7 +3628,7 @@ async function renderSprintPage(sprintId) {
       colSelect = `<select class="epic-task-col-select" onclick="event.stopPropagation()" onchange="event.stopPropagation();moveSprintTask(${task.id},+this.value,${sprintId})" style="background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:2px 6px;color:var(--fg);font-size:.78rem;cursor:pointer">${opts}</select>`;
     }
     return `<div class="epic-task-row" onclick="navigateTo('/task/${task.id}')">
-      <span class="card-id">#${task.id}</span>
+      <span class="card-id">${taskRef(task)}</span>
       <span class="epic-task-title">${esc(task.title)}</span>
       ${task.priority > 0 ? `<span class="epic-task-prio" style="color:${prioColors[task.priority]}">P${task.priority}</span>` : ''}
       ${colSelect || `<span class="epic-task-status">${colName ? esc(colName.name) : ''}</span>`}
@@ -3802,7 +3823,7 @@ function renderBacklogTaskRow(task) {
     ondragstart="event.dataTransfer.setData('text/plain','${task.id}');if(!_dragListenerActive){document.addEventListener('dragover',dragAutoScroll);_dragListenerActive=true}"
     ondragend="if(_dragListenerActive){document.removeEventListener('dragover',dragAutoScroll);_dragListenerActive=false}"
     onclick="navigateTo('/task/${task.id}')">
-    <span class="card-id">#${task.id}</span>
+    <span class="card-id">${taskRef(task)}</span>
     <span class="epic-task-title">${esc(task.title)}</span>
     ${epicBadge}
     ${task.priority > 0 ? `<span class="epic-task-prio" style="color:${prioColors[task.priority]}">P${task.priority}</span>` : ''}

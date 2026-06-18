@@ -13,12 +13,12 @@ import (
 // setval) branches of resetSequences.
 func TestImportResetsSequences(t *testing.T) {
 	a := newTestStore(t)
-	colID, err := a.CreateColumn("Todo")
+	colID, err := a.CreateColumn(1, "Todo")
 	if err != nil {
 		t.Fatalf("CreateColumn: %v", err)
 	}
 	for i := 0; i < 3; i++ {
-		if _, err := a.CreateTask("t", "", "", "", colID, nil, nil, nil, 0, nil, ""); err != nil {
+		if _, err := a.CreateTask(1, "t", "", "", "", colID, nil, nil, nil, 0, nil, ""); err != nil {
 			t.Fatalf("CreateTask: %v", err)
 		}
 	}
@@ -38,7 +38,7 @@ func TestImportResetsSequences(t *testing.T) {
 		t.Fatalf("ImportAll: %v", err)
 	}
 
-	tasks, err := b.ListTasks()
+	tasks, err := b.ListTasks(1)
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestImportResetsSequences(t *testing.T) {
 		t.Fatalf("no tasks restored")
 	}
 
-	newID, err := b.CreateTask("new", "", "", "", colID, nil, nil, nil, 0, nil, "")
+	newID, err := b.CreateTask(1, "new", "", "", "", colID, nil, nil, nil, 0, nil, "")
 	if err != nil {
 		t.Fatalf("CreateTask after import: %v", err)
 	}

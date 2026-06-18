@@ -548,31 +548,40 @@ func (h *Handler) handleBoard(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, map[string]any{"columns": []any{}, "tasks": []any{}, "epics": []any{}, "sprints": []any{}, "tags": []any{}, "users": users, "kanban_disabled": true})
 		return
 	}
-	cols, err := h.store.ListColumns()
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	pid, ok := h.requireProject(w, r, user, "viewer")
+	if !ok {
+		return
+	}
+	cols, err := h.store.ListColumns(pid)
 	if err != nil {
 		h.logf("handleBoard ListColumns error: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	tasks, err := h.store.ListTasks()
+	tasks, err := h.store.ListTasks(pid)
 	if err != nil {
 		h.logf("handleBoard ListTasks error: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	epics, err := h.store.ListEpics()
+	epics, err := h.store.ListEpics(pid)
 	if err != nil {
 		h.logf("handleBoard ListEpics error: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	sprints, err := h.store.ListSprints()
+	sprints, err := h.store.ListSprints(pid)
 	if err != nil {
 		h.logf("handleBoard ListSprints error: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	tags, err := h.store.ListTags()
+	tags, err := h.store.ListTags(pid)
 	if err != nil {
 		h.logf("handleBoard ListTags error: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -587,18 +596,26 @@ func (h *Handler) handleBoard(w http.ResponseWriter, r *http.Request) {
 
 // --- Columns ---
 func (h *Handler) handleColumns(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		cols, err := h.store.ListColumns()
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		cols, err := h.store.ListColumns(pid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		jsonResp(w, cols)
 	case http.MethodPost:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
 			return
 		}
 		var req struct{ Name string }
@@ -606,7 +623,7 @@ func (h *Handler) handleColumns(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		id, err := h.store.CreateColumn(req.Name)
+		id, err := h.store.CreateColumn(pid, req.Name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -623,11 +640,19 @@ func (h *Handler) handleColumn(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	switch r.Method {
 	case http.MethodPut:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
+			return
+		}
+		if !h.columnInProject(id, pid) {
+			http.Error(w, "column not in this project", http.StatusNotFound)
 			return
 		}
 		var req struct{ Name string }
@@ -641,15 +666,25 @@ func (h *Handler) handleColumn(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodDelete:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
 			return
 		}
 		// Protect first (Backlog) and last (Done) columns from deletion
-		cols, err := h.store.ListColumns()
+		cols, err := h.store.ListColumns(pid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		found := false
+		for _, c := range cols {
+			if c.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			http.Error(w, "column not in this project", http.StatusNotFound)
 			return
 		}
 		if len(cols) > 0 && (cols[0].ID == id || cols[len(cols)-1].ID == id) {
@@ -673,8 +708,12 @@ func (h *Handler) handleColumnsReorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := h.currentUser(r)
-	if user == nil || user.Role != "admin" {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	pid, ok := h.requireProject(w, r, user, "admin")
+	if !ok {
 		return
 	}
 	var req struct {
@@ -689,7 +728,7 @@ func (h *Handler) handleColumnsReorder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ids required", http.StatusBadRequest)
 		return
 	}
-	if err := h.store.ReorderColumns(req.IDs); err != nil {
+	if err := h.store.ReorderColumns(pid, req.IDs); err != nil {
 		h.logf("ReorderColumns error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -883,18 +922,26 @@ func (h *Handler) handleFileServe(w http.ResponseWriter, r *http.Request) {
 
 // --- Epics ---
 func (h *Handler) handleEpics(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		epics, err := h.store.ListEpics()
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		epics, err := h.store.ListEpics(pid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		jsonResp(w, epics)
 	case http.MethodPost:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
 			return
 		}
 		var req struct {
@@ -912,7 +959,7 @@ func (h *Handler) handleEpics(w http.ResponseWriter, r *http.Request) {
 		if req.Color == "" {
 			req.Color = "#6366f1"
 		}
-		id, err := h.store.CreateEpic(req.Name, req.Color)
+		id, err := h.store.CreateEpic(pid, req.Name, req.Color)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -929,11 +976,19 @@ func (h *Handler) handleEpic(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	epic, err := h.store.GetEpic(id)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		epic, err := h.store.GetEpic(id)
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
+		if _, ok := h.requireProjectOf(w, r, user, epic.ProjectID, "viewer"); !ok {
 			return
 		}
 		tasks, err := h.store.EpicTasks(id)
@@ -943,9 +998,7 @@ func (h *Handler) handleEpic(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResp(w, map[string]any{"epic": epic, "tasks": tasks})
 	case http.MethodPut:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if _, ok := h.requireProjectOf(w, r, user, epic.ProjectID, "admin"); !ok {
 			return
 		}
 		var req struct {
@@ -963,9 +1016,7 @@ func (h *Handler) handleEpic(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodDelete:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if _, ok := h.requireProjectOf(w, r, user, epic.ProjectID, "admin"); !ok {
 			return
 		}
 		if err := h.store.DeleteEpic(id); err != nil {
@@ -980,18 +1031,26 @@ func (h *Handler) handleEpic(w http.ResponseWriter, r *http.Request) {
 
 // --- Sprints ---
 func (h *Handler) handleSprints(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		sprints, err := h.store.ListSprints()
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		sprints, err := h.store.ListSprints(pid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		jsonResp(w, sprints)
 	case http.MethodPost:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
 			return
 		}
 		var req struct {
@@ -1008,7 +1067,7 @@ func (h *Handler) handleSprints(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "name required", http.StatusBadRequest)
 			return
 		}
-		id, err := h.store.CreateSprint(req.Name, req.StartDate, req.EndDate, req.Status)
+		id, err := h.store.CreateSprint(pid, req.Name, req.StartDate, req.EndDate, req.Status)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -1031,11 +1090,19 @@ func (h *Handler) handleSprintRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	sprint, err := h.store.GetSprint(id)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		sprint, err := h.store.GetSprint(id)
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
+		if _, ok := h.requireProjectOf(w, r, user, sprint.ProjectID, "viewer"); !ok {
 			return
 		}
 		tasks, err := h.store.SprintTasks(id)
@@ -1045,9 +1112,7 @@ func (h *Handler) handleSprintRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResp(w, map[string]any{"sprint": sprint, "tasks": tasks})
 	case http.MethodPut:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if _, ok := h.requireProjectOf(w, r, user, sprint.ProjectID, "admin"); !ok {
 			return
 		}
 		var req struct {
@@ -1066,9 +1131,7 @@ func (h *Handler) handleSprintRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodDelete:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if _, ok := h.requireProjectOf(w, r, user, sprint.ProjectID, "admin"); !ok {
 			return
 		}
 		if err := h.store.DeleteSprint(id); err != nil {
@@ -1087,19 +1150,27 @@ func (h *Handler) handleCompleteSprint(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	user := h.currentUser(r)
-	if user == nil || user.Role != "admin" {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	if sprintID == 0 {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	sprint, err := h.store.GetSprint(sprintID)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if _, ok := h.requireProjectOf(w, r, user, sprint.ProjectID, "admin"); !ok {
+		return
+	}
 	var req struct {
 		MoveToSprintID *int64 `json:"move_to_sprint_id"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
-	if err := h.store.CompleteSprint(sprintID, req.MoveToSprintID); err != nil {
+	if err := h.store.CompleteSprint(sprint.ProjectID, sprintID, req.MoveToSprintID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1108,18 +1179,26 @@ func (h *Handler) handleCompleteSprint(w http.ResponseWriter, r *http.Request, s
 
 // --- Tags ---
 func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		tags, err := h.store.ListTags()
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		tags, err := h.store.ListTags(pid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		jsonResp(w, tags)
 	case http.MethodPost:
-		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
 			return
 		}
 		var req struct {
@@ -1137,7 +1216,7 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 		if req.Color == "" {
 			req.Color = "#64748b"
 		}
-		id, err := h.store.CreateTag(req.Name, req.Color)
+		id, err := h.store.CreateTag(pid, req.Name, req.Color)
 		if err != nil {
 			http.Error(w, "tag exists", http.StatusConflict)
 			return
@@ -1156,8 +1235,16 @@ func (h *Handler) handleTag(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodDelete {
 		user := h.currentUser(r)
-		if user == nil || user.Role != "admin" {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if user == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		pid, ok := h.requireProject(w, r, user, "admin")
+		if !ok {
+			return
+		}
+		if !h.tagInProject(id, pid) {
+			http.Error(w, "tag not in this project", http.StatusNotFound)
 			return
 		}
 		if err := h.store.DeleteTag(id); err != nil {
@@ -1172,16 +1259,28 @@ func (h *Handler) handleTag(w http.ResponseWriter, r *http.Request) {
 
 // --- Tasks ---
 func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		tasks, err := h.store.ListTasks()
+		pid, ok := h.requireProject(w, r, user, "viewer")
+		if !ok {
+			return
+		}
+		tasks, err := h.store.ListTasks(pid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		jsonResp(w, tasks)
 	case http.MethodPost:
-		user := h.currentUser(r)
+		pid, ok := h.requireProject(w, r, user, "editor")
+		if !ok {
+			return
+		}
 		var req struct {
 			Title        string  `json:"title"`
 			Description  string  `json:"description"`
@@ -1204,7 +1303,11 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "title and column_id required", http.StatusBadRequest)
 			return
 		}
-		id, err := h.store.CreateTask(req.Title, req.Description, req.Todo, req.ProjectURL, req.ColumnID, req.EpicID, req.SprintID, req.AssigneeID, req.Priority, req.TagIDs, req.Deadline)
+		if !h.columnInProject(req.ColumnID, pid) {
+			http.Error(w, "column not in this project", http.StatusBadRequest)
+			return
+		}
+		id, err := h.store.CreateTask(pid, req.Title, req.Description, req.Todo, req.ProjectURL, req.ColumnID, req.EpicID, req.SprintID, req.AssigneeID, req.Priority, req.TagIDs, req.Deadline)
 		if err != nil {
 			h.logf("create task: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1257,16 +1360,26 @@ func (h *Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	task0, err := h.store.GetTask(id)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		task, err := h.store.GetTask(id)
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
+		if _, ok := h.requireProjectOf(w, r, user, task0.ProjectID, "viewer"); !ok {
 			return
 		}
-		jsonResp(w, task)
+		jsonResp(w, task0)
 	case http.MethodPut:
-		user := h.currentUser(r)
+		if _, ok := h.requireProjectOf(w, r, user, task0.ProjectID, "editor"); !ok {
+			return
+		}
 		var req struct {
 			Title        string  `json:"title"`
 			Description  string  `json:"description"`
@@ -1285,12 +1398,14 @@ func (h *Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
+		// A task may only move between columns of its own project.
+		if !h.columnInProject(req.ColumnID, task0.ProjectID) {
+			http.Error(w, "column not in this project", http.StatusBadRequest)
+			return
+		}
 
 		// Get old task for comparison (ignore error, may be nil)
-		oldTask, getErr := h.store.GetTask(id)
-		if getErr != nil {
-			oldTask = nil
-		}
+		oldTask := task0
 
 		if err := h.store.UpdateTask(id, req.Title, req.Description, req.Todo, req.ProjectURL, req.ColumnID, req.EpicID, req.SprintID, req.AssigneeID, req.Priority, req.TagIDs, req.Deadline); err != nil {
 			h.logf("UpdateTask(%d) error: %v", id, err)
@@ -1335,10 +1450,10 @@ func (h *Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 
 		jsonResp(w, task)
 	case http.MethodDelete:
-		user := h.currentUser(r)
-		if user != nil {
-			h.store.LogActivity(user.ID, "delete_task", &id, "")
+		if _, ok := h.requireProjectOf(w, r, user, task0.ProjectID, "editor"); !ok {
+			return
 		}
+		h.store.LogActivity(user.ID, "delete_task", &id, "")
 		if err := h.store.DeleteTask(id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -1373,15 +1488,32 @@ func (h *Handler) handleMoveTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task_id and column_id required", http.StatusBadRequest)
 		return
 	}
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	mvTask, err := h.store.GetTask(req.TaskID)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if _, ok := h.requireProjectOf(w, r, user, mvTask.ProjectID, "editor"); !ok {
+		return
+	}
+	// Disallow moving a task into another project's column.
+	if !h.columnInProject(req.ColumnID, mvTask.ProjectID) {
+		http.Error(w, "column not in this project", http.StatusBadRequest)
+		return
+	}
 	if err := h.store.MoveTask(req.TaskID, req.ColumnID, req.Position); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	user := h.currentUser(r)
 	if user != nil {
 		// Notify subscribers
 		task, _ := h.store.GetTask(req.TaskID)
-		cols, _ := h.store.ListColumns()
+		cols, _ := h.store.ListColumns(mvTask.ProjectID)
 		colName := ""
 		for _, c := range cols {
 			if c.ID == req.ColumnID {
@@ -1548,7 +1680,7 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ids, err := h.store.SearchTasks(q, isRegex)
+	ids, err := h.store.SearchTasks(h.projectID(r), q, isRegex)
 	if err != nil {
 		h.logf("search error: %v", err)
 		http.Error(w, "search error", http.StatusInternalServerError)
