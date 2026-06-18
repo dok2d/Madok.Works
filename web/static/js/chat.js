@@ -526,9 +526,15 @@ function chatReactionChips(msg) {
 // turns newlines into <br>. Runs on already-escaped text so it cannot inject HTML.
 function chatFormatText(text) {
   let h = esc(text).replace(/\n/g, '<br>');
-  h = h.replace(/@([\p{L}\p{N}_.\-]+)/gu, (full, name) => {
+  // Linkify http(s) URLs; external links open in a new tab safely. Runs on
+  // already-escaped text, so the captured URL contains no raw HTML.
+  h = h.replace(/(https?:\/\/[^\s<]+)/g, url =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+  // Mentions: only at a word boundary (start, whitespace or a tag's '>'), so an
+  // '@' inside a linkified URL is left untouched.
+  h = h.replace(/(^|[\s>])@([\p{L}\p{N}_.\-]+)/gu, (full, pre, name) => {
     const u = (state.users || []).find(x => x.username === name);
-    return u ? `<span class="chat-mention">@${esc(name)}</span>` : full;
+    return u ? `${pre}<span class="chat-mention">@${esc(name)}</span>` : full;
   });
   return h;
 }

@@ -1480,7 +1480,7 @@ function renderMd(text) {
     let html = marked.parse(processed);
     html = html.replace(/<p>\s*<details>/g, '<details>').replace(/<\/details>\s*<\/p>/g, '</details>');
     html = html.replace(/<a\s+href="(?!https?:\/\/|\/|#|mailto:)([^"]+\.[^"]+)"/g, '<a href="https://$1"');
-    html = html.replace(/<a\s+href="(https?:\/\/[^"]+)"/g, '<a href="$1" target="_blank" rel="noopener"');
+    html = html.replace(/<a\s+href="(https?:\/\/[^"]+)"/g, '<a href="$1" target="_blank" rel="noopener noreferrer"');
     return html;
   } catch { return esc(text); }
 }
