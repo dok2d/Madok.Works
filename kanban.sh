@@ -141,6 +141,8 @@ Madok.Works — обёртка над podman-compose (приложение + Pos
   psql         Открыть psql в БД.
   backup [файл]   pg_dump БД → backups/<project>_<ts>.sql.gz (или в указанный файл).
   restore <файл>  Восстановить БД из дампа (psql). С подтверждением.
+  passwd <user> <pass>  Сбросить пароль (создаёт админа, если юзера нет) — для
+                        закрытых сетей, где Telegram-reset недоступен (напр. после restore).
   nginx        Сгенерировать nginx-конфиг (TLS на хосте → 127.0.0.1:<app-port>).
   systemd      Сгенерировать user-systemd юнит (автозапуск стека после ребута).
   deploy       systemd + nginx разом.
@@ -219,6 +221,17 @@ cmd_backup() {
     echo "==> pg_dump ($d) → $out"
     compose exec -T db sh -c "PGPASSWORD='$p' pg_dump -U '$u' -d '$d' --clean --if-exists" | gzip > "$out"
     echo "==> Готово: $out  ($(du -h "$out" | cut -f1))"
+}
+
+cmd_passwd() {
+    local u="${ARGS[0]:-}" p="${ARGS[1]:-}"
+    [[ -n "$u" && -n "$p" ]] || { echo "Использование: ./kanban.sh passwd <user> <password>" >&2; exit 1; }
+    # Run the binary inside the running app container against the same DB it uses
+    # (db.json/SQLite resolved identically). Recovery for closed networks where
+    # the Telegram reset is unreachable — e.g. after a backup restore.
+    compose exec -T app /app/kanban \
+        -reset-user "$u" -reset-password "$p" \
+        -db "$(envget APP_DB /data/kanban.db)" -data-dir /data
 }
 
 cmd_restore() {
@@ -386,6 +399,7 @@ case "$CMD" in
     psql)       compose exec db psql -U "$(envget PGUSER kanban)" -d "$(envget PGDATABASE kanban)" ;;
     backup)     cmd_backup ;;
     restore)    cmd_restore ;;
+    passwd)     cmd_passwd ;;
     nginx)      cmd_nginx ;;
     systemd)    cmd_systemd ;;
     deploy)     cmd_deploy ;;

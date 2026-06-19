@@ -55,6 +55,27 @@ When 2FA is enabled, login becomes a two-step flow:
 2. The login response returns `{ "totp_required": true }` instead of completing the session
 3. The client resends the request with the code: `{ "code": "123456" }` (a valid TOTP code or a recovery code)
 
+## CLI password recovery (closed networks)
+
+On an air-gapped/closed network the Telegram password reset is unreachable. This
+also matters right after **restoring a backup**, since exports omit password
+hashes — every restored user (including admins) starts without a usable password.
+
+Reset (or create) an admin straight from the CLI, against the same database the
+app uses:
+
+```bash
+# via the kanban.sh wrapper (runs inside the running app container)
+./kanban.sh passwd <username> <new-password>
+
+# or the binary directly (no server started); resolves the DB like the app does
+kanban -reset-user <username> -reset-password <new-password> -db <same -db> -data-dir <same -data-dir>
+```
+
+If the user exists, its password is updated; if not, an **admin** with that name
+is created. Passwords must be at least 6 characters. Use this to regain access
+after a restore, then sign in and reset other users from the UI.
+
 ## Multi-Project Access Model
 
 Access to content is organized around **Projects**. A Project is a container with its own **members** and **roles**:

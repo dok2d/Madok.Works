@@ -21,6 +21,8 @@ func main() {
 	dataDir := flag.String("data-dir", "", "directory for on-disk artifacts like backups (defaults to the SQLite file's directory, or /data for Postgres)")
 	verbose := flag.Bool("verbose", false, "enable verbose logging")
 	smtpAddr := flag.String("smtp-addr", "", "optional inbound SMTP listen address (e.g. :25); empty disables mail receiving")
+	resetUser := flag.String("reset-user", "", "set this user's password and exit (creates an admin if the user doesn't exist) — for recovery on closed networks")
+	resetPassword := flag.String("reset-password", "", "the new password for -reset-user")
 	flag.Parse()
 
 	// Resolve the data directory first (it may hold a persisted DB choice).
@@ -41,6 +43,28 @@ func main() {
 		log.Fatalf("db init: %v", err)
 	}
 	defer store.Close()
+
+	// CLI password recovery (no server start). Useful on closed networks where
+	// the Telegram reset is unreachable — e.g. after restoring a backup, whose
+	// users carry no password hash.
+	if *resetUser != "" {
+		if len(*resetPassword) < 6 {
+			log.Fatalf("reset-password must be at least 6 characters")
+		}
+		if u, _ := store.GetUserByUsername(*resetUser); u != nil {
+			if err := store.UpdateUserPassword(u.ID, *resetPassword); err != nil {
+				log.Fatalf("reset password: %v", err)
+			}
+			log.Printf("password updated for user %q (id %d)", u.Username, u.ID)
+		} else {
+			id, err := store.CreateUser(*resetUser, *resetPassword, "admin")
+			if err != nil {
+				log.Fatalf("create user: %v", err)
+			}
+			log.Printf("created admin user %q (id %d)", *resetUser, id)
+		}
+		return
+	}
 
 	h := handler.New(store, dir)
 	h.SetInstanceID(*addr)
