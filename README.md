@@ -50,6 +50,15 @@ Ports, project name and DB credentials are flags (defaults come from `deploy/.en
 
 On the first run the setup page creates the admin and optionally lets you switch to the bundled PostgreSQL; otherwise it stays on SQLite. Run `./kanban.sh` with no arguments for the full command list.
 
+Behind nginx with TLS (app on localhost, host terminates 443): the wrapper also generates the nginx config and a systemd unit (DB stays internal):
+
+```bash
+./kanban.sh up --app-bind 127.0.0.1 --app-port 10010 -p s4m-works --build
+./kanban.sh deploy -p s4m-works --app-port 10010 --host mw.example.com   # systemd unit + nginx conf
+# (./kanban.sh nginx … / ./kanban.sh systemd … to generate just one)
+```
+The generated nginx config forwards Host (for the same-origin check), allows large bodies (`client_max_body_size 64m` for backup import) and disables buffering for SSE (live chat/calendar/calls).
+
 ## Features at a Glance
 
 | Area | What you get |

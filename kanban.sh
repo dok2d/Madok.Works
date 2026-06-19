@@ -40,6 +40,11 @@ envget() {
 declare -A OVR=()
 BUILD=0
 NOCACHE=0
+# nginx/systemd generation (not passed to compose):
+HOST="${KANBAN_HOST:-mw.local}"
+TLS="${KANBAN_TLS:-yes}"
+SSL_CERT="${KANBAN_SSL_CERT:-/etc/nginx/ssl/mw.crt}"
+SSL_KEY="${KANBAN_SSL_KEY:-/etc/nginx/ssl/mw.key}"
 declare -a ARGS=()   # leftover positionals (logs <svc>, restore <file>, exec …)
 
 parse_flags() {
@@ -56,6 +61,11 @@ parse_flags() {
             --db)           OVR[APP_DB]="$2";     shift 2 ;;   # postgres://… forces PG
             --build)        BUILD=1;              shift   ;;
             --no-cache)     NOCACHE=1;            shift   ;;
+            --host)         HOST="$2";            shift 2 ;;
+            --tls)          TLS="yes";            shift   ;;
+            --no-tls)       TLS="no";             shift   ;;
+            --cert)         SSL_CERT="$2";        shift 2 ;;
+            --key)          SSL_KEY="$2";         shift 2 ;;
             --)             shift; ARGS+=("$@");  break   ;;
             -h|--help)      usage ;;
             # Anything else (incl. unknown -flags) is a positional passed through
@@ -131,6 +141,9 @@ Madok.Works — обёртка над podman-compose (приложение + Pos
   psql         Открыть psql в БД.
   backup [файл]   pg_dump БД → backups/<project>_<ts>.sql.gz (или в указанный файл).
   restore <файл>  Восстановить БД из дампа (psql). С подтверждением.
+  nginx        Сгенерировать nginx-конфиг (TLS на хосте → 127.0.0.1:<app-port>).
+  systemd      Сгенерировать user-systemd юнит (автозапуск стека после ребута).
+  deploy       systemd + nginx разом.
 
 Флаги (любой команды; перекрывают deploy/.env):
   -p, --project <имя>   Имя проекта = префикс контейнеров/томов/сети (по умолч. madokworks)
@@ -145,8 +158,14 @@ Madok.Works — обёртка над podman-compose (приложение + Pos
                         (по умолч. SQLite-файл → мастер выбора БД при первом запуске)
   --build               (для up) пересобрать образ перед запуском
   --no-cache            (для build) собрать без кэша
+  --host <FQDN>         (nginx) имя хоста / домен (по умолч. mw.local)
+  --tls | --no-tls      (nginx) с TLS на 443 (по умолч.) или просто HTTP на 80
+  --cert <путь>         (nginx) путь к TLS-сертификату
+  --key  <путь>         (nginx) путь к TLS-ключу
 
 Примеры:
+  ./kanban.sh up --app-bind 127.0.0.1 --app-port 10010 -p s4m-works --build   # за nginx
+  ./kanban.sh deploy -p s4m-works --app-port 10010 --host mw.example.com       # systemd + nginx
   ./kanban.sh up --build
   ./kanban.sh up --app-port 8080 --db-port 5433
   ./kanban.sh up -p work --app-port 10020 --pg-pass s3cret
@@ -216,10 +235,143 @@ cmd_restore() {
     echo "==> Готово: данные восстановлены."
 }
 
+# gen_nginx prints an nginx server block that terminates TLS on the host and
+# proxies to the app published on 127.0.0.1:<app-port>. Tuned for this app: Host
+# forwarding (same-origin check), large bodies (backup import), and unbuffered
+# SSE (live chat/calendar/calls signaling).
+gen_nginx() {
+    local port; port="$(envget APP_PORT 10010)"
+    local upstream="127.0.0.1:${port}"
+    if [[ "$TLS" == "yes" ]]; then
+        cat <<NGINX
+server {
+    listen 80;
+    server_name ${HOST};
+    return 301 https://\$host\$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    server_name ${HOST};
+
+    ssl_certificate     ${SSL_CERT};
+    ssl_certificate_key ${SSL_KEY};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # Backup import uploads a multi-MB JSON; raise the body limit.
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://${upstream};
+        proxy_http_version 1.1;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        # Server-Sent Events (chat, calendar, call signaling): stream, don't buffer.
+        proxy_buffering    off;
+        proxy_cache        off;
+        proxy_read_timeout 3600s;
+    }
+}
+NGINX
+    else
+        cat <<NGINX
+server {
+    listen 80;
+    server_name ${HOST};
+
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://${upstream};
+        proxy_http_version 1.1;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        proxy_buffering    off;
+        proxy_cache        off;
+        proxy_read_timeout 3600s;
+    }
+}
+NGINX
+    fi
+}
+
+cmd_nginx() {
+    local proj out
+    proj="$(envget COMPOSE_PROJECT_NAME madokworks)"
+    out="$SCRIPT_DIR/deploy/${proj}-nginx.conf"
+    gen_nginx > "$out"
+    echo "==> Сгенерирован nginx-конфиг: $out"
+    echo "    upstream: 127.0.0.1:$(envget APP_PORT 10010)   host: ${HOST}   tls: ${TLS}"
+    echo ""
+    echo "==> Установка (нужен sudo):"
+    echo "    sudo cp '$out' /etc/nginx/sites-available/${proj}.conf"
+    echo "    sudo ln -sf /etc/nginx/sites-available/${proj}.conf /etc/nginx/sites-enabled/${proj}.conf"
+    if [[ "$TLS" == "yes" && ! -f "$SSL_CERT" ]]; then
+        echo ""
+        echo "==> Сертификата нет — self-signed:"
+        echo "    sudo mkdir -p $(dirname "$SSL_CERT")"
+        echo "    sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \\"
+        echo "      -keyout ${SSL_KEY} -out ${SSL_CERT} -subj \"/CN=${HOST}\""
+    fi
+    echo ""
+    echo "    sudo nginx -t && sudo systemctl reload nginx"
+    echo ""
+    echo "    ВАЖНО: приложение должно слушать только localhost —"
+    echo "    запускай стек с  --app-bind 127.0.0.1 --app-port $(envget APP_PORT 10010)"
+}
+
+# cmd_systemd writes a user systemd unit that brings the compose stack up at
+# boot via this wrapper (credentials stay in deploy/.env, not in the unit).
+cmd_systemd() {
+    local proj appbind appport unit_dir unit
+    proj="$(envget COMPOSE_PROJECT_NAME madokworks)"
+    appbind="$(envget APP_BIND 127.0.0.1)"
+    appport="$(envget APP_PORT 10010)"
+    unit_dir="${HOME}/.config/systemd/user"
+    unit="${unit_dir}/${proj}.service"
+    mkdir -p "$unit_dir"
+    cat > "$unit" <<UNIT
+[Unit]
+Description=Madok.Works (${proj}) — podman-compose stack
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${SCRIPT_DIR}
+ExecStart=${SCRIPT_DIR}/kanban.sh up -p ${proj} --app-bind ${appbind} --app-port ${appport}
+ExecStop=${SCRIPT_DIR}/kanban.sh down -p ${proj}
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target
+UNIT
+    echo "==> Сгенерирован systemd-юнит: $unit"
+    echo "    (порт/бинд/проект зашиты; доступы к БД берутся из deploy/.env)"
+    echo ""
+    echo "==> Включение и автозапуск после ребута:"
+    echo "    loginctl enable-linger \$(whoami)"
+    echo "    systemctl --user daemon-reload"
+    echo "    systemctl --user enable --now ${proj}.service"
+}
+
+cmd_deploy() {
+    cmd_systemd
+    echo ""
+    cmd_nginx
+}
+
 # --- main ---
 CMD="${1:-}"; shift || true
 parse_flags "$@"
-detect_compose
+# Config generators don't need a compose CLI; everything else does.
+case "$CMD" in nginx|systemd|deploy) ;; *) detect_compose ;; esac
 
 case "$CMD" in
     up|start)   cmd_up ;;
@@ -234,5 +386,8 @@ case "$CMD" in
     psql)       compose exec db psql -U "$(envget PGUSER kanban)" -d "$(envget PGDATABASE kanban)" ;;
     backup)     cmd_backup ;;
     restore)    cmd_restore ;;
+    nginx)      cmd_nginx ;;
+    systemd)    cmd_systemd ;;
+    deploy)     cmd_deploy ;;
     *)          usage ;;
 esac
