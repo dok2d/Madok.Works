@@ -6,7 +6,7 @@
 // it tolerates schema drift between the backup's origin and this tool. The
 // transform is deliberately minimal:
 //
-//   - adds a top-level projects list with the default project "Общее" (id 1, open);
+//   - adds a top-level projects list with the default project "General" (id 1, open);
 //   - stamps project_id=1 on every columns/epics/sprints/tags/tasks row;
 //   - assigns each task a per-project sequential number (for KEY-<number> refs);
 //   - stamps project_id=1 on ecosystem calendars and wiki_spaces rows.
