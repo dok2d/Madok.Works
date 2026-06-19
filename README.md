@@ -21,32 +21,34 @@ Beyond the Kanban board, optional services share the same auth, roles, notificat
 ## Why this project
 
 - **Minimal dependencies** — Go + SQLite at the core (single `mattn/go-sqlite3`); the mail stack adds a small, self-contained SMTP/MIME library set. No Redis, no message queue. PostgreSQL is supported but optional.
-- **One command to run** — `./kanban.sh build && ./kanban.sh run`, open browser
+- **One command to run** — `./kanban.sh up --build`, open browser
 - **Batteries included** — projects, sprints, epics, per-project tags, file attachments, Markdown, comments with @mentions, multi-term search (text + regex), drag-and-drop, Telegram notifications, **2FA (TOTP)**, audit log
 - **Integrations** — Git (GitHub/GitLab/Gitea) webhooks link commits/branches/MRs to tasks by KEY-123/#123 and can auto-move tasks on merge; project-aware Telegram bot
-- **Hardened by default** — rootless Podman, read-only FS, all capabilities dropped, 127.0.0.1 only
+- **Hardened by default** — rootless Podman, read-only FS, all capabilities dropped; bind to localhost with `--app-bind 127.0.0.1`
 - **Works offline** — all static assets bundled, no external CDN calls
 - **8 themes, 10 languages** — dark/light/ocean/forest/nord/dracula/solarized/spacedust, from English to Arabic
 
 ## Quick Start
 
-```bash
-./kanban.sh build
-./kanban.sh run
-# → http://127.0.0.1:8080
-```
-
-First launch opens the admin setup page. Create an account and start using the board immediately. SQLite is the default; to use PostgreSQL instead, pass a connection string (or choose it on the first-run setup):
+The stack (app + PostgreSQL) runs via podman-compose; `./kanban.sh` is a thin wrapper that turns the knobs into the variables the compose file reads:
 
 ```bash
-./kanban.sh run -db postgres://user:pass@localhost/madok
+./kanban.sh up --build
+# → http://<LAN-IP>:10010   (first visit = create the admin account)
 ```
 
-To deploy on a server with TLS behind nginx:
+Ports, project name and DB credentials are flags (defaults come from `deploy/.env`):
 
 ```bash
-./kanban.sh deploy --host kanban.example.com
+./kanban.sh up --app-port 8080 --db-port 5433 -p work     # custom ports + project name
+./kanban.sh up --app-bind 127.0.0.1                       # local only (e.g. behind a reverse proxy)
+./kanban.sh up --db "postgres://kanban:kanban@db:5432/kanban?sslmode=disable"  # force Postgres from the start
+./kanban.sh logs            # follow app logs   (logs db for Postgres)
+./kanban.sh backup          # pg_dump → backups/
+./kanban.sh down            # stop (keeps data) ·  ./kanban.sh wipe  removes the volumes
 ```
+
+On the first run the setup page creates the admin and optionally lets you switch to the bundled PostgreSQL; otherwise it stays on SQLite. Run `./kanban.sh` with no arguments for the full command list.
 
 ## Features at a Glance
 
