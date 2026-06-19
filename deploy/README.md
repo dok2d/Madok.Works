@@ -10,10 +10,14 @@ browser over the local network:
 All published ports are inside the reserved **10010–10020** range and are
 configurable in [`.env`](.env):
 
-| Service | Container port | Published (LAN) | Purpose                       |
-|---------|----------------|-----------------|-------------------------------|
-| app     | 8080           | **10010**       | Web UI in the browser         |
-| db      | 5432           | 10011           | Optional direct psql access   |
+| Service | Container port | Published (LAN)   | Purpose                       |
+|---------|----------------|-------------------|-------------------------------|
+| app     | 8080           | **10010**         | Web UI in the browser         |
+| db      | 5432           | not published¹    | Postgres (internal only)      |
+
+¹ The app reaches Postgres over the internal network (`db:5432`); the DB port is
+not exposed by default. Publish it for direct `psql` access with
+`../kanban.sh up --db-port 10011` (or add a `ports:` entry to the `db` service).
 
 ## Run
 

@@ -85,12 +85,31 @@ make_env_file() {
     echo "$f"
 }
 
+# Postgres is internal-only by default; publish it to the host only when the user
+# asked with --db-port, via a small override compose file (keeps multi-instance
+# runs free of DB port clashes).
+make_dbport_override() {
+    local f; f="$(mktemp "${TMPDIR:-/tmp}/kanban-dbport.XXXXXX.yml")"
+    cat > "$f" <<'YML'
+services:
+  db:
+    ports:
+      - "${DB_BIND:-0.0.0.0}:${DB_PORT:-10011}:5432"
+YML
+    echo "$f"
+}
+
 compose() {
-    local ef proj rc=0
+    local ef proj ov="" rc=0
     ef="$(make_env_file)"
     proj="$(envget COMPOSE_PROJECT_NAME madokworks)"
-    ( cd "$(dirname "$COMPOSE_FILE")" && "${COMPOSE[@]}" --env-file "$ef" -p "$proj" -f "$COMPOSE_FILE" "$@" ) || rc=$?
-    rm -f "$ef"
+    local -a files=(-f "$COMPOSE_FILE")
+    if [[ -n "${OVR[DB_PORT]:-}" ]]; then
+        ov="$(make_dbport_override)"
+        files+=(-f "$ov")
+    fi
+    ( cd "$(dirname "$COMPOSE_FILE")" && "${COMPOSE[@]}" --env-file "$ef" -p "$proj" "${files[@]}" "$@" ) || rc=$?
+    rm -f "$ef" ${ov:+"$ov"}
     return $rc
 }
 
@@ -116,7 +135,7 @@ Madok.Works — обёртка над podman-compose (приложение + Pos
 Флаги (любой команды; перекрывают deploy/.env):
   -p, --project <имя>   Имя проекта = префикс контейнеров/томов/сети (по умолч. madokworks)
   --app-port <порт>     Порт приложения (по умолч. 10010)
-  --db-port  <порт>     Порт PostgreSQL наружу (по умолч. 10011)
+  --db-port  <порт>     Опубликовать PostgreSQL на хост-порту (по умолчанию БД наружу НЕ торчит)
   --app-bind <addr>     Интерфейс публикации приложения (по умолч. 0.0.0.0; 127.0.0.1 — только локально)
   --db-bind  <addr>     Интерфейс публикации БД (по умолч. 0.0.0.0)
   --pg-user <имя>       Пользователь PostgreSQL (по умолч. kanban)
