@@ -2791,7 +2791,7 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 	for _, p := range data.Projects {
 		if _, err := tx.Exec(`INSERT INTO projects(id,name,key,description,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET name=excluded.name, key=excluded.key, description=excluded.description, visibility=excluded.visibility, created_by=excluded.created_by`,
-			p.ID, p.Name, p.Key, p.Description, p.Visibility, p.CreatedBy, p.CreatedAt); err != nil {
+			p.ID, p.Name, p.Key, p.Description, p.Visibility, p.CreatedBy, nonEmptyTS(p.CreatedAt)); err != nil {
 			return fmt.Errorf("import project: %w", err)
 		}
 	}
@@ -2894,6 +2894,17 @@ func projectIDOrDefault(id int64) int64 {
 		return 1
 	}
 	return id
+}
+
+// nonEmptyTS returns the timestamp string, or the current UTC time when it's
+// empty. Postgres rejects "" for timestamptz columns (SQLite tolerates it), so
+// imported rows that lack a timestamp (e.g. a project synthesized by the backup
+// converter) still load on either backend.
+func nonEmptyTS(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return time.Now().UTC().Format("2006-01-02 15:04:05")
+	}
+	return s
 }
 
 // resetSequences re-syncs id generators after an explicit-id bulk import. For

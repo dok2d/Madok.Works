@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 )
@@ -16,6 +17,14 @@ var ecosystemTables = []string{
 	"calendar_subscriptions", "calendar_sub_events",
 	"mail_messages", "mail_box", "mail_attachments",
 	"mail_folders", "mail_rules", "mail_audit", "mail_aliases",
+}
+
+// selfRefCols lists columns whose FK points back at the same table's id. On
+// import these are deferred (inserted NULL, then set in a second pass) so any
+// parent/child ordering loads on Postgres, which checks FKs immediately.
+var selfRefCols = map[string]string{
+	"wiki_pages":    "parent_id",
+	"chat_messages": "reply_to",
 }
 
 // dumpTable returns every row of a table as column->value maps. Used for lossless
@@ -78,6 +87,23 @@ func clearEcosystem(tx *dbTx) error {
 	return nil
 }
 
+// txTry runs one statement inside a savepoint so that, if it fails, only that
+// statement is rolled back and the surrounding transaction stays usable —
+// Postgres otherwise aborts the whole transaction on any error. Used to make
+// ecosystem restore best-effort across schema versions.
+func txTry(tx *dbTx, q string, args ...any) error {
+	if _, err := tx.Exec("SAVEPOINT eco_sp"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(q, args...); err != nil {
+		tx.Exec("ROLLBACK TO SAVEPOINT eco_sp")
+		tx.Exec("RELEASE SAVEPOINT eco_sp")
+		return err
+	}
+	_, err := tx.Exec("RELEASE SAVEPOINT eco_sp")
+	return err
+}
+
 // importEcosystem clears and restores the service tables inside an existing
 // transaction. SQLite's column affinity coerces JSON float64 ids back to integers.
 func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
@@ -99,10 +125,20 @@ func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", tbl, err)
 		}
-		// Insert in ascending id order so self-referential rows (wiki_pages.parent_id,
-		// chat_messages.reply_to) see their parent first — Postgres enforces FKs
-		// immediately. Rows without an id column keep their original order.
 		sort.SliceStable(rows, func(a, b int) bool { return rowID(rows[a]) < rowID(rows[b]) })
+		// Self-referential FK columns (a row pointing at another row of the same
+		// table) can't be satisfied by any single insert order when a parent has a
+		// higher id than its child (e.g. a wiki page re-parented under a newer one).
+		// Postgres enforces FKs immediately, so insert these columns as NULL and set
+		// them in a second pass once every row of the table exists.
+		sr := selfRefCols[tbl]
+		deferSR := sr != "" && valid[sr]
+		type deferred struct{ id, val any }
+		var pend []deferred
+		// Each row insert is wrapped in a savepoint: a row that doesn't fit the
+		// current schema (e.g. legacy chat_messages from before channels, missing
+		// a now-NOT-NULL column) is skipped instead of aborting the whole restore.
+		skipped := 0
 		for _, row := range rows {
 			cols := make([]string, 0, len(row))
 			ph := make([]string, 0, len(row))
@@ -110,6 +146,9 @@ func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 			for c, v := range row {
 				if !valid[c] {
 					continue // column not in the current schema — skip it
+				}
+				if deferSR && c == sr {
+					continue // inserted as NULL now, fixed up below
 				}
 				cols = append(cols, c)
 				ph = append(ph, "?")
@@ -119,9 +158,22 @@ func importEcosystem(tx *dbTx, eco map[string][]map[string]any) error {
 				continue
 			}
 			q := "INSERT INTO " + tbl + "(" + strings.Join(cols, ",") + ") VALUES(" + strings.Join(ph, ",") + ")"
-			if _, err := tx.Exec(q, vals...); err != nil {
-				return fmt.Errorf("import %s: %w", tbl, err)
+			if err := txTry(tx, q, vals...); err != nil {
+				skipped++
+				continue
 			}
+			if deferSR {
+				if v := row[sr]; v != nil && rowID(map[string]any{"id": v}) != 0 {
+					pend = append(pend, deferred{id: row["id"], val: v})
+				}
+			}
+		}
+		for _, d := range pend {
+			// A deferred parent may have been skipped — tolerate the FK failure.
+			_ = txTry(tx, "UPDATE "+tbl+" SET "+sr+"=? WHERE id=?", d.val, d.id)
+		}
+		if skipped > 0 {
+			log.Printf("import: skipped %d incompatible %s row(s)", skipped, tbl)
 		}
 	}
 	return nil
