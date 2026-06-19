@@ -65,17 +65,33 @@ parse_flags() {
     done
 }
 
-# Run podman-compose from the compose dir (so its .env + relative build context
-# resolve), with our overrides exported. COMPOSE_PROJECT_NAME is always set so
-# the project (and thus volume/container names) is deterministic.
+# podman-compose gives the project's .env precedence over the process environment,
+# so passing overrides as env vars doesn't work. Instead we materialize the full
+# effective config (flag > deploy/.env > default) into a temp env file and hand it
+# to compose via --env-file (which replaces the default .env). -p pins the project.
+make_env_file() {
+    local f; f="$(mktemp "${TMPDIR:-/tmp}/kanban-env.XXXXXX")"
+    {
+        echo "COMPOSE_PROJECT_NAME=$(envget COMPOSE_PROJECT_NAME madokworks)"
+        echo "APP_PORT=$(envget APP_PORT 10010)"
+        echo "DB_PORT=$(envget DB_PORT 10011)"
+        echo "APP_BIND=$(envget APP_BIND 0.0.0.0)"
+        echo "DB_BIND=$(envget DB_BIND 0.0.0.0)"
+        echo "PGUSER=$(envget PGUSER kanban)"
+        echo "PGPASSWORD=$(envget PGPASSWORD kanban)"
+        echo "PGDATABASE=$(envget PGDATABASE kanban)"
+        echo "APP_DB=$(envget APP_DB /data/kanban.db)"
+    } > "$f"
+    echo "$f"
+}
+
 compose() {
-    local -a exports=("COMPOSE_PROJECT_NAME=$(envget COMPOSE_PROJECT_NAME madokworks)")
-    local k
-    for k in "${!OVR[@]}"; do
-        [[ "$k" == "COMPOSE_PROJECT_NAME" ]] && continue
-        exports+=("$k=${OVR[$k]}")
-    done
-    ( cd "$(dirname "$COMPOSE_FILE")" && env "${exports[@]}" "${COMPOSE[@]}" -f "$COMPOSE_FILE" "$@" )
+    local ef proj rc=0
+    ef="$(make_env_file)"
+    proj="$(envget COMPOSE_PROJECT_NAME madokworks)"
+    ( cd "$(dirname "$COMPOSE_FILE")" && "${COMPOSE[@]}" --env-file "$ef" -p "$proj" -f "$COMPOSE_FILE" "$@" ) || rc=$?
+    rm -f "$ef"
+    return $rc
 }
 
 usage() {
