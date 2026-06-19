@@ -14,6 +14,11 @@
 # The app image is the repo's Containerfile; we only override its command to
 # point at Postgres instead of the default SQLite file.
 
+# Project name (prefix for containers/volumes/network). Defaults to "madokworks"
+# so the names don't depend on this folder's name; override with the
+# COMPOSE_PROJECT_NAME env var (or `podman-compose -p <name>`).
+name: ${COMPOSE_PROJECT_NAME:-madokworks}
+
 services:
   db:
     image: docker.io/library/postgres:16-alpine
