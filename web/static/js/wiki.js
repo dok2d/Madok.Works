@@ -270,7 +270,7 @@ function wikiRenderPageView(el) {
         </div>
       </div>
     </div>
-    <div class="wiki-meta">v${p.rev_no} &middot; ${t('wikiEditedBy')} ${esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
+    <div class="wiki-meta"><a href="/wiki/page/${p.id}/history" onclick="navigateTo('/wiki/page/${p.id}/history');return false;">v${p.rev_no}</a> &middot; ${t('wikiEditedBy')} ${p.updated_by ? `<a href="/user/${p.updated_by}" onclick="navigateTo('/user/${p.updated_by}');return false;">${esc(p.updated_by_name || '?')}</a>` : esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
     <div id="wiki-summary-panel"></div>
     <div class="wiki-content md-content">${p.content || `<p style="color:var(--fg3)">${t('wikiEmptyPage')}</p>`}</div>
     ${(p.backlinks && p.backlinks.length) ? `<div class="wiki-backlinks">
