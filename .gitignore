@@ -1,1 +1,10 @@
 .claude
+
+# Backups and their conversions — never commit user data dumps.
+*.json.gz
+*-backup-*.json
+backups/
+
+# Local build artifacts
+/kanban
+/kanban-e2e
