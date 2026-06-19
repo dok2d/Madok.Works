@@ -761,6 +761,9 @@ body.has-rail #app{margin-left:52px}
 .toast-error{border-left-color:var(--red)}
 .toast-info{border-left-color:var(--blue)}
 .toast-ico{flex-shrink:0;font-weight:700}
+.toast-close{flex-shrink:0;margin-left:auto;padding-left:8px;opacity:.6;font-weight:700}
+.toast-close:hover{opacity:1}
+.toast-error{max-width:520px}
 .toast-success .toast-ico{color:var(--green)}
 .toast-error .toast-ico{color:var(--red)}
 .toast-info .toast-ico{color:var(--blue)}
@@ -1312,11 +1315,20 @@ function toast(message, type) {
   const txt = document.createElement('span');
   txt.textContent = String(message); // text node — no HTML injection
   el.appendChild(ico); el.appendChild(txt);
-  box.appendChild(el);
   let gone = false;
   const remove = () => { if (gone) return; gone = true; el.classList.add('toast-out'); setTimeout(() => el.remove(), 220); };
+  // Errors stay until dismissed (they often carry details you need to read); a
+  // close button makes that clear. Other toasts auto-dismiss.
+  if (type === 'error') {
+    const x = document.createElement('span');
+    x.className = 'toast-close';
+    x.textContent = '✕';
+    x.title = 'Закрыть';
+    el.appendChild(x);
+  }
+  box.appendChild(el);
   el.addEventListener('click', remove);
-  setTimeout(remove, type === 'error' ? 6000 : 3500);
+  if (type !== 'error') setTimeout(remove, 3500);
 }
 // Native alert is non-returning, so redirect it globally to a toast (errors by default).
 window.alert = function (m) { toast(m, 'error'); };

@@ -1834,6 +1834,12 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "admin only", http.StatusForbidden)
 		return
 	}
+	// A backup can be tens of MB and the restore touches every table, so extend
+	// the read/write deadlines beyond the server defaults for this request.
+	if rc := http.NewResponseController(w); rc != nil {
+		rc.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		rc.SetWriteDeadline(time.Now().Add(5 * time.Minute))
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "read error", http.StatusBadRequest)

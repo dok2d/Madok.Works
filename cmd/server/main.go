@@ -53,11 +53,15 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:         *addr,
-		Handler:      h,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    *addr,
+		Handler: h,
+		// ReadHeaderTimeout (not ReadTimeout) bounds slowloris on headers but lets
+		// large request bodies (e.g. a backup import) upload without being cut off
+		// by a whole-request read deadline. Handlers extend the write window where
+		// needed (import, LLM) via http.ResponseController.
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Clean expired sessions periodically
