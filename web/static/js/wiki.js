@@ -602,13 +602,30 @@ function wikiSummaryPanelOpen(pageId) {
   if (!wikiState.page || wikiState.page.id !== pageId || wikiState.mode !== 'view') return null;
   return document.getElementById('wiki-summary-panel');
 }
-function wikiSummaryShow(pageId, bodyHtml, cached, isErr) {
+function wikiSummaryShow(pageId, bodyHtml, cached, isErr, title) {
   const panel = wikiSummaryPanelOpen(pageId);
   if (!panel) return;
   panel.innerHTML = `<div class="wiki-summary${isErr ? ' wiki-summary-err' : ''}">
     <div class="wiki-summary-head">&#10024; ${t('wikiSummary')}${cached ? ` <span class="wiki-summary-cached">${t('wikiSummaryCached')}</span>` : ''}</div>
+    ${title ? `<div class="wiki-summary-title">${esc(title)}</div>` : ''}
     <div class="wiki-summary-body md-content">${bodyHtml}</div></div>`;
   if (typeof highlightCode === 'function') highlightCode();
+}
+
+// wikiSplitSummary separates the short title the model emits on its first line
+// (followed by a blank line) from the summary body. Falls back to no title for
+// older single-paragraph summaries (no blank-line separator).
+function wikiSplitSummary(text) {
+  text = (text || '').trim();
+  const m = text.match(/^(.+?)\n\s*\n([\s\S]+)$/);
+  if (!m) return { title: '', body: text };
+  const title = m[1].trim().replace(/^#{1,6}\s*/, '');
+  if (!title || title.length > 100) return { title: '', body: text };
+  return { title, body: m[2].trim() };
+}
+function wikiSummaryReady(pageId, rawSummary, cached) {
+  const { title, body } = wikiSplitSummary(rawSummary);
+  wikiSummaryShow(pageId, wikiSanitizePreview(wikiMdToHtml(body)), cached, false, title);
 }
 
 // wikiSummarize starts (or fetches the cached) LLM summary. Generation runs in
@@ -621,7 +638,7 @@ async function wikiSummarize(pageId) {
   try {
     const r = await api('/api/wiki/pages/' + pageId + '/summary', 'POST');
     if (r.status === 'ready') {
-      wikiSummaryShow(pageId, wikiSanitizePreview(wikiMdToHtml(r.summary || '')), r.cached, false);
+      wikiSummaryReady(pageId, r.summary || '', r.cached);
     } else if (r.status === 'error') {
       wikiSummaryShow(pageId, esc(r.error || ''), false, true);
     } else {
@@ -641,7 +658,7 @@ async function wikiPollSummary(pageId) {
   try {
     const r = await api('/api/wiki/pages/' + pageId + '/summary');
     if (r.status === 'ready') {
-      wikiSummaryShow(pageId, wikiSanitizePreview(wikiMdToHtml(r.summary || '')), r.cached, false);
+      wikiSummaryReady(pageId, r.summary || '', r.cached);
     } else if (r.status === 'error') {
       wikiSummaryShow(pageId, esc(r.error || ''), false, true);
     } else if (r.status === 'pending') {

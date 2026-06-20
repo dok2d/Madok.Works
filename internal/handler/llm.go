@@ -87,6 +87,7 @@ type llmConfig struct {
 	BaseURL string // e.g. http://host:8080/v1
 	APIKey  string
 	Model   string
+	NoThink bool // disable reasoning ("thinking") for faster answers (Qwen3-style)
 }
 
 func (h *Handler) llmConfig() llmConfig {
@@ -95,7 +96,25 @@ func (h *Handler) llmConfig() llmConfig {
 		BaseURL: strings.TrimRight(strings.TrimSpace(h.store.GetSetting("llm_base_url")), "/"),
 		APIKey:  h.store.GetSetting("llm_api_key"),
 		Model:   strings.TrimSpace(h.store.GetSetting("llm_model")),
+		NoThink: h.store.GetSetting("llm_no_think") == "true",
 	}
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+// llmSystem appends a no-think directive to the system prompt when the admin
+// disabled reasoning. "/no_think" is the Qwen3 convention; for other models it's
+// harmless text, and the <think> stripping below still applies regardless.
+func llmSystem(c llmConfig, system string) string {
+	if c.NoThink {
+		return strings.TrimSpace(system) + " /no_think"
+	}
+	return system
 }
 
 // llmEnabled reports whether the wiki summary feature should be offered.
@@ -137,7 +156,7 @@ func llmSummarize(c llmConfig, text string) (string, error) {
 	payload := map[string]any{
 		"model": c.Model,
 		"messages": []map[string]string{
-			{"role": "system", "content": "You are a concise technical writer. Summarize the wiki page provided by the user as a short paragraph or a few bullet points. Reply in the same language as the page. Output only the summary, no preamble."},
+			{"role": "system", "content": llmSystem(c, "You are a concise technical writer. Summarize the wiki page provided by the user. First line: a short title (≤6 words, no markdown, no 'Title:' prefix). Then a blank line, then a short paragraph or a few bullet points. Reply in the same language as the page. Output only the title and summary, no preamble.")},
 			{"role": "user", "content": text},
 		},
 		"temperature": 0.3,
@@ -192,7 +211,7 @@ func llmChat(c llmConfig, system, user string, temperature float64) (string, err
 	payload := map[string]any{
 		"model": c.Model,
 		"messages": []map[string]string{
-			{"role": "system", "content": system},
+			{"role": "system", "content": llmSystem(c, system)},
 			{"role": "user", "content": user},
 		},
 		"temperature": temperature,
@@ -335,6 +354,7 @@ func (h *Handler) handleLLMSettings(w http.ResponseWriter, r *http.Request) {
 			"base_url": c.BaseURL,
 			"model":    c.Model,
 			"has_key":  c.APIKey != "",
+			"no_think": c.NoThink,
 		})
 	case http.MethodPost:
 		var req struct {
@@ -343,6 +363,7 @@ func (h *Handler) handleLLMSettings(w http.ResponseWriter, r *http.Request) {
 			Model    string `json:"model"`
 			Enabled  bool   `json:"enabled"`
 			ClearKey bool   `json:"clear_key"`
+			NoThink  bool   `json:"no_think"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -350,6 +371,7 @@ func (h *Handler) handleLLMSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		h.store.SetSetting("llm_base_url", strings.TrimRight(strings.TrimSpace(req.BaseURL), "/"))
 		h.store.SetSetting("llm_model", strings.TrimSpace(req.Model))
+		h.store.SetSetting("llm_no_think", boolStr(req.NoThink))
 		if req.ClearKey {
 			h.store.SetSetting("llm_api_key", "")
 		} else if req.APIKey != "" {

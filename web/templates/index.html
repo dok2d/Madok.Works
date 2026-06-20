@@ -632,6 +632,7 @@ body.has-rail #app{margin-left:52px}
 .wiki-toc-empty{color:var(--fg3);font-size:.85rem}
 .wiki-summary{margin:.6em 0 1em;padding:10px 14px;border-radius:var(--radius);border-left:3px solid var(--accent2);background:color-mix(in srgb, var(--accent2) 10%, var(--bg2))}
 .wiki-summary-head{font-size:.8rem;font-weight:600;color:var(--accent2);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.wiki-summary-title{font-size:1.02rem;font-weight:700;color:var(--fg);margin:0 0 6px}
 .wiki-summary-cached{font-weight:400;font-size:.72rem;color:var(--fg3);background:var(--bg3);border-radius:8px;padding:1px 7px}
 .wiki-summary-body{font-size:.92rem;line-height:1.55}
 .wiki-summary-err{border-left-color:var(--red);background:color-mix(in srgb, var(--red) 10%, var(--bg2));color:var(--red);font-size:.85rem}
@@ -2616,6 +2617,10 @@ function renderLLMSection() {
       ${fld('llm-model', t('llmModel'), c.model, 'auto')}
       ${fld('llm-key', t('llmApiKey'), '', c.has_key ? '••••••' : t('llmApiKeyOptional'), 'password')}
       <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--fg2);margin:8px 0">
+        <input type="checkbox" id="llm-nothink" ${c.no_think ? 'checked' : ''} style="width:auto;margin:0"> ${t('llmNoThink')}
+      </label>
+      <div style="font-size:.74rem;color:var(--fg3);margin:-4px 0 8px">${t('llmNoThinkHint')}</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--fg2);margin:8px 0">
         <input type="checkbox" id="llm-enabled" ${c.enabled ? 'checked' : ''} style="width:auto;margin:0"> ${t('llmEnable')}
       </label>
       <div style="display:flex;gap:8px">
@@ -2645,6 +2650,7 @@ async function saveLLM() {
   const s = document.getElementById('llm-status');
   const body = llmFormBody();
   body.enabled = document.getElementById('llm-enabled').checked;
+  body.no_think = document.getElementById('llm-nothink').checked;
   s.style.color = 'var(--fg3)'; s.textContent = body.enabled ? t('llmTesting') : '';
   try {
     await api('/api/settings/llm', 'POST', body);
