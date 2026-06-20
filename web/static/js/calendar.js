@@ -65,6 +65,12 @@ const CAL_I18N = {
     calAddIcsSub: 'Google Calendar (ICS)', calIcsUrl: 'iCal/ICS address (secret URL)', calIcsName: 'Name', calSyncNow: 'Sync now', calSubDelete: 'Remove subscription', calNoTitle: '(no title)',
     calIcsHint: 'Google Calendar → Settings → your calendar → "Secret address in iCal format". Read-only.',
     calWkShort: 'Wk', calWeekNum: 'Week', calPickPeriod: 'Pick month / year',
+    calGoogle: 'Google Calendar (two-way)', calGoogleConnect: 'Connect Google account', calGoogleDisconnect: 'Disconnect',
+    calGoogleNotConfigured: 'Google integration is not set up. Ask an administrator to enable it in Settings → Integrations.',
+    calGoogleConnected: 'Connected as', calGoogleLinks: 'Linked calendars', calGoogleLink: 'Link a calendar',
+    calGooglePickMW: 'Madok calendar', calGooglePickG: 'Google calendar', calGoogleAddLink: 'Link', calGoogleUnlink: 'Unlink',
+    calGoogleSyncAll: 'Sync now', calGoogleNever: 'never synced', calGoogleLastSync: 'last sync',
+    calGoogleHint: 'Events sync both ways: changes here mirror to Google and vice-versa.',
   },
   ru: {
     calNewEvent: 'Новое событие', calNewCalendar: 'Новый календарь', calToday: 'Сегодня',
@@ -83,6 +89,12 @@ const CAL_I18N = {
     calAddIcsSub: 'Google Календарь (ICS)', calIcsUrl: 'Адрес iCal/ICS (секретный URL)', calIcsName: 'Название', calSyncNow: 'Синхронизировать', calSubDelete: 'Удалить подписку', calNoTitle: '(без названия)',
     calIcsHint: 'Google Календарь → Настройки → ваш календарь → «Секретный адрес в формате iCal». Только чтение.',
     calWkShort: '№', calWeekNum: 'Неделя', calPickPeriod: 'Выбрать месяц / год',
+    calGoogle: 'Google Календарь (двусторонний)', calGoogleConnect: 'Подключить аккаунт Google', calGoogleDisconnect: 'Отключить',
+    calGoogleNotConfigured: 'Интеграция с Google не настроена. Попросите администратора включить её в «Настройки → Интеграции».',
+    calGoogleConnected: 'Подключён как', calGoogleLinks: 'Связанные календари', calGoogleLink: 'Связать календарь',
+    calGooglePickMW: 'Календарь Madok', calGooglePickG: 'Календарь Google', calGoogleAddLink: 'Связать', calGoogleUnlink: 'Отвязать',
+    calGoogleSyncAll: 'Синхронизировать', calGoogleNever: 'не синхронизировался', calGoogleLastSync: 'последняя синхр.',
+    calGoogleHint: 'События синхронизируются в обе стороны: изменения здесь отражаются в Google и наоборот.',
   },
   es: {
     calNewEvent: "Nuevo evento", calNewCalendar: "Nuevo calendario", calToday: "Hoy",
@@ -220,6 +232,7 @@ async function renderCalendarView() {
   }
   try { calState.subscriptions = await api('/api/calendar/subscriptions'); }
   catch (e) { calState.subscriptions = []; }
+  calGoogleNotice();
   calRenderLayout();
   calConnectSSE();
   await calLoadAndRender();
@@ -324,6 +337,7 @@ function calRenderHeader() {
 
   if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calNewCalendarDialog()">+ ${esc(t('calNewCalendar'))}</div>`;
   if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calSubscriptionDialog()">+ ${esc(t('calAddIcsSub'))}</div>`;
+  if (canWrite) calItems += `<div class="sfd-item cal-dd-new" onclick="calGoogleDialog()">+ ${esc(t('calGoogle'))}</div>`;
   el.innerHTML = `<span class="hdr-sep">/</span>
     <span class="hdr-filter">
       <span class="hdr-filter-name" id="cal-view-label" onclick="hdrDropToggle(event,'cal-view-dd')">${esc(vlabel(calState.view))}</span>
@@ -724,6 +738,115 @@ async function calSyncSubscription(id) {
     await api('/api/calendar/subscriptions/' + id + '/sync', 'POST', {});
     // Server syncs in the background and pushes a calendar SSE event when done.
   } catch (e) { alert(e.message); }
+}
+
+// === Google Calendar (two-way) ===
+
+// calGoogleNotice surfaces the OAuth callback outcome (?google=...) once, then
+// strips the query param so a reload doesn't repeat it.
+function calGoogleNotice() {
+  const p = new URLSearchParams(location.search);
+  const g = p.get('google');
+  if (!g) return;
+  if (g === 'connected') toast(t('calGoogleConnected'), 'success');
+  else if (g === 'denied' || g === 'error') toast('Google: ' + g, 'error');
+  p.delete('google');
+  const qs = p.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+}
+
+async function calGoogleDialog() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+  let st;
+  try { st = await api('/api/google/status'); }
+  catch (e) { toast(e.message, 'error'); return; }
+
+  if (!st.configured) {
+    calModal(t('calGoogle'), `<div class="cal-ics-hint">${esc(t('calGoogleNotConfigured'))}</div>`);
+    return;
+  }
+  if (!st.connected) {
+    calModal(t('calGoogle'), `
+      <div class="cal-sub-add">
+        <button class="btn btn-primary btn-sm" onclick="location.href='/api/google/connect'">${esc(t('calGoogleConnect'))}</button>
+      </div>
+      <div class="cal-ics-hint">${esc(t('calGoogleHint'))}</div>`);
+    return;
+  }
+
+  let gcals = [];
+  try { gcals = await api('/api/google/calendars'); } catch (e) { /* token issues surface on sync */ }
+  const links = st.links || [];
+  const mwById = {};
+  (calState.calendars || []).forEach(c => { mwById[c.id] = c; });
+
+  const linkRows = links.map(l => {
+    const mw = mwById[l.calendar_id];
+    const mwName = mw ? mw.name : ('#' + l.calendar_id);
+    const last = l.last_sync ? (t('calGoogleLastSync') + ': ' + calFmtSync(l.last_sync)) : t('calGoogleNever');
+    return `<div class="cal-sub-row">
+      <span class="cal-sub-name">${esc(mwName)} &#8646; ${esc(l.google_cal_name || l.google_cal_id)}</span>
+      <span class="cal-sub-meta"${l.last_error ? ` title="${escAttr(l.last_error)}"` : ''}>${l.last_error ? '&#9888; ' : ''}${esc(last)}</span>
+      <button class="btn-icon btn-sm cal-danger" title="${escAttr(t('calGoogleUnlink'))}" onclick="calGoogleUnlink(${l.id})">&#10005;</button>
+    </div>`;
+  }).join('') || `<div class="cal-empty">—</div>`;
+
+  const linkedCalIds = new Set(links.map(l => l.calendar_id));
+  const mwOpts = (calState.calendars || []).filter(c => c.can_edit && !linkedCalIds.has(c.id))
+    .map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const gOpts = gcals.map(g => `<option value="${escAttr(g.id)}">${esc(g.summary || g.id)}${g.primary ? ' ★' : ''}</option>`).join('');
+  const canAdd = mwOpts && gOpts;
+
+  calModal(t('calGoogle'), `
+    <div class="cal-google-acct">${esc(t('calGoogleConnected'))} <b>${esc(st.email || '')}</b>
+      <button class="btn btn-ghost btn-sm" onclick="calGoogleSyncNow()">${esc(t('calGoogleSyncAll'))}</button>
+      <button class="btn btn-ghost btn-sm cal-danger" onclick="calGoogleDisconnect()">${esc(t('calGoogleDisconnect'))}</button>
+    </div>
+    <div class="cal-google-links-title">${esc(t('calGoogleLinks'))}</div>
+    <div class="cal-sub-list">${linkRows}</div>
+    ${canAdd ? `<div class="cal-google-link-add">
+      <select id="cal-g-mw">${mwOpts}</select>
+      <span>&#8646;</span>
+      <select id="cal-g-goog">${gOpts}</select>
+      <button class="btn btn-primary btn-sm" onclick="calGoogleAddLink()">${esc(t('calGoogleAddLink'))}</button>
+    </div>` : ''}
+    <div class="cal-ics-hint">${esc(t('calGoogleHint'))}</div>`);
+}
+
+function calFmtSync(s) {
+  try {
+    const iso = s.includes('T') ? s : s.replace(' ', 'T') + (/[zZ]|[+-]\d\d:\d\d$/.test(s) ? '' : 'Z');
+    return new Date(iso).toLocaleString();
+  } catch (e) { return s; }
+}
+
+async function calGoogleDisconnect() {
+  if (!await uiConfirm(t('calGoogleDisconnect') + '?')) return;
+  try { await api('/api/google/disconnect', 'POST', {}); calGoogleDialog(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+async function calGoogleAddLink() {
+  const mw = document.getElementById('cal-g-mw');
+  const g = document.getElementById('cal-g-goog');
+  if (!mw || !g || !mw.value || !g.value) return;
+  const gName = g.options[g.selectedIndex] ? g.options[g.selectedIndex].text.replace(' ★', '') : '';
+  try {
+    await api('/api/google/links', 'POST', { calendar_id: parseInt(mw.value, 10), google_cal_id: g.value, google_cal_name: gName });
+    calGoogleDialog();
+    calLoadAndRender();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function calGoogleUnlink(id) {
+  if (!await uiConfirm(t('calGoogleUnlink') + '?')) return;
+  try { await api('/api/google/links/' + id, 'DELETE'); calGoogleDialog(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+async function calGoogleSyncNow() {
+  try { await api('/api/google/sync', 'POST', {}); toast(t('calGoogleSyncAll'), 'success'); }
+  catch (e) { toast(e.message, 'error'); }
 }
 
 // === Dialogs ===

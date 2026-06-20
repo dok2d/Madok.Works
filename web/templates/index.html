@@ -1246,6 +1246,10 @@ body.has-rail .search-results{left:52px}
     <h3 data-i18n="llmTitle"></h3>
     <div id="llm-content"></div>
   </div>
+  <div class="sidebar-section" id="google-section" style="display:none">
+    <h3 data-i18n="gcalTitle"></h3>
+    <div id="google-content"></div>
+  </div>
   <div class="sidebar-section" id="db-section" style="display:none">
     <h3 data-i18n="dbTitle"></h3>
     <div id="db-content"></div>
@@ -2434,6 +2438,8 @@ function updateUserUI() {
   // LLM integration + DB info — admin only.
   const llmSec = document.getElementById('llm-section');
   if (llmSec) { llmSec.style.display = isAdmin() ? '' : 'none'; if (isAdmin()) renderLLMSection(); }
+  const gcalSec = document.getElementById('google-section');
+  if (gcalSec) { gcalSec.style.display = isAdmin() ? '' : 'none'; if (isAdmin()) renderGoogleSection(); }
   const dbSec = document.getElementById('db-section');
   if (dbSec) { dbSec.style.display = isAdmin() ? '' : 'none'; if (isAdmin()) renderDBSection(); }
   // Mail distribution rules — per-user; lives in personal settings (gear sidebar).
@@ -2655,6 +2661,44 @@ async function saveLLM() {
   try {
     await api('/api/settings/llm', 'POST', body);
     renderLLMSection();
+  } catch (e) { s.style.color = 'var(--red)'; s.textContent = '✗ ' + e.message; }
+}
+
+// === Google Calendar OAuth client (admin) ===
+function renderGoogleSection() {
+  const el = document.getElementById('google-content');
+  if (!el) return;
+  const h = document.querySelector('#google-section h3'); if (h) h.textContent = t('gcalTitle');
+  api('/api/google/config').then(c => {
+    const fld = (id, label, val, ph, type='text') => `<div style="margin-bottom:8px">
+      <label style="font-size:.78rem;color:var(--fg2)">${label}</label>
+      <input type="${type}" id="${id}" value="${escAttr(val||'')}" placeholder="${ph||''}" style="width:100%;margin-top:4px;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:6px 8px;color:var(--fg);font-size:.82rem;outline:none"></div>`;
+    el.innerHTML = `
+      <div style="font-size:.78rem;color:var(--fg3);margin-bottom:8px">${t('gcalHint')}</div>
+      ${c.configured ? `<div style="font-size:.82rem;color:var(--green);margin-bottom:8px">&#10004; ${t('gcalConfigured')}</div>` : ''}
+      <div style="font-size:.74rem;color:var(--fg3);margin-bottom:8px">${t('gcalRedirect')}:<br><code style="color:var(--fg2);word-break:break-all">${esc(c.redirect_uri||'')}</code></div>
+      ${fld('gcal-client-id', t('gcalClientId'), c.client_id, '')}
+      ${fld('gcal-secret', t('gcalSecret'), '', c.secret_set ? '••••••' : '', 'password')}
+      <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--fg2);margin:8px 0">
+        <input type="checkbox" id="gcal-enabled" ${c.enabled ? 'checked' : ''} style="width:auto;margin:0"> ${t('gcalEnable')}
+      </label>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="saveGoogleCfg()">${t('save')}</button>
+      </div>
+      <div id="gcal-status" style="margin-top:8px;font-size:.8rem"></div>`;
+  }).catch(()=>{ el.innerHTML = `<div style="color:var(--red);font-size:.82rem">${t('error')}</div>`; });
+}
+async function saveGoogleCfg() {
+  const s = document.getElementById('gcal-status');
+  const body = {
+    enabled: document.getElementById('gcal-enabled').checked,
+    client_id: document.getElementById('gcal-client-id').value.trim(),
+    client_secret: document.getElementById('gcal-secret').value
+  };
+  s.style.color = 'var(--fg3)'; s.textContent = '';
+  try {
+    await api('/api/google/config', 'POST', body);
+    renderGoogleSection();
   } catch (e) { s.style.color = 'var(--red)'; s.textContent = '✗ ' + e.message; }
 }
 
