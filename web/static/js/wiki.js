@@ -694,6 +694,7 @@ const WIKI_TOOLBAR = [
   { act: 'spoiler', label: '&#9656;', key: 'tbSpoiler' },
   { act: 'subpages', label: '&#9776;', key: 'tbSubpages' },
   { act: 'diagram', label: '&#9635;', key: 'tbDiagram' },
+  { act: 'attach', label: '&#128206;', key: 'tbAttach' },
 ];
 
 // wikiMdToHtml converts markdown to HTML via the bundled marked (falls back to
@@ -953,6 +954,7 @@ function wikiTbAction(act, anchor) {
     case 'spoiler': return wikiMdSpoiler();
     case 'subpages': return wikiMdSubpagesPick(anchor);
     case 'diagram': return wikiInsertDiagram();
+    case 'attach': return wikiAttachFile();
   }
 }
 
@@ -1109,6 +1111,33 @@ function wikiMdSpoiler() {
 
 function escHtmlText(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// wikiAttachFile uploads any file to /api/files and inserts a markdown link
+// (images embed; other files become a download link). The server enforces the
+// admin's allowed-types list.
+function wikiAttachFile() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.onchange = async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    if (typeof MAX_UPLOAD_SIZE !== 'undefined' && file.size > MAX_UPLOAD_SIZE) { alert(t('fileTooLarge')); return; }
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result.split(',')[1];
+          const res = await api('/api/files', 'POST', { data: base64, filename: file.name, mime: file.type || 'application/octet-stream' });
+          const name = (file.name || 'file').replace(/[\[\]]/g, '');
+          if ((file.type || '').startsWith('image/')) wikiMdInsert('![' + name + '](' + res.url + ')');
+          else wikiMdInsert('[\u{1F4CE} ' + name + '](' + res.url + ')');
+        } catch (e) { alert((t('uploadError') || 'Upload error') + ': ' + e.message); }
+      };
+      reader.readAsDataURL(file);
+    } catch (e) { alert(t('uploadError') + ': ' + e.message); }
+  };
+  inp.click();
 }
 
 async function wikiUploadImage(file) {

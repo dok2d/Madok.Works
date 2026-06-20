@@ -120,6 +120,41 @@ var blockedExtensions = map[string]bool{
 	".sh": true, ".ps1": true,
 }
 
+// fileTypeAllowed applies the admin-configurable upload policy (setting
+// `upload_allowed`), shared by every service's upload (wiki/chat/comments/mail):
+//   - empty   → built-in default (extension blocklist + MIME allowlist)
+//   - "*"     → allow any type (files are served as attachments, so it's safe)
+//   - "a,b,…" → allow only these extensions (e.g. "pdf, docx, zip")
+// Returns (ok, message-when-rejected).
+func (h *Handler) fileTypeAllowed(filename, mime string) (bool, string) {
+	allowed := strings.TrimSpace(strings.ToLower(h.store.GetSetting("upload_allowed")))
+	ext := strings.ToLower(filepath.Ext(filename))
+	if allowed == "*" || allowed == "any" {
+		return true, ""
+	}
+	if allowed != "" {
+		for _, e := range strings.FieldsFunc(allowed, func(r rune) bool { return r == ',' || r == ' ' || r == ';' || r == '\n' }) {
+			if e == "" {
+				continue
+			}
+			if e[0] != '.' {
+				e = "." + e
+			}
+			if e == ext {
+				return true, ""
+			}
+		}
+		return false, "file type not allowed (allowed: " + allowed + ")"
+	}
+	if blockedExtensions[ext] {
+		return false, "file type not allowed"
+	}
+	if !allowedFileMIME[mime] {
+		return false, "file MIME type not allowed"
+	}
+	return true, ""
+}
+
 type Handler struct {
 	store        *db.Store
 	mux          *http.ServeMux
@@ -918,20 +953,14 @@ func (h *Handler) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "data and filename required", http.StatusBadRequest)
 		return
 	}
-	// Security: check extension
-	ext := strings.ToLower(filepath.Ext(req.Filename))
-	if blockedExtensions[ext] {
-		log.Printf("[upload] file: blocked extension: %s", ext)
-		http.Error(w, "file type not allowed", http.StatusBadRequest)
-		return
-	}
-	// Security: check MIME
 	if req.Mime == "" {
 		req.Mime = "application/octet-stream"
 	}
-	if !allowedFileMIME[req.Mime] {
-		log.Printf("[upload] file: blocked mime: %s", req.Mime)
-		http.Error(w, "file MIME type not allowed", http.StatusBadRequest)
+	// File-type policy (admin-configurable, applies to every service). Files are
+	// always served as attachments, so even "allow any" can't be rendered inline.
+	if ok, msg := h.fileTypeAllowed(req.Filename, req.Mime); !ok {
+		log.Printf("[upload] file: rejected %s (%s): %s", req.Filename, req.Mime, msg)
+		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(req.Data)
@@ -2941,16 +2970,17 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		jsonResp(w, map[string]any{"name": h.appName(), "default_lang": h.defaultLang(), "wap_enabled": h.wapEnabled()})
+		jsonResp(w, map[string]any{"name": h.appName(), "default_lang": h.defaultLang(), "wap_enabled": h.wapEnabled(), "upload_allowed": h.store.GetSetting("upload_allowed")})
 	case http.MethodPost:
 		if !user.IsAdmin {
 			http.Error(w, "admin only", http.StatusForbidden)
 			return
 		}
 		var req struct {
-			Name string `json:"name"`
-			Lang string `json:"lang"`
-			Wap  *bool  `json:"wap"`
+			Name          string  `json:"name"`
+			Lang          string  `json:"lang"`
+			Wap           *bool   `json:"wap"`
+			UploadAllowed *string `json:"upload_allowed"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -2984,7 +3014,15 @@ func (h *Handler) handleAppSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		jsonResp(w, map[string]any{"status": "ok", "name": h.appName(), "default_lang": h.defaultLang(), "wap_enabled": h.wapEnabled()})
+		// Allowed upload types (optional). "" = built-in default; "*" = any;
+		// otherwise a comma/space list of extensions.
+		if req.UploadAllowed != nil {
+			if err := h.store.SetSetting("upload_allowed", strings.TrimSpace(*req.UploadAllowed)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		jsonResp(w, map[string]any{"status": "ok", "name": h.appName(), "default_lang": h.defaultLang(), "wap_enabled": h.wapEnabled(), "upload_allowed": h.store.GetSetting("upload_allowed")})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
