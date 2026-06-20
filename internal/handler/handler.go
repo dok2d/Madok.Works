@@ -165,6 +165,8 @@ type Handler struct {
 	oidcProvider *auth.OIDCProvider
 	oidcMu       sync.Mutex           // protects oidcStates
 	oidcStates   map[string]time.Time // CSRF state tokens for OIDC
+	googleMu     sync.Mutex           // protects googleStates
+	googleStates map[string]googleAuthState // CSRF state tokens for Google OAuth (state -> user)
 	sse          *sseHub              // live events for ecosystem services
 	// Outbound mail (optional; configured from env in New). When outboundDomain
 	// is empty, external sending is disabled and mail stays internal.
@@ -177,13 +179,14 @@ type Handler struct {
 // live; the caller derives it (for SQLite, the database file's directory; for
 // Postgres, a dedicated -data-dir since the db path is a URL).
 func New(store *db.Store, dataDir string) *Handler {
-	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: dataDir, cookieName: sessionCookie, oidcStates: make(map[string]time.Time), sse: newSSEHub()}
+	h := &Handler{store: store, mux: http.NewServeMux(), dataDir: dataDir, cookieName: sessionCookie, oidcStates: make(map[string]time.Time), googleStates: make(map[string]googleAuthState), sse: newSSEHub()}
 	h.loadMailOutboundConfig()
 	h.routes()
 	h.initTelegramBot()
 	go h.runBackupScheduler()
 	go h.runCalendarReminders()
 	go h.runICSSync()
+	go h.runGoogleSync()
 	return h
 }
 
@@ -497,6 +500,16 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/calendar/upcoming", h.handleCalendarUpcoming)
 	h.mux.HandleFunc("/api/calendar/subscriptions", h.handleCalendarSubscriptions)
 	h.mux.HandleFunc("/api/calendar/subscriptions/", h.handleCalendarSubscriptionRoute)
+	// Google Calendar two-way sync (per-user OAuth).
+	h.mux.HandleFunc("/api/google/config", h.handleGoogleConfig)
+	h.mux.HandleFunc("/api/google/status", h.handleGoogleStatus)
+	h.mux.HandleFunc("/api/google/connect", h.handleGoogleConnect)
+	h.mux.HandleFunc("/api/google/callback", h.handleGoogleCallback)
+	h.mux.HandleFunc("/api/google/disconnect", h.handleGoogleDisconnect)
+	h.mux.HandleFunc("/api/google/calendars", h.handleGoogleCalendars)
+	h.mux.HandleFunc("/api/google/links", h.handleGoogleLinks)
+	h.mux.HandleFunc("/api/google/links/", h.handleGoogleLinkRoute)
+	h.mux.HandleFunc("/api/google/sync", h.handleGoogleSyncNow)
 
 	// Mail
 	h.mux.HandleFunc("/api/mail/folders", h.handleMailFolders)

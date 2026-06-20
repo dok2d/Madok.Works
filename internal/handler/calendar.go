@@ -303,6 +303,7 @@ func (h *Handler) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.calNotify(cal)
+		go h.googlePushEvent(created)
 		jsonResp(w, created)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -356,6 +357,7 @@ func (h *Handler) handleCalendarEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.calNotify(cal)
+		go h.googlePushEvent(updated)
 		jsonResp(w, updated)
 	case http.MethodDelete:
 		if !h.calAccess(user, cal, true) {
@@ -367,6 +369,7 @@ func (h *Handler) handleCalendarEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.calNotify(cal)
+		go h.googleDeleteEvent(ev.CalendarID, id)
 		jsonResp(w, map[string]string{"status": "ok"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

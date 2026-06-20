@@ -450,6 +450,40 @@ func (s *Store) migrate() error {
 			all_day INTEGER NOT NULL DEFAULT 0,
 			rrule TEXT NOT NULL DEFAULT ''
 		)`,
+		// Per-user Google account (OAuth tokens) for two-way Google Calendar sync.
+		`CREATE TABLE IF NOT EXISTS google_accounts (
+			user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			email TEXT NOT NULL DEFAULT '',
+			access_token TEXT NOT NULL DEFAULT '',
+			refresh_token TEXT NOT NULL DEFAULT '',
+			expiry TEXT NOT NULL DEFAULT '',
+			scope TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Link between an MW calendar and a Google calendar (1:1, two-way).
+		`CREATE TABLE IF NOT EXISTS google_cal_links (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			calendar_id INTEGER NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+			google_cal_id TEXT NOT NULL,
+			google_cal_name TEXT NOT NULL DEFAULT '',
+			sync_token TEXT NOT NULL DEFAULT '',
+			last_sync TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT '',
+			UNIQUE(calendar_id)
+		)`,
+		// Mapping of an MW event to its mirrored Google event (per link).
+		`CREATE TABLE IF NOT EXISTS google_event_map (
+			link_id INTEGER NOT NULL REFERENCES google_cal_links(id) ON DELETE CASCADE,
+			event_id INTEGER NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+			google_event_id TEXT NOT NULL,
+			etag TEXT NOT NULL DEFAULT '',
+			updated_local TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(link_id, event_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_google_event_map_event ON google_event_map(event_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_google_event_map_gid ON google_event_map(google_event_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_google_cal_links_user ON google_cal_links(user_id)`,
 		// === Mail (ecosystem service) ===
 		`CREATE TABLE IF NOT EXISTS mail_messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
