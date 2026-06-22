@@ -97,8 +97,11 @@ body.has-rail #app{margin-left:52px}
 .rail-btn.active::before{content:'';position:absolute;left:-7px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent)}
 .rail-badge{position:absolute;top:1px;right:1px;min-width:15px;height:15px;border-radius:8px;background:var(--red);color:#fff;font-size:.62rem;font-weight:600;line-height:15px;text-align:center;padding:0 3px}
 .rail-sep{width:26px;height:1px;background:var(--bg4);margin:4px 0;flex-shrink:0}
-.rail-admin{margin-top:auto}
-@media (max-width:760px){ .rail-admin{margin-top:0} }
+.rail-notif{margin-top:auto}
+.rail-clock{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;color:var(--fg2);user-select:none;flex-shrink:0;padding-top:2px;cursor:default}
+.rail-clock-time{font-size:.82rem;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.rail-clock-date{font-size:.6rem;color:var(--fg3);font-variant-numeric:tabular-nums;letter-spacing:.2px}
+@media (max-width:760px){ .rail-notif{margin-top:0} .rail-clock{flex-direction:row;gap:5px;align-items:baseline} .rail-clock-date{font-size:.66rem} }
 [dir="rtl"] .app-rail{left:auto;right:0;border-right:none;border-left:1px solid var(--bg4)}
 [dir="rtl"] body.has-rail #app{margin-left:0;margin-right:52px}
 [dir="rtl"] .rail-btn.active::before{left:auto;right:-7px}
@@ -1006,7 +1009,7 @@ body.has-rail .search-results{left:52px}
 
 /* Notification badge */
 .notif-badge{background:var(--red);color:#fff;font-size:.7rem;padding:1px 5px;border-radius:8px;font-weight:700;margin-left:4px}
-.notif-dropdown{position:fixed;right:20px;top:52px;width:380px;max-height:60vh;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius-lg);box-shadow:var(--shadow);z-index:200;overflow-y:auto;padding:12px}
+.notif-dropdown{position:fixed;left:56px;bottom:56px;width:380px;max-height:60vh;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius-lg);box-shadow:var(--shadow);z-index:200;overflow-y:auto;padding:12px}
 .notif-item{padding:8px 10px;background:var(--bg3);border-radius:var(--radius);margin-bottom:6px;font-size:.82rem;cursor:pointer;transition:all .15s;border-left:3px solid transparent}
 .notif-item.unread{border-left-color:var(--accent)}
 .notif-item:hover{background:var(--bg4)}
@@ -1062,7 +1065,7 @@ body.has-rail .search-results{left:52px}
   .theme-btn{padding:4px 10px;font-size:.78rem}
   .md-toolbar{gap:1px}
   .md-toolbar button{padding:3px 5px;font-size:.72rem}
-  .notif-dropdown{width:calc(100vw - 20px);right:10px}
+  .notif-dropdown{width:calc(100vw - 20px);left:10px;right:10px;bottom:58px}
 }
 @media(max-width:480px){
   .header-actions{gap:4px}
@@ -1107,7 +1110,7 @@ body.has-rail .search-results{left:52px}
 [dir="rtl"] .modal-footer{flex-direction:row-reverse}
 [dir="rtl"] .comment-time{flex-direction:row-reverse}
 [dir="rtl"] .comment-actions{flex-direction:row-reverse}
-[dir="rtl"] .notif-dropdown{right:auto;left:20px}
+[dir="rtl"] .notif-dropdown{left:auto;right:56px}
 </style>
 </head>
 <body>
@@ -1137,7 +1140,6 @@ body.has-rail .search-results{left:52px}
     </span>
     <button class="btn btn-ghost btn-sm hdr-kanban-only" id="backlog-btn" onclick="navigateTo('/backlog')" data-i18n="sprintBacklog" style="font-size:.8rem"></button>
     <button class="btn btn-ghost btn-sm" id="help-btn" onclick="restartTour()" data-i18n-title="help" title="Help">?</button>
-    <button class="btn btn-ghost btn-sm" id="notif-btn" onclick="toggleNotifications()" style="position:relative">&#128276;<span id="notif-count" class="notif-badge hidden">0</span></button>
     <button class="btn btn-ghost btn-sm hdr-kanban-only" id="personal-toggle" onclick="togglePersonalView()" style="display:none"></button>
   </div>
 </div>
@@ -2041,11 +2043,45 @@ function renderAppRail() {
         onclick="navigateTo('/${s.name}');return false;"><span id="rail-badge-${s.name}-wrap">${SERVICE_ICONS[s.name]}</span><span class="rail-badge hidden" id="rail-badge-${s.name}"></span></a>`);
     }
   }
+  // Bottom group (pushed down): notifications, settings, then the clock.
+  items.push(`<button class="rail-btn rail-notif" id="notif-btn" title="${t('notifications')}" onclick="toggleNotifications()">&#128276;<span id="notif-count" class="rail-badge hidden">0</span></button>`);
   // Universal Settings entry (role-aware contents) — available to every user.
   items.push(`<a class="rail-btn rail-admin ${currentView === 'admin' ? 'active' : ''}" href="/admin" title="${t('settingsTitle')}"
     onclick="navigateTo('/admin');return false;">&#9881;</a>`);
+  items.push(`<div class="rail-clock" id="rail-clock"><span class="rail-clock-time" id="rail-clock-time">--:--</span><span class="rail-clock-date" id="rail-clock-date">--&#8209;--&#8209;--</span></div>`);
   rail.innerHTML = items.join('');
+  updateNotifBadge();
+  updateRailClock();
 }
+
+// updateNotifBadge re-applies the unread count after the rail is re-rendered.
+function updateNotifBadge() {
+  const nb = document.getElementById('notif-count');
+  if (!nb) return;
+  const n = (currentUser && currentUser.unread) || 0;
+  if (n > 0) { nb.textContent = n > 99 ? '99+' : n; nb.classList.remove('hidden'); }
+  else { nb.classList.add('hidden'); }
+}
+
+// Rail clock: user-local time (24h) with a DD-MM-YY date below it.
+function updateRailClock() {
+  const te = document.getElementById('rail-clock-time');
+  const de = document.getElementById('rail-clock-date');
+  if (!te || !de) return;
+  const tz = (typeof getTimezone === 'function') ? getTimezone() : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const parts = {};
+  try {
+    new Intl.DateTimeFormat('en-GB', {timeZone: tz, year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false})
+      .formatToParts(new Date()).forEach(p => parts[p.type] = p.value);
+  } catch {
+    new Intl.DateTimeFormat('en-GB', {year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false})
+      .formatToParts(new Date()).forEach(p => parts[p.type] = p.value);
+  }
+  const hh = parts.hour === '24' ? '00' : parts.hour; // some engines emit 24 at midnight
+  te.textContent = `${hh}:${parts.minute}`;
+  de.textContent = `${parts.day}-${parts.month}-${parts.year}`;
+}
+if (typeof window !== 'undefined') { setInterval(() => { try { updateRailClock(); } catch {} }, 15000); }
 
 function setRailBadge(name, count) {
   const el = document.getElementById('rail-badge-' + name);
@@ -2118,6 +2154,7 @@ function getTimezone() { return localStorage.getItem('kanban-tz') || Intl.DateTi
 function setTimezone(tz) {
   localStorage.setItem('kanban-tz', tz);
   if (isAdmin()) { api('/api/settings/timezone', 'POST', { timezone: tz }).catch(()=>{}); }
+  if (typeof updateRailClock === 'function') updateRailClock();
   renderCurrentView();
 }
 function initTimezoneSelect() {
