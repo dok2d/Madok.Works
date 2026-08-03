@@ -17,6 +17,7 @@ Beyond the Kanban board, optional services share the same auth, roles, notificat
 - **Calls** — built-in **WebRTC** voice/video: 1:1 and small-group mesh calls signalled over SSE+POST, a ring UI, mute and camera toggles, and the ability to invite anyone mid-call. Uses a built-in STUN server plus an optional self-hosted TURN (coturn) configured in settings.
 - **Calendar** — private/shared calendars, recurring events (RRULE), month/week/day/agenda views, reminders, a cross-project overlay of task deadlines & sprints, and read-only subscriptions to external ICS/iCal feeds (e.g. Google Calendar).
 - **Mail** — internal mail between users out of the box: folders in the header, two-pane view, threads, attachments, search, distribution rules, anti-spam and aliases. Optional inbound SMTP receiving via `-smtp-addr`, plus external send/DKIM configured in the Mail server settings (see docs).
+- **Files** — a shared instance-wide file storage (network-drive style): a folder tree with breadcrumbs, multi-file upload with drag-and-drop, rename/move, image/text preview, and **public share links** (token URLs that work without login — revocable, and dark while the service is disabled). Uploads follow the admin-configurable file-type policy; read-only users can browse and download.
 
 ## Why this project
 
