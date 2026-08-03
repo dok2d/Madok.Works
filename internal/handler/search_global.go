@@ -90,5 +90,21 @@ func (h *Handler) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Files (shared storage): folder and file names
+	if want("files") && h.serviceEnabled("files") {
+		if folders, items, err := h.store.SearchStorage(q, globalSearchPerService); err == nil {
+			for _, f := range folders {
+				out = append(out, globalHit{Service: "files", Title: f.Name, URL: "/files/folder/" + itoa(f.ID)})
+			}
+			for _, it := range items {
+				u := "/files"
+				if it.FolderID != nil {
+					u = "/files/folder/" + itoa(*it.FolderID)
+				}
+				out = append(out, globalHit{Service: "files", Title: it.Name, Snippet: it.Mime, URL: u})
+			}
+		}
+	}
+
 	jsonResp(w, out)
 }

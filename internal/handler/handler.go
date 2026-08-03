@@ -267,6 +267,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path == "/api/auth/oidc/login" || path == "/api/auth/oidc/callback" ||
 		path == "/wap/login" ||
 		strings.HasPrefix(path, "/api/integrations/git/webhook/") ||
+		strings.HasPrefix(path, "/api/storage/public/") ||
 		strings.HasPrefix(path, "/static/") {
 		h.mux.ServeHTTP(w, r)
 		return
@@ -463,6 +464,17 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/services", h.handleServices)
 	h.mux.HandleFunc("/api/services/reorder", h.handleServicesReorder)
 
+	// Files (shared storage)
+	h.mux.HandleFunc("/api/storage/tree", h.handleStorageTree)
+	h.mux.HandleFunc("/api/storage/list", h.handleStorageList)
+	h.mux.HandleFunc("/api/storage/upload", h.handleStorageUpload)
+	h.mux.HandleFunc("/api/storage/usage", h.handleStorageUsage)
+	h.mux.HandleFunc("/api/storage/events", h.handleStorageStream)
+	h.mux.HandleFunc("/api/storage/folders", h.handleStorageFolders)
+	h.mux.HandleFunc("/api/storage/folders/", h.handleStorageFolder)
+	h.mux.HandleFunc("/api/storage/items/", h.handleStorageItem)
+	h.mux.HandleFunc("/api/storage/public/", h.handleStoragePublic)
+
 	// Projects (top-level container)
 	h.mux.HandleFunc("/api/projects", h.handleProjects)
 	h.mux.HandleFunc("/api/projects/", h.handleProjectRoute)
@@ -563,7 +575,8 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path == "/wiki" || strings.HasPrefix(r.URL.Path, "/wiki/") ||
 		r.URL.Path == "/chat" || strings.HasPrefix(r.URL.Path, "/chat/") ||
 		r.URL.Path == "/calendar" || strings.HasPrefix(r.URL.Path, "/calendar/") ||
-		r.URL.Path == "/mail" || strings.HasPrefix(r.URL.Path, "/mail/") {
+		r.URL.Path == "/mail" || strings.HasPrefix(r.URL.Path, "/mail/") ||
+		r.URL.Path == "/files" || strings.HasPrefix(r.URL.Path, "/files/") {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		h.serveBrandedHTML(w, "web/templates/index.html")
 		return

@@ -16,7 +16,7 @@ import (
 // serviceOrder is the DEFAULT display order. The kanban board is a toggleable
 // service too (it can be disabled). A custom order is stored in app_settings
 // (svc_order) and overrides this.
-var serviceOrder = []string{"kanban", "wiki", "chat", "calendar", "mail"}
+var serviceOrder = []string{"kanban", "wiki", "chat", "calendar", "mail", "files"}
 
 // serviceAvailable marks services whose implementation is compiled in.
 var serviceAvailable = map[string]bool{
@@ -25,6 +25,7 @@ var serviceAvailable = map[string]bool{
 	"chat":     true,
 	"calendar": true,
 	"mail":     true,
+	"files":    true,
 }
 
 // serviceDefaultOn marks services enabled by default once available.
@@ -34,6 +35,7 @@ var serviceDefaultOn = map[string]bool{
 	"chat":     true,
 	"calendar": true,
 	"mail":     true, // internal mail works out of the box; external SMTP is optional
+	"files":    true,
 }
 
 func (h *Handler) serviceEnabled(name string) bool {
@@ -82,6 +84,10 @@ func serviceForPath(path string) string {
 		return "calendar"
 	case strings.HasPrefix(path, "/api/mail/"):
 		return "mail"
+	// NB: /api/files/ and /api/images/ are the service-agnostic attachment
+	// endpoints used by every service — they do NOT belong to "files".
+	case strings.HasPrefix(path, "/api/storage/"):
+		return "files"
 	case strings.HasPrefix(path, "/api/columns") ||
 		strings.HasPrefix(path, "/api/epics") ||
 		strings.HasPrefix(path, "/api/sprints") ||
