@@ -173,6 +173,29 @@ type WikiSpace struct {
 	MyRole      string `json:"my_role"` // effective role of the requesting user: "admin", "editor", "viewer", ""
 }
 
+// StorageFolder is a node of the shared Files service folder tree.
+type StorageFolder struct {
+	ID        int64  `json:"id"`
+	ParentID  *int64 `json:"parent_id"` // nil = root
+	Name      string `json:"name"`
+	CreatedBy *int64 `json:"created_by"`
+	CreatedAt string `json:"created_at"`
+}
+
+// StorageItem is a file in the shared Files service; the blob lives in files.
+type StorageItem struct {
+	ID           int64  `json:"id"`
+	FolderID     *int64 `json:"folder_id"` // nil = root
+	FileID       int64  `json:"file_id"`
+	Name         string `json:"name"`
+	Mime         string `json:"mime"`
+	Size         int64  `json:"size"`
+	PublicToken  string `json:"public_token,omitempty"`
+	UploadedBy   *int64 `json:"uploaded_by"`
+	UploaderName string `json:"uploader_name,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}
+
 // WikiSpaceMember is an entry in a restricted space's access list.
 type WikiSpaceMember struct {
 	SpaceID  int64  `json:"space_id"`

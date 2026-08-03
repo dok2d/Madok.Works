@@ -46,6 +46,13 @@ func TestCleanupOrphanFiles(t *testing.T) {
 		t.Fatalf("CreateChatMessage: %v", err)
 	}
 
+	// File referenced only by a storage item (Files service): kept via the
+	// storage_items direct-reference scan, not via any text column.
+	storageFile, _ := s.SaveFile("share.zip", []byte("zip"), "application/zip")
+	if _, _, err := s.CreateStorageItem(nil, storageFile, "share.zip", author); err != nil {
+		t.Fatalf("CreateStorageItem: %v", err)
+	}
+
 	// A genuinely orphaned upload that nothing references.
 	orphan, _ := s.SaveImage([]byte("orphan"), "image/png")
 
@@ -65,6 +72,9 @@ func TestCleanupOrphanFiles(t *testing.T) {
 	}
 	if _, _, _, err := s.GetFile(chatFile); err != nil {
 		t.Errorf("chat-referenced file %d was wrongly deleted: %v", chatFile, err)
+	}
+	if _, _, _, err := s.GetFile(storageFile); err != nil {
+		t.Errorf("storage-referenced file %d was wrongly deleted: %v", storageFile, err)
 	}
 	// The orphan must be gone.
 	if _, _, err := s.GetImage(orphan); err == nil {
