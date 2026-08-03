@@ -17,14 +17,16 @@ var ecosystemTables = []string{
 	"calendar_subscriptions", "calendar_sub_events",
 	"mail_messages", "mail_box", "mail_attachments",
 	"mail_folders", "mail_rules", "mail_audit", "mail_aliases",
+	"storage_folders", "storage_items",
 }
 
 // selfRefCols lists columns whose FK points back at the same table's id. On
 // import these are deferred (inserted NULL, then set in a second pass) so any
 // parent/child ordering loads on Postgres, which checks FKs immediately.
 var selfRefCols = map[string]string{
-	"wiki_pages":    "parent_id",
-	"chat_messages": "reply_to",
+	"wiki_pages":      "parent_id",
+	"chat_messages":   "reply_to",
+	"storage_folders": "parent_id",
 }
 
 // dumpTable returns every row of a table as column->value maps. Used for lossless

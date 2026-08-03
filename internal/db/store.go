@@ -563,6 +563,25 @@ func (s *Store) migrate() error {
 			file_id INTEGER NOT NULL REFERENCES files(id),
 			filename TEXT NOT NULL DEFAULT ''
 		)`,
+		// Shared file storage ("Files" service): folder tree + items. Blobs live in
+		// the shared files table (upload policy, gzip, export and GC come for free).
+		`CREATE TABLE IF NOT EXISTS storage_folders (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			parent_id INTEGER REFERENCES storage_folders(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// folder_id NULL = root; public_token '' = not shared.
+		`CREATE TABLE IF NOT EXISTS storage_items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			folder_id INTEGER REFERENCES storage_folders(id) ON DELETE CASCADE,
+			file_id INTEGER NOT NULL REFERENCES files(id),
+			name TEXT NOT NULL,
+			public_token TEXT NOT NULL DEFAULT '',
+			uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 		// Per-event calendar reminders. occurrence_start '' = definition template;
 		// non-empty rows are per-occurrence "sent" markers (idempotent via unique index).
 		`CREATE TABLE IF NOT EXISTS calendar_reminders (
@@ -596,6 +615,9 @@ func (s *Store) migrate() error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cal_reminders_dedup ON calendar_reminders(event_id, lead_min, occurrence_start)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_box_user ON mail_box(user_id, folder, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_mail_attachments_msg ON mail_attachments(message_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_folders_parent ON storage_folders(parent_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_items_folder ON storage_items(folder_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_items_token ON storage_items(public_token)`,
 		// indexes for FK lookups
 		`CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id, start_utc)`,
 		`CREATE INDEX IF NOT EXISTS idx_calendars_owner_id ON calendars(owner_id)`,
@@ -1661,7 +1683,7 @@ func (s *Store) CleanupOrphanFiles() (int, error) {
 	}
 
 	// Mail and chat attachments reference files directly (not via text), so mark them too.
-	for _, q := range []string{"SELECT file_id FROM mail_attachments", "SELECT file_id FROM chat_attachments"} {
+	for _, q := range []string{"SELECT file_id FROM mail_attachments", "SELECT file_id FROM chat_attachments", "SELECT file_id FROM storage_items"} {
 		if arows, err := s.db.Query(q); err == nil {
 			for arows.Next() {
 				var id int64
@@ -2957,6 +2979,7 @@ func (s *Store) resetSequences(tx *dbTx) {
 		"chat_channels", "chat_messages", "chat_reactions", "chat_attachments",
 		"calendars", "calendar_events", "calendar_reminders", "calendar_subscriptions", "calendar_sub_events",
 		"mail_messages", "mail_box", "mail_attachments", "mail_folders", "mail_rules", "mail_audit", "mail_aliases",
+		"storage_folders", "storage_items",
 	}
 	for _, t := range tables {
 		tx.Exec(`SELECT setval(pg_get_serial_sequence('` + t + `','id'),
