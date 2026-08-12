@@ -2,6 +2,10 @@
 *.md
 deploy/
 backups/
-vendor-cache/
+# vendor-cache itself must stay in the build context: the assets stage copies it
+# to pick up an optional pre-downloaded draw.war. Only the Go module archive is
+# excluded (the build uses the module proxy). Keep vendor-cache/README tracked —
+# COPY fails if every entry of the directory is filtered out.
+vendor-cache/*.zip
 kanban.sh
 .containerignore
