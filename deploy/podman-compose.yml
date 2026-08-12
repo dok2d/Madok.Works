@@ -43,6 +43,11 @@ services:
     build:
       context: ..
       dockerfile: Containerfile
+      args:
+        # Build without the (large) draw.io download when the network to GitHub
+        # releases is unreliable: SKIP_DRAWIO=1 ./kanban.sh build
+        SKIP_DRAWIO: "${SKIP_DRAWIO:-0}"
+        DRAWIO_VERSION: "${DRAWIO_VERSION:-v30.0.4}"
     # Start on SQLite so the first-run setup page shows the "use external
     # PostgreSQL" chooser. Point it at the bundled db service with:
     #   host: db   port: 5432   database/user/password: see .env (kanban/kanban)

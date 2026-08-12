@@ -7,25 +7,47 @@ RUN apt-get update && \
 
 RUN mkdir -p /assets/js /assets/css /assets/fonts /assets/drawio
 
+# Downloads are retried and fail loudly on HTTP errors (-f), so a flaky link
+# doesn't silently bake an error page into the image.
+ENV CURL="curl -fsSL --connect-timeout 20 --retry 5 --retry-delay 3 --retry-all-errors"
+
+# Offline cache: anything pre-downloaded into vendor-cache/ is used instead of
+# the network (see vendor-cache/README).
+COPY vendor-cache/ /vendor-cache/
+
 # Self-hosted draw.io for the wiki diagram editor. The release .war is a zip of
 # the static web app (index.html at its root); we drop the Java-only dirs.
-RUN curl -sL "https://github.com/jgraph/drawio/releases/download/v30.0.4/draw.war" -o /tmp/draw.war && \
-    (cd /assets/drawio && unzip -q /tmp/draw.war) && rm /tmp/draw.war && \
-    rm -rf /assets/drawio/WEB-INF /assets/drawio/META-INF
+# The download is the largest and most failure-prone one; set SKIP_DRAWIO=1 to
+# build without it (the wiki keeps working, diagrams then need an external
+# drawio_url in Settings → Integrations), or drop draw.war into vendor-cache/.
+ARG DRAWIO_VERSION=v30.0.4
+ARG SKIP_DRAWIO=0
+RUN set -eu; \
+    if [ "$SKIP_DRAWIO" = "1" ]; then \
+      echo "drawio: skipped (SKIP_DRAWIO=1)"; \
+    elif [ -f /vendor-cache/draw.war ]; then \
+      echo "drawio: using vendor-cache/draw.war"; cp /vendor-cache/draw.war /tmp/draw.war; \
+    else \
+      $CURL "https://github.com/jgraph/drawio/releases/download/${DRAWIO_VERSION}/draw.war" -o /tmp/draw.war; \
+    fi; \
+    if [ -f /tmp/draw.war ]; then \
+      (cd /assets/drawio && unzip -q /tmp/draw.war) && rm /tmp/draw.war && \
+      rm -rf /assets/drawio/WEB-INF /assets/drawio/META-INF; \
+    fi
 
 # JavaScript libraries
-RUN curl -sL "https://cdn.jsdelivr.net/npm/marked/marked.min.js" -o /assets/js/marked.min.js && \
-    curl -sL "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" -o /assets/js/highlight.min.js
+RUN $CURL "https://cdn.jsdelivr.net/npm/marked/marked.min.js" -o /assets/js/marked.min.js && \
+    $CURL "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" -o /assets/js/highlight.min.js
 
 # highlight.js theme
-RUN curl -sL "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" -o /assets/css/atom-one-dark.min.css
+RUN $CURL "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" -o /assets/css/atom-one-dark.min.css
 
 # Google Fonts — JetBrains Mono (400, 600) + Source Sans 3 (400, 600, 700)
-RUN curl -sL "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:wght@400;600;700&display=swap" \
+RUN $CURL "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:wght@400;600;700&display=swap" \
       -H "User-Agent: Mozilla/5.0" -o /tmp/fonts.css && \
     grep -oP 'url\(\K[^)]+' /tmp/fonts.css | while read -r url; do \
       fname=$(echo "$url" | sed 's|.*/||'); \
-      curl -sL "$url" -o "/assets/fonts/$fname"; \
+      $CURL "$url" -o "/assets/fonts/$fname"; \
     done && \
     sed -E 's|url\(https?://[^)]*/(.[^/)]+)\)|url(/static/fonts/\1)|g' /tmp/fonts.css > /assets/css/fonts.css
 

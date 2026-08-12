@@ -8,3 +8,6 @@ backups/
 # Local build artifacts
 /kanban
 /kanban-e2e
+
+# Optional offline copy of the draw.io release (see vendor-cache/README)
+/vendor-cache/draw.war

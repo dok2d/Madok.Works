@@ -61,6 +61,7 @@ parse_flags() {
             --db)           OVR[APP_DB]="$2";     shift 2 ;;   # postgres://… forces PG
             --build)        BUILD=1;              shift   ;;
             --no-cache)     NOCACHE=1;            shift   ;;
+            --skip-drawio)  OVR[SKIP_DRAWIO]=1;   shift   ;;
             --host)         HOST="$2";            shift 2 ;;
             --tls)          TLS="yes";            shift   ;;
             --no-tls)       TLS="no";             shift   ;;
@@ -91,6 +92,9 @@ make_env_file() {
         echo "PGPASSWORD=$(envget PGPASSWORD kanban)"
         echo "PGDATABASE=$(envget PGDATABASE kanban)"
         echo "APP_DB=$(envget APP_DB /data/kanban.db)"
+        # Build args: skip the large draw.io download on flaky networks.
+        echo "SKIP_DRAWIO=${SKIP_DRAWIO:-$(envget SKIP_DRAWIO 0)}"
+        echo "DRAWIO_VERSION=${DRAWIO_VERSION:-$(envget DRAWIO_VERSION v30.0.4)}"
     } > "$f"
     echo "$f"
 }
@@ -160,6 +164,9 @@ Madok.Works — обёртка над podman-compose (приложение + Pos
                         (по умолч. SQLite-файл → мастер выбора БД при первом запуске)
   --build               (для up) пересобрать образ перед запуском
   --no-cache            (для build) собрать без кэша
+  --skip-drawio         (для build) не скачивать draw.io (~50 МБ с GitHub);
+                        вики работает, редактор диаграмм — только через внешний
+                        drawio_url. Альтернатива: положить vendor-cache/draw.war
   --host <FQDN>         (nginx) имя хоста / домен (по умолч. mw.local)
   --tls | --no-tls      (nginx) с TLS на 443 (по умолч.) или просто HTTP на 80
   --cert <путь>         (nginx) путь к TLS-сертификату

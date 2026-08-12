@@ -51,6 +51,12 @@ Ports, project name and DB credentials are flags (defaults come from `deploy/.en
 
 On the first run the setup page creates the admin and optionally lets you switch to the bundled PostgreSQL; otherwise it stays on SQLite. Run `./kanban.sh` with no arguments for the full command list.
 
+The image build downloads the bundled draw.io editor (~50 MB from GitHub releases). If that download fails on your network (`curl` exit 56), either pre-fetch it once into `vendor-cache/draw.war` (see `vendor-cache/README`) or build without it:
+
+```bash
+./kanban.sh build --skip-drawio     # wiki still works; diagrams then need an external drawio_url
+```
+
 Behind nginx with TLS (app on localhost, host terminates 443): the wrapper also generates the nginx config and a systemd unit (DB stays internal):
 
 ```bash

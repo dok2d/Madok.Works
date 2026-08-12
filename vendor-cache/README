@@ -1,11 +1,27 @@
-Offline Go module cache
-=======================
+Offline build cache
+===================
 
-This directory contains pre-downloaded Go module archives used for
-offline/airgapped builds when the Go module proxy is unavailable.
+This directory contains pre-downloaded archives used for offline/airgapped
+builds when the Go module proxy or a download host is unavailable.
 
 Contents:
   go-sqlite3-v1.14.22.zip  — github.com/mattn/go-sqlite3 v1.14.22
+  draw.war                 — (optional, not in git) draw.io release archive
+
+draw.io for the container build
+-------------------------------
+
+The image build downloads draw.war from the jgraph/drawio release. On networks
+where that download is blocked or keeps dropping (curl exit 56), fetch it once
+by any means and drop it here — the build uses the local copy instead:
+
+  curl -fL -o vendor-cache/draw.war \
+    https://github.com/jgraph/drawio/releases/download/v30.0.4/draw.war
+  ./kanban.sh build
+
+Or build without the diagram editor entirely:
+
+  SKIP_DRAWIO=1 ./kanban.sh build
 
 Usage (manual build without network):
 
