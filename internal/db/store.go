@@ -2245,8 +2245,10 @@ func (s *Store) exportImages() []model.ExportFile {
 	return images
 }
 
+// flatComments lists a task's comments for export, author included (an export
+// without author_id wipes every comment's author on restore).
 func (s *Store) flatComments(taskID int64) []model.Comment {
-	rows, err := s.db.Query("SELECT id,task_id,COALESCE(parent_id,0),text,created_at,COALESCE(updated_at,created_at) FROM comments WHERE task_id=? ORDER BY created_at", taskID)
+	rows, err := s.db.Query("SELECT id,task_id,COALESCE(parent_id,0),COALESCE(author_id,0),text,created_at,COALESCE(updated_at,created_at) FROM comments WHERE task_id=? ORDER BY created_at", taskID)
 	if err != nil {
 		return []model.Comment{}
 	}
@@ -2254,15 +2256,18 @@ func (s *Store) flatComments(taskID int64) []model.Comment {
 	comments := make([]model.Comment, 0)
 	for rows.Next() {
 		var c model.Comment
-		var pid int64
+		var pid, aid int64
 		var ca, ua string
-		if err := rows.Scan(&c.ID, &c.TaskID, &pid, &c.Text, &ca, &ua); err != nil {
+		if err := rows.Scan(&c.ID, &c.TaskID, &pid, &aid, &c.Text, &ca, &ua); err != nil {
 			continue
 		}
 		c.CreatedAt = parseTime(ca)
 		c.UpdatedAt = parseTime(ua)
 		if pid != 0 {
 			c.ParentID = &pid
+		}
+		if aid != 0 {
+			c.AuthorID = &aid
 		}
 		comments = append(comments, c)
 	}
