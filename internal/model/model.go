@@ -104,6 +104,22 @@ type Session struct {
 	ExpiresAt string
 }
 
+// APIToken is a personal API token (the secret itself is shown once, at
+// creation). Role and Services narrow the owner's access; ExpiresAt and
+// LastUsedAt are unix seconds, 0 = never.
+type APIToken struct {
+	ID         int64    `json:"id"`
+	UserID     int64    `json:"user_id"`
+	Username   string   `json:"username,omitempty"`
+	Name       string   `json:"name"`
+	Prefix     string   `json:"prefix"`
+	Role       string   `json:"role"`     // "admin", "regular", "readonly"
+	Services   []string `json:"services"` // empty = all services
+	ExpiresAt  int64    `json:"expires_at"`
+	LastUsedAt int64    `json:"last_used_at"`
+	CreatedAt  string   `json:"created_at"`
+}
+
 // Notification for user
 type Notification struct {
 	ID        int64     `json:"id"`

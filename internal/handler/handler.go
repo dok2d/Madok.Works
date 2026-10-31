@@ -292,27 +292,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check session cookie
-	cookie, err := r.Cookie(h.cookieName)
-	if err != nil || cookie.Value == "" {
-		if strings.HasPrefix(path, "/api/") {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-		} else {
-			http.Redirect(w, r, loginRedirect, http.StatusFound)
+	// API token (Authorization: Bearer mw_…) for /api/*, else the session cookie.
+	var user *model.User
+	var apiToken *model.APIToken
+	if tok, ok := bearerToken(r); ok && strings.HasPrefix(path, "/api/") {
+		u, t, status, msg := h.authenticateAPIToken(tok, path)
+		if u == nil {
+			http.Error(w, msg, status)
+			return
 		}
-		return
-	}
+		user, apiToken = u, t
+	} else {
+		cookie, err := r.Cookie(h.cookieName)
+		if err != nil || cookie.Value == "" {
+			if strings.HasPrefix(path, "/api/") {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			} else {
+				http.Redirect(w, r, loginRedirect, http.StatusFound)
+			}
+			return
+		}
 
-	user, err := h.store.ValidateSession(cookie.Value)
-	if err != nil {
-		// Invalid/expired session
-		http.SetCookie(w, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1})
-		if strings.HasPrefix(path, "/api/") {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-		} else {
-			http.Redirect(w, r, loginRedirect, http.StatusFound)
+		user, err = h.store.ValidateSession(cookie.Value)
+		if err != nil {
+			// Invalid/expired session
+			http.SetCookie(w, &http.Cookie{Name: h.cookieName, Value: "", Path: "/", MaxAge: -1})
+			if strings.HasPrefix(path, "/api/") {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			} else {
+				http.Redirect(w, r, loginRedirect, http.StatusFound)
+			}
+			return
 		}
-		return
 	}
 
 	// Read-only user check: block write operations
@@ -340,6 +351,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Store user in request context
 	ctx := context.WithValue(r.Context(), userContextKey, user)
+	if apiToken != nil {
+		ctx = context.WithValue(ctx, apiTokenContextKey, apiToken)
+	}
 	h.mux.ServeHTTP(w, r.WithContext(ctx))
 }
 
@@ -454,6 +468,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/user/telegram/link", h.handleTelegramLink)
 	h.mux.HandleFunc("/api/user/telegram/unlink", h.handleTelegramUnlink)
 	h.mux.HandleFunc("/api/user/password", h.handleChangeOwnPassword)
+	h.mux.HandleFunc("/api/user/tokens", h.handleUserTokens)
+	h.mux.HandleFunc("/api/user/tokens/", h.handleUserToken)
+	h.mux.HandleFunc("/api/admin/tokens", h.handleAdminTokens)
+	h.mux.HandleFunc("/api/admin/tokens/", h.handleAdminToken)
 
 	// SSO routes (public — handle auth flow)
 	h.mux.HandleFunc("/api/auth/sso/config", h.handleSSOConfig)

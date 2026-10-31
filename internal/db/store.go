@@ -200,6 +200,21 @@ func (s *Store) migrate() error {
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			expires_at DATETIME NOT NULL
 		)`,
+		// Personal API tokens (Authorization: Bearer). Only a SHA-256 of the token
+		// is stored; role/services narrow what the owner may do. Times are unix
+		// seconds, 0 = never (portable across SQLite and Postgres).
+		`CREATE TABLE IF NOT EXISTS api_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			prefix TEXT NOT NULL DEFAULT '',
+			role TEXT NOT NULL DEFAULT 'readonly',
+			services TEXT NOT NULL DEFAULT '',
+			expires_at INTEGER NOT NULL DEFAULT 0,
+			last_used_at INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
 		// Notifications
 		`CREATE TABLE IF NOT EXISTS notifications (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -633,6 +648,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_comments_task_id ON comments(task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_tags_task_id ON task_tags(task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_api_tokens_user_id ON api_tokens(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id)`,
 		// project scoping
@@ -2432,6 +2448,9 @@ func (s *Store) DeleteUser(id int64) error {
 	if err != nil {
 		return err
 	}
+	if _, err = s.db.Exec("DELETE FROM api_tokens WHERE user_id=?", id); err != nil {
+		return err
+	}
 	_, err = s.db.Exec("DELETE FROM users WHERE id=?", id)
 	return err
 }
@@ -2847,6 +2866,7 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 			return err
 		}
 		tx.Exec("DELETE FROM sessions")
+		tx.Exec("DELETE FROM api_tokens")
 		tx.Exec("DELETE FROM notifications")
 		tx.Exec("DELETE FROM activity_log")
 		tx.Exec("DELETE FROM users")
