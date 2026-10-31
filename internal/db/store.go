@@ -762,6 +762,9 @@ func (s *Store) migrate() error {
 		"ALTER TABLE activity_log ADD COLUMN project_id INTEGER",
 		"ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
+		// Public profile: shown instead of the login when set; avatar is an images row.
+		"ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE users ADD COLUMN avatar_id INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
 		"ALTER TABLE chat_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
@@ -1776,6 +1779,16 @@ func (s *Store) CleanupOrphanFiles() (int, error) {
 		}
 	}
 
+	// Avatars reference images directly.
+	if arows, err := s.db.Query("SELECT avatar_id FROM users WHERE avatar_id <> 0"); err == nil {
+		for arows.Next() {
+			var id int64
+			arows.Scan(&id)
+			refImages[id] = true
+		}
+		arows.Close()
+	}
+
 	// Mail and chat attachments reference files directly (not via text), so mark them too.
 	for _, q := range []string{"SELECT file_id FROM mail_attachments", "SELECT file_id FROM chat_attachments", "SELECT file_id FROM storage_items"} {
 		if arows, err := s.db.Query(q); err == nil {
@@ -2117,7 +2130,7 @@ func (s *Store) exportProjects() ([]model.Project, []model.ProjectMember, error)
 }
 
 func (s *Store) exportUsers() []model.ExportUser {
-	rows, err := s.db.Query("SELECT id,username,password_hash,role,is_admin,telegram_chat_id FROM users ORDER BY id")
+	rows, err := s.db.Query("SELECT id,username,password_hash,role,is_admin,telegram_chat_id,display_name,avatar_id FROM users ORDER BY id")
 	if err != nil {
 		return nil
 	}
@@ -2126,7 +2139,7 @@ func (s *Store) exportUsers() []model.ExportUser {
 	for rows.Next() {
 		var u model.ExportUser
 		var admin int
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &admin, &u.TelegramID); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &admin, &u.TelegramID, &u.DisplayName, &u.AvatarID); err != nil {
 			continue
 		}
 		u.IsAdmin = admin == 1
@@ -2431,7 +2444,7 @@ func (s *Store) CleanExpiredSessions() {
 }
 
 func (s *Store) ListUsers() ([]model.User, error) {
-	rows, err := s.db.Query("SELECT id,username,is_admin,role,created_at,telegram_chat_id FROM users ORDER BY id")
+	rows, err := s.db.Query("SELECT id,username,is_admin,role,created_at,telegram_chat_id,display_name,avatar_id FROM users ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -2441,7 +2454,7 @@ func (s *Store) ListUsers() ([]model.User, error) {
 		var u model.User
 		var admin int
 		var role string
-		if err := rows.Scan(&u.ID, &u.Username, &admin, &role, &u.CreatedAt, &u.TelegramID); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &admin, &role, &u.CreatedAt, &u.TelegramID, &u.DisplayName, &u.AvatarID); err != nil {
 			return nil, err
 		}
 		u.IsAdmin = admin == 1
@@ -2455,8 +2468,8 @@ func (s *Store) GetUser(id int64) (*model.User, error) {
 	var u model.User
 	var admin int
 	var role string
-	err := s.db.QueryRow("SELECT id,username,is_admin,role,created_at,telegram_chat_id,link_hash FROM users WHERE id=?", id).
-		Scan(&u.ID, &u.Username, &admin, &role, &u.CreatedAt, &u.TelegramID, &u.LinkHash)
+	err := s.db.QueryRow("SELECT id,username,is_admin,role,created_at,telegram_chat_id,link_hash,display_name,avatar_id FROM users WHERE id=?", id).
+		Scan(&u.ID, &u.Username, &admin, &role, &u.CreatedAt, &u.TelegramID, &u.LinkHash, &u.DisplayName, &u.AvatarID)
 	if err != nil {
 		return nil, err
 	}
@@ -2925,8 +2938,8 @@ func (s *Store) ImportAll(data *model.ExportData) error {
 			if u.IsAdmin {
 				admin = 1
 			}
-			if _, err := tx.Exec("INSERT INTO users(id,username,password_hash,role,is_admin,telegram_chat_id) VALUES(?,?,?,?,?,?)",
-				u.ID, u.Username, u.PasswordHash, u.Role, admin, u.TelegramID); err != nil {
+			if _, err := tx.Exec("INSERT INTO users(id,username,password_hash,role,is_admin,telegram_chat_id,display_name,avatar_id) VALUES(?,?,?,?,?,?,?,?)",
+				u.ID, u.Username, u.PasswordHash, u.Role, admin, u.TelegramID, u.DisplayName, u.AvatarID); err != nil {
 				return fmt.Errorf("import user: %w", err)
 			}
 		}

@@ -35,6 +35,7 @@ type LDAPConfig struct {
 // LDAPResult contains the result of LDAP authentication.
 type LDAPResult struct {
 	Username string
+	Name     string // displayName (or cn): seeds the user's public name
 	DN       string
 	IsAdmin  bool
 }
@@ -64,7 +65,7 @@ func LDAPAuthenticate(cfg *LDAPConfig, username, password string) (*LDAPResult, 
 
 	// Step 2: Search for user
 	filter := strings.ReplaceAll(cfg.UserFilter, "%s", ldapEscapeFilter(username))
-	userDN, foundUsername, err := ldapSearchUser(conn, &msgID, cfg.BaseDN, filter, cfg.UsernameAttr)
+	userDN, foundUsername, foundName, err := ldapSearchUser(conn, &msgID, cfg.BaseDN, filter, cfg.UsernameAttr)
 	if err != nil {
 		return nil, fmt.Errorf("user search: %w", err)
 	}
@@ -92,6 +93,7 @@ func LDAPAuthenticate(cfg *LDAPConfig, username, password string) (*LDAPResult, 
 
 	result := &LDAPResult{
 		Username: foundUsername,
+		Name:     foundName,
 		DN:       userDN,
 	}
 
@@ -188,9 +190,11 @@ func ldapBind(conn net.Conn, msgID *int, dn, password string) error {
 	return nil
 }
 
-func ldapSearchUser(conn net.Conn, msgID *int, baseDN, filter, usernameAttr string) (string, string, error) {
+// ldapSearchUser returns the user's DN, username attribute and display name
+// (displayName, falling back to cn).
+func ldapSearchUser(conn net.Conn, msgID *int, baseDN, filter, usernameAttr string) (string, string, string, error) {
 	*msgID++
-	attrs := [][]byte{berOctetString([]byte("dn"))}
+	attrs := [][]byte{berOctetString([]byte("dn")), berOctetString([]byte("displayName")), berOctetString([]byte("cn"))}
 	if usernameAttr != "" {
 		attrs = append(attrs, berOctetString([]byte(usernameAttr)))
 	}
@@ -209,29 +213,29 @@ func ldapSearchUser(conn net.Conn, msgID *int, baseDN, filter, usernameAttr stri
 		),
 	)
 	if _, err := conn.Write(req); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
-	var userDN, foundUsername string
+	var userDN, foundUsername, foundName string
 	for {
 		resp, err := berReadMessage(conn)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		tag, content := berUnwrapMessage(resp)
 
 		if tag == 0x64 { // SearchResultEntry [APPLICATION 4]
-			userDN, foundUsername = berExtractSearchEntry(content, usernameAttr)
+			userDN, foundUsername, foundName = berExtractSearchEntry(content, usernameAttr)
 		} else if tag == 0x65 { // SearchResultDone [APPLICATION 5]
 			rc := berExtractResultCodeFromContent(content)
 			if rc != 0 && rc != 4 { // 4 = sizeLimitExceeded (OK for sizeLimit=1)
-				return "", "", fmt.Errorf("search failed: result code %d", rc)
+				return "", "", "", fmt.Errorf("search failed: result code %d", rc)
 			}
 			break
 		}
 	}
 
-	return userDN, foundUsername, nil
+	return userDN, foundUsername, foundName, nil
 }
 
 func ldapCheckGroupMembership(conn net.Conn, msgID *int, groupDN, memberAttr, userDN string) bool {
@@ -602,9 +606,9 @@ func berExtractResultCodeFromContent(content []byte) int {
 	return -1
 }
 
-func berExtractSearchEntry(content []byte, usernameAttr string) (string, string) {
+func berExtractSearchEntry(content []byte, usernameAttr string) (string, string, string) {
 	if len(content) < 2 {
-		return "", ""
+		return "", "", ""
 	}
 	// First element: objectName (OCTET STRING)
 	_, dnContent := berReadTagLen(content)
@@ -615,7 +619,7 @@ func berExtractSearchEntry(content []byte, usernameAttr string) (string, string)
 
 	// Second element: attributes (SEQUENCE of SEQUENCE)
 	if len(rest) == 0 {
-		return dn, ""
+		return dn, "", ""
 	}
 	_, attrsContent := berReadTagLen(rest)
 
@@ -623,8 +627,12 @@ func berExtractSearchEntry(content []byte, usernameAttr string) (string, string)
 	if usernameAttr != "" {
 		foundUsername = berFindAttribute(attrsContent, usernameAttr)
 	}
+	name := berFindAttribute(attrsContent, "displayName")
+	if name == "" {
+		name = berFindAttribute(attrsContent, "cn")
+	}
 
-	return dn, foundUsername
+	return dn, foundUsername, name
 }
 
 func berFindAttribute(attrsData []byte, attrName string) string {

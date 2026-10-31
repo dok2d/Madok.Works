@@ -93,6 +93,10 @@ type User struct {
 	Role       string `json:"role"` // "admin", "regular", "readonly"
 	IsAdmin    bool   `json:"is_admin"`
 	CreatedAt  string `json:"created_at"`
+	// Public profile: DisplayName is shown instead of the login when set;
+	// AvatarID is an images row (0 = none, the UI draws initials).
+	DisplayName string `json:"display_name"`
+	AvatarID    int64  `json:"avatar_id"`
 	TelegramID int64  `json:"telegram_id,omitempty"`
 	LinkHash   string `json:"link_hash,omitempty"`
 }
@@ -573,6 +577,8 @@ type ExportUser struct {
 	Role         string `json:"role"`
 	IsAdmin      bool   `json:"is_admin"`
 	TelegramID   int64  `json:"telegram_id,omitempty"`
+	DisplayName  string `json:"display_name,omitempty"`
+	AvatarID     int64  `json:"avatar_id,omitempty"`
 }
 
 // ExportSetting stores app settings for export

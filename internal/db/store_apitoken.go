@@ -172,6 +172,9 @@ var blobDirectRefs = map[string]string{
 // "files") is used by any of the given services, so a service-scoped API token
 // can't read another service's attachments by guessing ids.
 func (s *Store) BlobUsedByServices(kind string, id int64, services []string) bool {
+	if kind == "images" && s.IsAvatar(id) {
+		return true
+	}
 	link := "/api/" + kind + "/" + strconv.FormatInt(id, 10)
 	for _, svc := range services {
 		if q, ok := blobDirectRefs[svc]; ok && kind == "files" {

@@ -326,10 +326,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Read-only user check: block write operations
+	// Read-only user check: block write operations. A read-only user may still
+	// manage their own account; a read-only API token may not write at all.
 	if user.Role == "readonly" && r.Method != http.MethodGet {
 		// Allow logout and own-profile endpoints
-		if path != "/api/auth/logout" &&
+		if apiToken != nil || path != "/api/auth/logout" &&
 			path != "/api/notifications/read" &&
 			path != "/api/notifications/read-all" &&
 			!(strings.HasPrefix(path, "/api/chat/channels/") && strings.HasSuffix(path, "/read")) &&
@@ -468,6 +469,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/user/telegram/link", h.handleTelegramLink)
 	h.mux.HandleFunc("/api/user/telegram/unlink", h.handleTelegramUnlink)
 	h.mux.HandleFunc("/api/user/password", h.handleChangeOwnPassword)
+	h.mux.HandleFunc("/api/user/profile", h.handleUserProfile)
+	h.mux.HandleFunc("/api/user/avatar", h.handleUserAvatar)
 	h.mux.HandleFunc("/api/user/tokens", h.handleUserTokens)
 	h.mux.HandleFunc("/api/user/tokens/", h.handleUserToken)
 	h.mux.HandleFunc("/api/admin/tokens", h.handleAdminTokens)
@@ -2285,6 +2288,9 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 					role = "admin"
 				}
 				user, err = h.store.FindOrCreateSSOUser("ldap", ldapResult.DN, ldapResult.Username, role)
+				if err == nil {
+					h.store.FillDisplayNameIfEmpty(user.ID, ldapResult.Name)
+				}
 			}
 		}
 	}
@@ -2360,8 +2366,10 @@ func (h *Handler) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, map[string]any{
 		"id":                    fullUser.ID,
 		"username":              fullUser.Username,
-		"role":                  fullUser.Role,
-		"is_admin":              fullUser.IsAdmin,
+		"display_name":          fullUser.DisplayName,
+		"avatar_id":             fullUser.AvatarID,
+		"role":                  user.Role,    // as narrowed by an API token, if any
+		"is_admin":              user.IsAdmin, // likewise
 		"created_at":            fullUser.CreatedAt,
 		"telegram_id":           fullUser.TelegramID,
 		"link_hash":             fullUser.LinkHash,
@@ -2531,12 +2539,31 @@ func (h *Handler) handleUser(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, map[string]string{"status": "ok"})
 	case http.MethodPut:
 		var req struct {
-			Password string `json:"password"`
-			Role     string `json:"role"`
+			Password    string  `json:"password"`
+			Role        string  `json:"role"`
+			DisplayName *string `json:"display_name"` // nil = unchanged, "" = show the login
+			ClearAvatar bool    `json:"clear_avatar"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
+		}
+		if req.DisplayName != nil {
+			name, ok := cleanDisplayName(*req.DisplayName)
+			if !ok {
+				http.Error(w, "display name: up to 64 characters, no control characters", http.StatusBadRequest)
+				return
+			}
+			if err := h.store.UpdateUserDisplayName(id, name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if req.ClearAvatar {
+			if err := h.store.ClearUserAvatar(id); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		if req.Password != "" {
 			if len(req.Password) < minPasswordLen {
@@ -3285,6 +3312,7 @@ func (h *Handler) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	h.store.FillDisplayNameIfEmpty(user.ID, result.Name)
 
 	token, err := h.store.CreateSession(user.ID)
 	if err != nil {

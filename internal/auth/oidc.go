@@ -53,6 +53,7 @@ type OIDCProvider struct {
 // OIDCResult contains the result of OIDC authentication.
 type OIDCResult struct {
 	Username string
+	Name     string // "name" claim: seeds the user's public name
 	Email    string
 	IsAdmin  bool
 }
@@ -193,6 +194,10 @@ func (p *OIDCProvider) ExchangeCode(code string) (*OIDCResult, error) {
 		if v, ok := claims["sub"]; ok {
 			result.Username = fmt.Sprint(v)
 		}
+	}
+
+	if v, ok := claims["name"].(string); ok {
+		result.Name = v
 	}
 
 	// Email
