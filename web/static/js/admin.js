@@ -6,10 +6,12 @@
 const ADMIN_I18N = {
   en: { adminTitle: 'Administration', settingsTitle: 'Settings', adminTabGeneral: 'My settings', adminTabAccount: 'Account', accProfile: 'Open profile', accNotifTitle: 'Notifications', accSound: 'New message sound', accSoundHint: 'Plays a short sound for incoming chat messages (muted channels stay silent).', adminTabSite: 'Site', adminAppName: 'Application name', adminAppNameHint: 'Shown in the page title, header and backup names.', adminDefaultLang: 'Default language', adminDefaultLangHint: 'Interface language for new users (each user can change their own afterwards).', adminWap: 'Enable WAP interface (legacy phones)', adminWapHint: 'Exposes a minimal WML interface at /wap/ for very old devices. Off by default.', adminUploadAny: 'Allow any file type for attachments', adminUploadExts: 'Allowed file extensions', adminUploadHint: 'Applies to all attachments (wiki/chat/tasks/mail). Empty = built-in safe defaults; or list extensions like "pdf, png, docx, zip"; or tick "allow any". Files are always served as downloads.', obReplayTitle: 'First-run wizard', obReplay: 'Show setup wizard again', obReplayHint: 'Re-open the one-time service-setup wizard (clears the completed flag).', adminTabTelegram: 'Telegram', adminTabMail: 'Mail', adminTabUsers: 'Users', adminTabBoard: 'Board', adminTabProjects: 'Projects', adminProjNew: 'New project', adminProjVisibility: 'Visibility', adminProjMembers: 'Members', adminProjManage: 'Manage', adminProjNoneSel: 'Select a project to manage its members and settings.', adminTabServices: 'Services', adminTabIntegrations: 'Integrations', adminTabData: 'Data', adminTabMailServer: 'Mail server', adminTabMailboxes: 'Mailboxes', adminMailDomain: 'Sending domain', adminDkimSelector: 'DKIM selector', adminDkimKey: 'DKIM private key (PEM)', adminDkimKeyHint: 'leave blank to keep current', adminDkimTxt: 'Publish this DNS TXT record', adminSave: 'Save', adminAudit: 'Security audit', adminAlias: 'Alias', adminPrimary: 'Primary', adminAdd: 'Add', adminUser: 'User', adminNoData: 'No data', adminMailDisabled: 'Outbound mail is off until a sending domain is set.', adminClear: 'Clear key', callsTitle: 'Calls (WebRTC)', callsHint: 'Voice/video calls use peer-to-peer media. STUN is built-in; add a self-hosted TURN server for reliable calls across NAT/firewalls.', callsTurnUrl: 'TURN URL', callsTurnUser: 'TURN username', callsTurnCred: 'TURN credential',
 gitTitle: 'Git repositories', gitHint: 'Connect GitHub/GitLab/Gitea: incoming webhooks link commits/branches/MRs to tasks by KEY-<n> / #<n>; a merged MR can auto-move the task. Add the shown webhook URL in your repo settings (with the secret).', gitAddRepo: 'Add repository', gitWebhookUrl: 'Webhook URL', gitKind: 'Provider', gitLabel: 'Label', gitRepo: 'Repository (owner/name)', gitSecret: 'Webhook secret', gitMoveCol: 'On merge → move to column', gitActivity: 'Git activity',
-llmTitle: 'AI summaries (LLM)', dbTitle: 'Database', llmHint: 'Connect an OpenAI-compatible API (e.g. llama.cpp). When enabled: a "Summary" button on wiki pages and "✨ Generate" (description + TODO) in the task form.', llmEnabledOn: 'Enabled', llmBaseUrl: 'API base URL', llmModel: 'Model', llmApiKey: 'API key', llmApiKeyOptional: 'optional', llmEnable: 'Enable (tests connection)', llmTest: 'Test connection', llmTesting: 'Testing…', llmOk: 'Connection OK', llmNoThink: 'Disable reasoning ("thinking")', llmNoThinkHint: 'Faster answers — appends /no_think (Qwen3-style models). Harmless for other models.', gcalTitle: 'Google Calendar (two-way)', gcalHint: 'Register an OAuth client in Google Cloud (APIs & Services → Credentials → OAuth client ID → Web application), enable the Google Calendar API, and add the redirect URI below. Users then connect their own Google account from the Calendar.', gcalConfigured: 'Configured', gcalRedirect: 'Authorized redirect URI', gcalClientId: 'OAuth client ID', gcalSecret: 'OAuth client secret', gcalEnable: 'Enable Google Calendar sync', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User', dbPath: 'File', adminTabAudit: 'Audit log', auditTime: 'Time', auditUser: 'User', auditAction: 'Action', auditProject: 'Project', auditDetails: 'Details', auditAllProjects: 'All projects', adminTabSecurity: 'Security', twofaTitle: 'Two-factor authentication', twofaHint: 'Add a time-based one-time code (TOTP) from an authenticator app as a second login step.', twofaOn: 'Two-factor authentication is enabled.', twofaEnable: 'Enable 2FA', twofaDisable: 'Disable 2FA', twofaCode: 'Code', twofaScan: 'Add this secret to your authenticator app (or scan the otpauth URL), then enter the current code:', twofaConfirm: 'Confirm', twofaEnabled: '2FA enabled.', twofaRecovery: 'Save these one-time recovery codes somewhere safe:' },
+llmTitle: 'AI summaries (LLM)', dbTitle: 'Database', llmHint: 'Connect an OpenAI-compatible API (e.g. llama.cpp). When enabled: a "Summary" button on wiki pages and "✨ Generate" (description + TODO) in the task form.', llmEnabledOn: 'Enabled', llmBaseUrl: 'API base URL', llmModel: 'Model', llmApiKey: 'API key', llmApiKeyOptional: 'optional', llmEnable: 'Enable (tests connection)', llmTest: 'Test connection', llmTesting: 'Testing…', llmOk: 'Connection OK', llmNoThink: 'Disable reasoning ("thinking")', llmNoThinkHint: 'Faster answers — appends /no_think (Qwen3-style models). Harmless for other models.', gcalTitle: 'Google Calendar (two-way)', gcalHint: 'Register an OAuth client in Google Cloud (APIs & Services → Credentials → OAuth client ID → Web application), enable the Google Calendar API, and add the redirect URI below. Users then connect their own Google account from the Calendar.', gcalConfigured: 'Configured', gcalRedirect: 'Authorized redirect URI', gcalClientId: 'OAuth client ID', gcalSecret: 'OAuth client secret', gcalEnable: 'Enable Google Calendar sync', dbHost: 'Host', dbPort: 'Port', dbName: 'Database', dbUser: 'User', dbPath: 'File', adminTabAudit: 'Audit log', auditTime: 'Time', auditUser: 'User', auditAction: 'Action', auditProject: 'Project', auditDetails: 'Details', auditAllProjects: 'All projects', adminTabSecurity: 'Security', twofaTitle: 'Two-factor authentication', twofaHint: 'Add a time-based one-time code (TOTP) from an authenticator app as a second login step.', twofaOn: 'Two-factor authentication is enabled.', twofaEnable: 'Enable 2FA', twofaDisable: 'Disable 2FA', twofaCode: 'Code', twofaScan: 'Add this secret to your authenticator app (or scan the otpauth URL), then enter the current code:', twofaConfirm: 'Confirm', twofaEnabled: '2FA enabled.', twofaRecovery: 'Save these one-time recovery codes somewhere safe:',
+tokTitle: 'API tokens', tokHint: 'Personal tokens for scripts and integrations: send "Authorization: Bearer <token>" to /api/*. A token acts as you, limited to its role (never above your own) and, optionally, to some services. Password, 2FA, Telegram and tokens themselves stay browser-only.', tokName: 'Name', tokRole: 'Role', tokServices: 'Services', tokAllServices: 'All services', tokSvcHint: 'None ticked = all services.', tokExpires: 'Expires', tokNever: 'Never', tokDays: 'days', tokCreate: 'Create token', tokPrefix: 'Token', tokLastUsed: 'Last used', tokCreated: 'Created', tokRevoke: 'Revoke', tokRevokeConfirm: 'Revoke this token? Anything using it stops working immediately.', tokNew: 'Copy the token now — it will not be shown again:', tokCopy: 'Copy', tokCopied: 'Token copied', tokNone: 'No tokens yet', tokNameRequired: 'Enter a token name', tokAllTitle: 'All users\' tokens', tokOwner: 'User', tokExpired: 'expired' },
   ru: { adminTitle: 'Администрирование', settingsTitle: 'Настройки', adminTabGeneral: 'Мои настройки', adminTabAccount: 'Аккаунт', accProfile: 'Открыть профиль', accNotifTitle: 'Уведомления', accSound: 'Звук нового сообщения', accSoundHint: 'Короткий звук при входящих сообщениях чата (заглушённые каналы остаются тихими).', adminTabSite: 'Сайт', adminAppName: 'Название приложения', adminAppNameHint: 'Показывается в заголовке вкладки, шапке и именах бэкапов.', adminDefaultLang: 'Язык по умолчанию', adminDefaultLangHint: 'Язык интерфейса для новых пользователей (каждый может потом сменить свой).', adminWap: 'Включить WAP-интерфейс (старые телефоны)', adminWapHint: 'Открывает минимальный WML-интерфейс по адресу /wap/ для очень старых устройств. По умолчанию выключен.', adminUploadAny: 'Разрешить любые форматы файлов для вложений', adminUploadExts: 'Разрешённые расширения файлов', adminUploadHint: 'Действует на все вложения (вики/чат/задачи/почта). Пусто = безопасные значения по умолчанию; либо список расширений вроде «pdf, png, docx, zip»; либо галочка «разрешить любые». Файлы всегда отдаются на скачивание.', obReplayTitle: 'Визард первого запуска', obReplay: 'Показать визард заново', obReplayHint: 'Заново открыть одноразовый визард настройки сервисов (сбрасывает флаг завершения).', adminTabTelegram: 'Telegram', adminTabMail: 'Почта', adminTabUsers: 'Пользователи', adminTabBoard: 'Доска', adminTabProjects: 'Проекты', adminProjNew: 'Новый проект', adminProjVisibility: 'Видимость', adminProjMembers: 'Участники', adminProjManage: 'Управлять', adminProjNoneSel: 'Выберите проект, чтобы управлять его участниками и настройками.', adminTabServices: 'Сервисы', adminTabIntegrations: 'Интеграции', adminTabData: 'Данные', adminTabMailServer: 'Почтовый сервер', adminTabMailboxes: 'Ящики', adminMailDomain: 'Домен отправки', adminDkimSelector: 'DKIM селектор', adminDkimKey: 'Приватный ключ DKIM (PEM)', adminDkimKeyHint: 'пусто — оставить текущий', adminDkimTxt: 'Опубликуйте эту DNS TXT-запись', adminSave: 'Сохранить', adminAudit: 'Аудит безопасности', adminAlias: 'Алиас', adminPrimary: 'Основной', adminAdd: 'Добавить', adminUser: 'Пользователь', adminNoData: 'Нет данных', adminMailDisabled: 'Исходящая почта выключена, пока не задан домен отправки.', adminClear: 'Очистить ключ', callsTitle: 'Звонки (WebRTC)', callsHint: 'Голосовые/видеозвонки используют P2P-медиа. STUN встроен; добавьте свой TURN-сервер для надёжных звонков через NAT/файрволы.', callsTurnUrl: 'TURN URL', callsTurnUser: 'TURN логин', callsTurnCred: 'TURN ключ',
 gitTitle: 'Git-репозитории', gitHint: 'Подключите GitHub/GitLab/Gitea: входящие вебхуки связывают коммиты/ветки/MR с задачами по KEY-<n> / #<n>; смёрженный MR может авто-переместить задачу. Добавьте показанный webhook URL в настройках репозитория (с секретом).', gitAddRepo: 'Добавить репозиторий', gitWebhookUrl: 'Webhook URL', gitKind: 'Провайдер', gitLabel: 'Метка', gitRepo: 'Репозиторий (owner/name)', gitSecret: 'Секрет вебхука', gitMoveCol: 'При мёрже → в колонку', gitActivity: 'Git-активность',
-llmTitle: 'ИИ-саммари (LLM)', dbTitle: 'База данных', llmHint: 'Подключите OpenAI-совместимый API (напр. llama.cpp). После включения появятся: кнопка «Саммари» на wiki-страницах и «✨ Сгенерировать» (описание + TODO) в форме задачи.', llmEnabledOn: 'Включено', llmBaseUrl: 'Базовый URL API', llmModel: 'Модель', llmApiKey: 'API-ключ', llmApiKeyOptional: 'необязательно', llmEnable: 'Включить (с проверкой подключения)', llmTest: 'Проверить подключение', llmTesting: 'Проверка…', llmOk: 'Подключение успешно', llmNoThink: 'Отключить «думанье» (reasoning)', llmNoThinkHint: 'Быстрее отвечает — добавляет /no_think (модели типа Qwen3). Для других моделей безвредно.', gcalTitle: 'Google Календарь (двусторонний)', gcalHint: 'Зарегистрируйте OAuth-клиент в Google Cloud (APIs & Services → Credentials → OAuth client ID → Web application), включите Google Calendar API и добавьте redirect URI ниже. После этого пользователи подключают свой аккаунт Google прямо в Календаре.', gcalConfigured: 'Настроено', gcalRedirect: 'Разрешённый redirect URI', gcalClientId: 'OAuth client ID', gcalSecret: 'OAuth client secret', gcalEnable: 'Включить синхронизацию Google Календаря', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База', dbUser: 'Пользователь', dbPath: 'Файл', adminTabAudit: 'Журнал аудита', auditTime: 'Время', auditUser: 'Пользователь', auditAction: 'Действие', auditProject: 'Проект', auditDetails: 'Детали', auditAllProjects: 'Все проекты', adminTabSecurity: 'Безопасность', twofaTitle: 'Двухфакторная аутентификация', twofaHint: 'Добавьте одноразовый код (TOTP) из приложения-аутентификатора как второй шаг входа.', twofaOn: 'Двухфакторная аутентификация включена.', twofaEnable: 'Включить 2FA', twofaDisable: 'Отключить 2FA', twofaCode: 'Код', twofaScan: 'Добавьте этот секрет в приложение-аутентификатор (или отсканируйте otpauth-ссылку), затем введите текущий код:', twofaConfirm: 'Подтвердить', twofaEnabled: '2FA включена.', twofaRecovery: 'Сохраните эти одноразовые коды восстановления в надёжном месте:' },
+llmTitle: 'ИИ-саммари (LLM)', dbTitle: 'База данных', llmHint: 'Подключите OpenAI-совместимый API (напр. llama.cpp). После включения появятся: кнопка «Саммари» на wiki-страницах и «✨ Сгенерировать» (описание + TODO) в форме задачи.', llmEnabledOn: 'Включено', llmBaseUrl: 'Базовый URL API', llmModel: 'Модель', llmApiKey: 'API-ключ', llmApiKeyOptional: 'необязательно', llmEnable: 'Включить (с проверкой подключения)', llmTest: 'Проверить подключение', llmTesting: 'Проверка…', llmOk: 'Подключение успешно', llmNoThink: 'Отключить «думанье» (reasoning)', llmNoThinkHint: 'Быстрее отвечает — добавляет /no_think (модели типа Qwen3). Для других моделей безвредно.', gcalTitle: 'Google Календарь (двусторонний)', gcalHint: 'Зарегистрируйте OAuth-клиент в Google Cloud (APIs & Services → Credentials → OAuth client ID → Web application), включите Google Calendar API и добавьте redirect URI ниже. После этого пользователи подключают свой аккаунт Google прямо в Календаре.', gcalConfigured: 'Настроено', gcalRedirect: 'Разрешённый redirect URI', gcalClientId: 'OAuth client ID', gcalSecret: 'OAuth client secret', gcalEnable: 'Включить синхронизацию Google Календаря', dbHost: 'Хост', dbPort: 'Порт', dbName: 'База', dbUser: 'Пользователь', dbPath: 'Файл', adminTabAudit: 'Журнал аудита', auditTime: 'Время', auditUser: 'Пользователь', auditAction: 'Действие', auditProject: 'Проект', auditDetails: 'Детали', auditAllProjects: 'Все проекты', adminTabSecurity: 'Безопасность', twofaTitle: 'Двухфакторная аутентификация', twofaHint: 'Добавьте одноразовый код (TOTP) из приложения-аутентификатора как второй шаг входа.', twofaOn: 'Двухфакторная аутентификация включена.', twofaEnable: 'Включить 2FA', twofaDisable: 'Отключить 2FA', twofaCode: 'Код', twofaScan: 'Добавьте этот секрет в приложение-аутентификатор (или отсканируйте otpauth-ссылку), затем введите текущий код:', twofaConfirm: 'Подтвердить', twofaEnabled: '2FA включена.', twofaRecovery: 'Сохраните эти одноразовые коды восстановления в надёжном месте:',
+tokTitle: 'API-токены', tokHint: 'Личные токены для скриптов и интеграций: передавайте «Authorization: Bearer <токен>» в запросах к /api/*. Токен действует от вашего имени, но в рамках своей роли (не выше вашей) и, при желании, только в выбранных сервисах. Пароль, 2FA, Telegram и сами токены меняются только из браузера.', tokName: 'Название', tokRole: 'Роль', tokServices: 'Сервисы', tokAllServices: 'Все сервисы', tokSvcHint: 'Ничего не отмечено — все сервисы.', tokExpires: 'Срок действия', tokNever: 'Бессрочно', tokDays: 'дней', tokCreate: 'Создать токен', tokPrefix: 'Токен', tokLastUsed: 'Использован', tokCreated: 'Создан', tokRevoke: 'Отозвать', tokRevokeConfirm: 'Отозвать токен? Всё, что его использует, сразу перестанет работать.', tokNew: 'Скопируйте токен сейчас — больше он показан не будет:', tokCopy: 'Копировать', tokCopied: 'Токен скопирован', tokNone: 'Токенов пока нет', tokNameRequired: 'Введите название токена', tokAllTitle: 'Токены всех пользователей', tokOwner: 'Пользователь', tokExpired: 'истёк' },
   es: { adminTitle: 'Administración', adminTabUsers: 'Usuarios', adminTabBoard: 'Tablero', adminTabServices: 'Servicios', adminTabIntegrations: 'Integraciones', adminTabData: 'Datos', adminTabMailServer: 'Servidor de correo', adminTabMailboxes: 'Buzones' },
   fr: { adminTitle: 'Administration', adminTabUsers: 'Utilisateurs', adminTabBoard: 'Tableau', adminTabServices: 'Services', adminTabIntegrations: 'Intégrations', adminTabData: 'Données', adminTabMailServer: 'Serveur de messagerie', adminTabMailboxes: 'Boîtes' },
   de: { adminTitle: 'Verwaltung', adminTabUsers: 'Benutzer', adminTabBoard: 'Board', adminTabServices: 'Dienste', adminTabIntegrations: 'Integrationen', adminTabData: 'Daten', adminTabMailServer: 'Mailserver', adminTabMailboxes: 'Postfächer' },
@@ -33,6 +35,7 @@ const ADMIN_TABS = [
   // User-facing first. Account also hosts the personal display settings (theme/
   // language/font/timezone), relocated into its panel.
   { key: 'account', i: 'adminTabAccount', render: renderAdminAccount, sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
+  { key: 'tokens', i: 'tokTitle', render: renderAdminTokens },
   { key: 'mail', i: 'adminTabMail', render: renderAdminMail, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
   { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && isAdmin() },
   // Admin-only service config (bot token, SSO, LLM, DB). Personal Telegram
@@ -53,6 +56,7 @@ const ADMIN_TABS = [
 // ADMIN_TABS entries. Order here defines the top-level tab order.
 const ADMIN_LAYOUT = [
   { leaf: 'account' },
+  { leaf: 'tokens' },
   { group: 'mailgrp', i: 'adminTabMail', children: ['mail', 'mailserver'] },
   { group: 'boardgrp', i: 'adminTabBoard', children: ['board', 'projects'] },
   { leaf: 'users' },
@@ -160,6 +164,95 @@ async function twofaDisable() {
   const code = (document.getElementById('twofa-disable-code').value || '').trim();
   try { await api('/api/2fa/disable', 'POST', { code }); } catch (e) { alert(e.message); return; }
   renderAdmin2FA(document.getElementById('acc-2fa'));
+}
+
+// renderAdminTokens: personal API tokens (create/list/revoke) for everyone,
+// plus every user's tokens for admins. The secret is shown once, on creation.
+async function renderAdminTokens(panel) {
+  const rank = { readonly: 1, regular: 2, admin: 3 };
+  const mine = isAdmin() ? 3 : (rank[currentUser.role] || 2);
+  const roles = ['readonly', 'regular', 'admin'].filter(r => rank[r] <= mine);
+  const svcs = (typeof services !== 'undefined' ? services : []).filter(s => s.enabled).map(s => s.name);
+  panel.innerHTML = `<h2 class="admin-h">${t('tokTitle')}</h2>
+    <div class="admin-note">${esc(t('tokHint'))}</div>
+    <div class="admin-form">
+      <label class="admin-fld">${t('tokName')}<input id="tok-name" maxlength="100"></label>
+      <label class="admin-fld">${t('tokRole')}<select id="tok-role">${roles.map(r => `<option value="${r}">${esc(t(r))}</option>`).join('')}</select></label>
+      <div class="admin-fld">${t('tokServices')}
+        <div class="tok-svcs">${svcs.map(s => `<label><input type="checkbox" class="tok-svc" value="${escAttr(s)}"> ${esc(t('svc_' + s))}</label>`).join('')}</div>
+        <div class="admin-note" style="padding:0">${t('tokSvcHint')}</div>
+      </div>
+      <label class="admin-fld">${t('tokExpires')}<select id="tok-exp">
+        <option value="30">30 ${t('tokDays')}</option><option value="90" selected>90 ${t('tokDays')}</option>
+        <option value="365">365 ${t('tokDays')}</option><option value="0">${t('tokNever')}</option></select></label>
+      <div class="admin-row"><button class="btn btn-primary btn-sm" onclick="tokCreate()">${t('tokCreate')}</button></div>
+      <div id="tok-new"></div>
+    </div>
+    <div id="tok-mine" class="audit-table" style="margin-top:16px"></div>
+    ${isAdmin() ? `<h3 style="margin:24px 0 8px">${t('tokAllTitle')}</h3><div id="tok-all" class="audit-table"></div>` : ''}`;
+  tokLoad();
+}
+
+function tokTable(rows, withOwner, admin) {
+  if (!rows.length) return `<div class="admin-empty">${t('tokNone')}</div>`;
+  const now = Date.now() / 1000;
+  const when = sec => sec ? fmtDate(new Date(sec * 1000).toISOString()) : '';
+  return `<table class="audit-tbl"><thead><tr>
+      ${withOwner ? `<th>${t('tokOwner')}</th>` : ''}<th>${t('tokName')}</th><th>${t('tokPrefix')}</th><th>${t('tokRole')}</th>
+      <th>${t('tokServices')}</th><th>${t('tokExpires')}</th><th>${t('tokLastUsed')}</th><th>${t('tokCreated')}</th><th></th>
+    </tr></thead><tbody>${rows.map(r => `<tr>
+      ${withOwner ? `<td>${esc(r.username)}</td>` : ''}
+      <td>${esc(r.name)}</td><td><code>${esc(r.prefix)}…</code></td><td>${esc(t(r.role) || r.role)}</td>
+      <td>${r.services.length ? r.services.map(s => esc(t('svc_' + s))).join(', ') : esc(t('tokAllServices'))}</td>
+      <td>${!r.expires_at ? esc(t('tokNever')) : r.expires_at <= now ? `<span style="color:var(--red)">${esc(t('tokExpired'))}</span>` : esc(when(r.expires_at))}</td>
+      <td>${esc(when(r.last_used_at))}</td><td>${esc(fmtDate(r.created_at))}</td>
+      <td><button class="btn btn-ghost btn-sm admin-danger" onclick="tokRevoke(${r.id}, ${admin})">${t('tokRevoke')}</button></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function tokLoad() {
+  const mine = document.getElementById('tok-mine');
+  if (mine) {
+    try { mine.innerHTML = tokTable(await api('/api/user/tokens'), false, false); }
+    catch (e) { mine.innerHTML = `<div class="admin-empty">${esc(e.message)}</div>`; }
+  }
+  const all = document.getElementById('tok-all');
+  if (all) {
+    try { all.innerHTML = tokTable(await api('/api/admin/tokens'), true, true); }
+    catch (e) { all.innerHTML = `<div class="admin-empty">${esc(e.message)}</div>`; }
+  }
+}
+
+async function tokCreate() {
+  const name = document.getElementById('tok-name').value.trim();
+  if (!name) { toast(t('tokNameRequired'), 'error'); return; }
+  const body = {
+    name,
+    role: document.getElementById('tok-role').value,
+    services: [...document.querySelectorAll('.tok-svc:checked')].map(c => c.value),
+    expires_days: parseInt(document.getElementById('tok-exp').value, 10) || 0,
+  };
+  let r;
+  try { r = await api('/api/user/tokens', 'POST', body); } catch (e) { toast(e.message, 'error'); return; }
+  document.getElementById('tok-name').value = '';
+  document.getElementById('tok-new').innerHTML = `<p>${t('tokNew')}</p>
+    <div class="admin-row" style="align-items:center;flex-wrap:wrap">
+      <div class="twofa-secret" id="tok-secret" style="font-size:.85rem;letter-spacing:0;word-break:break-all">${esc(r.token)}</div>
+      <button class="btn btn-ghost btn-sm" onclick="tokCopy()">${t('tokCopy')}</button></div>`;
+  tokLoad();
+}
+
+async function tokCopy() {
+  const el = document.getElementById('tok-secret');
+  if (!el) return;
+  try { await navigator.clipboard.writeText(el.textContent); toast(t('tokCopied'), 'success'); }
+  catch (e) { window.getSelection().selectAllChildren(el); }
+}
+
+async function tokRevoke(id, admin) {
+  if (!(await uiConfirm(t('tokRevokeConfirm')))) return;
+  try { await api((admin ? '/api/admin/tokens/' : '/api/user/tokens/') + id, 'DELETE'); } catch (e) { toast(e.message, 'error'); return; }
+  tokLoad();
 }
 
 // renderAdminAuditLog shows the activity log with user/project/action filters.
