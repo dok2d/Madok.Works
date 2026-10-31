@@ -242,7 +242,7 @@ function chatRenderLayout() {
 }
 
 function chatChannelLabel(c) {
-  if (c.type === 'dm') return c.peer_name || t('chatDirect');
+  if (c.type === 'dm') return c.peer_id ? displayName(c.peer_id, c.peer_name) : (c.peer_name || t('chatDirect'));
   return c.name;
 }
 function chatChannelIcon(c) {
@@ -262,6 +262,10 @@ function chatInitials(name) {
   if (!parts.length) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+// chatChannelAvatar: a DM shows the peer's avatar, a channel its initials.
+function chatChannelAvatar(c, cls) {
+  return c.type === 'dm' && c.peer_id ? userAvatar(c.peer_id, cls, c.peer_name) : chatAvatar(chatChannelLabel(c), cls);
 }
 function chatAvatar(name, cls) {
   const bg = chatAvatarColor(name);
@@ -316,7 +320,7 @@ function chatChannelRow(c, label, onclick, extraCls) {
   const preview = chatListPreview(c);
   const pin = `<button class="chat-ch-pin ${c.pinned ? 'pinned' : ''}" title="${escAttr(t('chatPinChannel'))}" onclick="event.stopPropagation();chatTogglePinChannel(${c.id})">&#128204;</button>`;
   return `<div class="chat-ch-row ${c.id === chatState.channelId ? 'active' : ''} ${extraCls || ''}" onclick="${onclick}">
-    ${chatAvatar(label)}
+    ${chatChannelAvatar(c)}
     <div class="chat-ch-main">
       <div class="chat-ch-line1"><span class="chat-ch-name">${c.pinned ? '<span class="chat-ch-pinmark">&#128204;</span> ' : ''}${c.muted ? '<span class="chat-ch-mutemark" title="' + escAttr(t('chatMuted')) + '">&#128263;</span> ' : ''}${esc(label)}</span>${c.last_msg_at ? `<span class="chat-ch-time">${esc(chatListTime(c.last_msg_at))}</span>` : ''}</div>
       <div class="chat-ch-line2"><span class="chat-ch-preview">${preview}</span>${badge}</div>
@@ -379,8 +383,8 @@ function chatRenderDMGroup(label) {
       .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
     for (const u of contacts) {
       rows += `<div class="chat-ch-row chat-contact" onclick="chatStartDM(${u.id})">
-        ${chatAvatar(u.username)}
-        <div class="chat-ch-main"><div class="chat-ch-line1"><span class="chat-ch-name">${esc(u.username)}</span></div></div>
+        ${userAvatar(u)}
+        <div class="chat-ch-main"><div class="chat-ch-line1"><span class="chat-ch-name">${esc(displayName(u))}</span></div></div>
       </div>`;
     }
   }
@@ -411,7 +415,7 @@ function chatRenderMain() {
   }
   el.innerHTML = `
     <div class="chat-head">
-      ${chatAvatar(chatChannelLabel(c), 'chat-av-sm')}
+      ${chatChannelAvatar(c, 'chat-av-sm')}
       <div class="chat-head-info">
         <h2 class="chat-head-title">${esc(chatChannelLabel(c))}</h2>
         ${c.topic ? `<div class="chat-head-topic">${esc(c.topic)}</div>` : ''}
@@ -609,14 +613,14 @@ function chatRenderMsg(msg, grouped) {
   const showName = !mine && !grouped && c && c.type !== 'dm';
   const canManage = mine || (currentUser && currentUser.role === 'admin');
   const canWrite = currentUser && currentUser.role !== 'readonly';
-  const avatar = mine ? '' : (grouped ? '<span class="chat-av-spacer"></span>' : chatAvatar(msg.author_name || '?', 'chat-av-sm'));
+  const avatar = mine ? '' : (grouped ? '<span class="chat-av-spacer"></span>' : userAvatar(msg.author_id, 'chat-av-sm', msg.author_name));
   const checks = (mine && isDM) ? chatChecks(msg) : '';
   const meta = `<span class="chat-meta">${msg.pinned ? `<span class="chat-pin-mark" title="${t('chatPinned')}">&#128204;</span>` : ''}${msg.edited_at ? `<span class="chat-edited">${t('chatEdited')}</span>` : ''}<span class="chat-time">${esc(chatFmtTime(msg.created_at))}</span>${checks}</span>`;
   return `<div class="chat-msg ${mine ? 'mine' : 'their'} ${grouped ? 'grouped' : ''} ${msg.pinned ? 'pinned' : ''}" id="chat-msg-${msg.id}">
     ${avatar}
     <div class="chat-bubble-wrap">
       <div class="chat-bubble" ondblclick="chatStartReply(${msg.id})" title="${escAttr(t('chatReply'))}">
-        ${showName ? `<div class="chat-bubble-author" style="color:${chatAvatarColor(msg.author_name || '?')}">${esc(msg.author_name || '?')}</div>` : ''}
+        ${showName ? `<div class="chat-bubble-author" style="color:${chatAvatarColor(msg.author_name || '?')}">${esc(displayName(msg.author_id, msg.author_name))}</div>` : ''}
         ${msg.reply_to ? chatReplyQuote(msg) : ''}
         <div class="chat-text md-content">${chatFormatText(msg.text)}</div>
         ${chatRenderAttachments(msg)}
@@ -670,7 +674,7 @@ function chatCanPin() {
 
 function chatReplyQuote(msg) {
   return `<div class="chat-reply-quote" onclick="chatJumpTo(${msg.reply_to})">
-    <b>${esc(msg.reply_to_author || '?')}</b> <span>${esc((msg.reply_to_text || '').slice(0, 120))}</span></div>`;
+    <b>${esc(msg.reply_to_author ? displayName(userByLogin(msg.reply_to_author), msg.reply_to_author) : '?')}</b> <span>${esc((msg.reply_to_text || '').slice(0, 120))}</span></div>`;
 }
 
 function chatReactionChips(msg) {
@@ -691,7 +695,7 @@ function chatFormatText(text) {
   h = h.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
   h = h.replace(/(^|[\s>])@([\p{L}\p{N}_.\-]+)/gu, (full, pre, name) => {
     const u = (state.users || []).find(x => x.username === name);
-    return u ? `${pre}<span class="chat-mention">@${esc(name)}</span>` : full;
+    return u ? `${pre}<span class="chat-mention" title="${escAttr(displayName(u))}">@${esc(name)}</span>` : full;
   });
   return h;
 }
@@ -779,7 +783,7 @@ function chatRenderTyping() {
 function chatStartReply(id) {
   const msg = chatState.messages.find(m => m.id === id);
   if (!msg) return;
-  chatState.replyTo = { id: msg.id, author_name: msg.author_name, text: msg.text };
+  chatState.replyTo = { id: msg.id, author_id: msg.author_id, author_name: msg.author_name, text: msg.text };
   chatRenderReplyBar();
   const inp = document.getElementById('chat-input');
   if (inp) inp.focus();
@@ -792,7 +796,7 @@ function chatRenderReplyBar() {
   if (!r) { el.classList.add('hidden'); el.innerHTML = ''; return; }
   el.classList.remove('hidden');
   el.innerHTML = `<div class="chat-reply-bar-info">
-      <b>${t('chatReplyingTo')} ${esc(r.author_name || '?')}</b>
+      <b>${t('chatReplyingTo')} ${esc(displayName(r.author_id, r.author_name))}</b>
       <span>${esc((r.text || '').slice(0, 120))}</span>
     </div>
     <button class="btn-icon btn-sm" title="${t('chatCancelReply')}" onclick="chatCancelReply()">&#10005;</button>`;
@@ -1112,7 +1116,7 @@ function chatNewChannelDialog(type) {
   const memberPicker = (type === 'group') ? `
     <div class="chat-fld"><span>${t('chatMembersPick')}</span>
       <div class="chat-member-pick">${(state.users || []).filter(u => u.id !== meId)
-        .map(u => `<label class="chat-pick-row"><input type="checkbox" value="${u.id}"> ${esc(u.username)}</label>`).join('') || `<div class="chat-empty">${t('chatNoUsers')}</div>`}</div>
+        .map(u => `<label class="chat-pick-row"><input type="checkbox" value="${u.id}"> ${esc(userLabel(u))}</label>`).join('') || `<div class="chat-empty">${t('chatNoUsers')}</div>`}</div>
     </div>` : '';
   const roToggle = (type === 'channel') ? `
     <label class="chat-pick-row"><input type="checkbox" id="chat-new-ro"> ${t('chatReadonlyToggle')}</label>` : '';
@@ -1141,7 +1145,7 @@ function chatNewChannelDialog(type) {
 function chatStartDMDialog() {
   const users = (state.users || []).filter(u => u.id !== (currentUser && currentUser.id));
   if (!users.length) { alert(t('chatNoUsers')); return; }
-  const body = `<select id="chat-dm-user" class="chat-modal-select">${users.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>`;
+  const body = `<select id="chat-dm-user" class="chat-modal-select">${users.map(u => `<option value="${u.id}">${esc(userLabel(u))}</option>`).join('')}</select>`;
   chatModal(t('chatStartDM'), body, async ov => {
     const uid = Number(ov.querySelector('#chat-dm-user').value);
     try {
@@ -1163,12 +1167,12 @@ async function chatMembersDialog() {
   const others = (state.users || []).filter(u => !members.some(m => m.user_id === u.id));
   const body = `
     <div class="chat-mem-list">${members.map(m => `<div class="chat-mem-row">
-      <span>${esc(m.username)}</span>
+      <span class="u-chip">${userAvatar(m.user_id, 'chat-av-xs', m.username)}${esc(displayName(m.user_id, m.username))}</span>
       ${canManageWriters && m.user_id !== c.created_by ? `<label class="chat-writer-tog"><input type="checkbox" ${m.role === 'writer' ? 'checked' : ''} onchange="chatSetWriter(${m.user_id}, this.checked)"> ${t('chatCanWrite')}</label>` : ''}
       ${canManage && m.user_id !== c.created_by ? `<button class="btn-icon btn-sm chat-danger" onclick="chatRemoveMember(${m.user_id})">&#10005;</button>` : ''}
     </div>`).join('') || `<div class="chat-empty">—</div>`}</div>
     ${canManage && others.length ? `<div class="chat-mem-add">
-      <select id="chat-add-member">${others.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
+      <select id="chat-add-member">${others.map(u => `<option value="${u.id}">${esc(userLabel(u))}</option>`).join('')}</select>
       <button class="btn btn-primary btn-sm" onclick="chatAddMember()">${t('chatAddMember')}</button>
     </div>` : ''}`;
   chatModal(t('chatMembers'), body, null);

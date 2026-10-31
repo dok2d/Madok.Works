@@ -176,6 +176,10 @@ body.has-rail #app{margin-left:52px}
 .chat-grp-add:hover{color:var(--accent)}
 .chat-av{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:.82rem;user-select:none}
 .chat-av-sm{width:30px;height:30px;font-size:.72rem}
+img.chat-av{object-fit:cover;background:var(--bg3)}
+.chat-av-xs{width:20px;height:20px;font-size:.6rem;vertical-align:middle}
+.chat-av-lg{width:72px;height:72px;font-size:1.5rem}
+.u-chip{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .chat-ch-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--radius);cursor:pointer}
 .chat-ch-row:hover{background:var(--bg3)}
 .chat-ch-row.active{background:var(--bg3)}
@@ -960,6 +964,8 @@ body.has-rail .search-results{left:52px}
 .svc-ctrls button[disabled]{opacity:.3;cursor:default}
 .entity-item .dot{width:12px;height:12px;max-width:12px;min-width:12px;min-height:12px;border-radius:50%;margin-right:8px;flex-shrink:0}
 .entity-item span{flex:1;font-size:.85rem;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.entity-item .chat-av{flex:0 0 auto}
+.entity-item .u-chip{gap:8px}
 .entity-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .entity-add input{flex:1;min-width:60px;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--radius);padding:6px 8px;color:var(--fg);font-family:inherit;font-size:.82rem;outline:none}
 .entity-add input[type="color"]{width:36px;padding:2px;cursor:pointer;flex:none;min-width:36px}
@@ -1479,11 +1485,11 @@ async function openProjectSettings(id) {
   const isDefault = cur.id === 1;
   const roleOpts = (sel) => ['viewer', 'editor', 'admin'].map(r => `<option value="${r}" ${sel === r ? 'selected' : ''}>${t('wikiRole_' + r)}</option>`).join('');
   const memberRows = members.map(m => `<div class="proj-member-row">
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(m.username)}</span>
+      <span class="u-chip" style="flex:1;overflow:hidden;text-overflow:ellipsis">${userAvatar(m.user_id, 'chat-av-xs', m.username)}${esc(displayName(m.user_id, m.username))}</span>
       <select onchange="projSetMember(${m.user_id}, this.value)">${roleOpts(m.role)}</select>
       <button class="btn-icon" title="${escAttr(t('delete'))}" onclick="projRemoveMember(${m.user_id})">&#10005;</button>
     </div>`).join('') || `<div style="color:var(--fg3);font-size:.82rem">—</div>`;
-  const userOpts = (state.users || []).map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('');
+  const userOpts = (state.users || []).map(u => `<option value="${u.id}">${esc(userLabel(u))}</option>`).join('');
   const ov = document.createElement('div');
   ov.className = 'modal-overlay';
   ov.innerHTML = `<div class="modal">
@@ -1694,6 +1700,41 @@ function autoPrefix(url) {
   if (url && !/^https?:\/\//i.test(url) && /^[a-zA-Z0-9]/.test(url) && url.includes('.')) return 'https://' + url;
   return url;
 }
+// === People: public name + avatar. The login stays the identity (sign-in,
+// @mentions); everywhere a person is shown, use displayName/userAvatar. ===
+let usersById = {};
+async function loadUsersDir() {
+  try { usersById = {}; (await api('/api/users')).forEach(u => { usersById[u.id] = u; }); } catch (e) {}
+  if (currentUser && usersById[currentUser.id]) Object.assign(currentUser, { display_name: usersById[currentUser.id].display_name, avatar_id: usersById[currentUser.id].avatar_id });
+}
+// userRef resolves a user object or id to the freshest directory entry.
+function userRef(u) {
+  if (u == null || u === '') return null;
+  if (typeof u !== 'object') return usersById[u] || null;
+  return usersById[u.id] || u;
+}
+function displayName(u, fallback) {
+  const r = userRef(u);
+  return (r && (r.display_name || r.username)) || fallback || '?';
+}
+function userByLogin(login) {
+  for (const id in usersById) if (usersById[id].username === login) return usersById[id];
+  return null;
+}
+// userLabel is for pickers: "Public Name (login)", or just the login.
+function userLabel(u) {
+  const r = userRef(u);
+  if (!r) return '?';
+  return r.display_name && r.display_name !== r.username ? `${r.display_name} (${r.username})` : r.username;
+}
+// userAvatar: the uploaded picture, else initials on a color seeded by the login.
+function userAvatar(u, cls, fallbackName) {
+  const r = userRef(u);
+  const name = displayName(r, fallbackName);
+  if (r && r.avatar_id) return `<img class="chat-av ${cls || ''}" src="/api/images/${r.avatar_id}" alt="${escAttr(name)}" loading="lazy">`;
+  const bg = chatAvatarColor((r && r.username) || name);
+  return `<span class="chat-av ${cls || ''}" style="background:${bg};color:${contrastColor(bg)}">${esc(chatInitials(name))}</span>`;
+}
 function isAdmin() { return currentUser && currentUser.role === 'admin'; }
 function isReadonly() { return currentUser && currentUser.role === 'readonly'; }
 
@@ -1713,7 +1754,9 @@ function renderMd(text) {
     // Highlight @mentions (escape username to prevent XSS)
     processed = processed.replace(/@(\w+)/g, function(_, name) {
       const safeName = esc(name);
-      return '<span class="mention" onclick="var uid=getUserIdByName(\'' + safeName + '\');if(uid)navigateTo(\'/user/\'+uid)">@' + safeName + '</span>';
+      const who = userByLogin(name);
+      const tip = who && who.display_name ? ' title="' + escAttr(who.display_name) + '"' : '';
+      return '<span class="mention"' + tip + ' onclick="var uid=getUserIdByName(\'' + safeName + '\');if(uid)navigateTo(\'/user/\'+uid)">@' + safeName + '</span>';
     });
     let html = marked.parse(processed);
     html = html.replace(/<p>\s*<details>/g, '<details>').replace(/<\/details>\s*<\/p>/g, '</details>');
@@ -2223,6 +2266,8 @@ async function init() {
     return;
   }
   currentUser = me;
+  if (typeof ensureAdminI18n === 'function') ensureAdminI18n(); // profile/token strings are used outside the settings page too
+  await loadUsersDir();
   updateUserUI();
   applyDirection();
   try {
@@ -2453,7 +2498,7 @@ function restartTour() {
 function updateUserUI() {
   if (!currentUser) return;
   const label = document.getElementById('current-user-label');
-  if (label) label.textContent = currentUser.username + ' (' + t(currentUser.role) + ')';
+  if (label) label.textContent = displayName(currentUser) + ' (' + t(currentUser.role) + ')';
   // Show admin sections
   const colSec = document.getElementById('columns-section');
   if (colSec) colSec.style.display = isAdmin() ? '' : 'none';
@@ -2564,9 +2609,11 @@ function renderSidebar() {
     const userList = document.getElementById('user-list');
     if (userList) {
       userList.innerHTML = state.users.map(u => `<div class="entity-item">
-        <span style="cursor:pointer" onclick="navigateTo('/user/${u.id}')">${esc(u.username)}</span>
+        <span class="u-chip" style="cursor:pointer" onclick="navigateTo('/user/${u.id}')">${userAvatar(u, 'chat-av-xs')}${esc(userLabel(u))}</span>
         <span style="font-size:.72rem;color:var(--fg3)">${t(u.role)}</span>
         <div style="display:flex;gap:2px">
+          <button class="btn-icon btn-sm" onclick="renameUser(${u.id})" title="${escAttr(t('profRename'))}">&#9998;</button>
+          ${u.avatar_id ? `<button class="btn-icon btn-sm" onclick="clearUserAvatar(${u.id})" title="${escAttr(t('profRemoveAvatar'))}">&#128444;</button>` : ''}
           ${u.id !== currentUser.id ? `<button class="btn-icon btn-sm" onclick="changeUserRole(${u.id},'${u.role}')" title="${t('role')}">&#9881;</button>` : ''}
           <button class="btn-icon btn-sm" onclick="resetUserPassword(${u.id})" title="${t('resetPassword')}">&#128274;</button>
           ${u.id !== currentUser.id ? `<button class="btn-icon btn-sm" onclick="deleteUser(${u.id})" title="${t('delete')}" style="color:var(--red)">&#10005;</button>` : ''}
@@ -3018,7 +3065,7 @@ function renderCard(task) {
   const epicHtml = task.epic ? `<span class="card-epic" style="background:${task.epic.color};color:${contrastColor(task.epic.color)}" onclick="event.stopPropagation();navigateTo('/epic/${task.epic.id}')">${esc(task.epic.name)}</span>` : '';
   const sprintHtml = task.sprint ? `<span class="card-epic" style="background:var(--accent);color:#fff;font-size:.7rem" onclick="event.stopPropagation();navigateTo('/sprint/${task.sprint.id}')">${esc(task.sprint.name)}</span>` : '';
   const tagsHtml = (task.tags || []).map(tg => `<span class="card-tag" style="background:${tg.color};color:${contrastColor(tg.color)}">${esc(tg.name)}</span>`).join('');
-  const assigneeHtml = task.assignee ? `<span class="card-assignee">&#128100; ${esc(task.assignee.username)}</span>` : '';
+  const assigneeHtml = task.assignee ? `<span class="card-assignee u-chip">${userAvatar(task.assignee, 'chat-av-xs')}${esc(displayName(task.assignee))}</span>` : '';
   const todoInfo = countTodos(task.todo);
   const todoHtml = todoInfo ? `<span class="card-todo">&#9745; ${todoInfo.done}/${todoInfo.total}</span>` : '';
   const linkHtml = task.project_url ? `<span class="card-link">&#128279;</span>` : '';
@@ -3157,7 +3204,7 @@ async function renderTaskPage(taskId) {
         <div class="task-info-item"><label>${t('priority')}</label><span class="value" style="color:${prioColors[task.priority] || ''}">${t(prioLabels[task.priority] || 'none')}</span></div>`;
   if (task.epic) html += `<div class="task-info-item"><label>${t('epic')}</label><span class="value"><a href="/epic/${task.epic.id}" onclick="navigateTo('/epic/${task.epic.id}');return false;" style="color:${task.epic.color}">${esc(task.epic.name)}</a></span></div>`;
   if (task.sprint) html += `<div class="task-info-item"><label>${t('sprint')}</label><span class="value"><a href="/sprint/${task.sprint.id}" onclick="navigateTo('/sprint/${task.sprint.id}');return false;" style="color:var(--accent2)">${esc(task.sprint.name)}</a></span></div>`;
-  if (task.assignee) html += `<div class="task-info-item"><label>${t('assignee')}</label><span class="value"><a href="/user/${task.assignee.id}" onclick="navigateTo('/user/${task.assignee.id}');return false;">&#128100; ${esc(task.assignee.username)}</a></span></div>`;
+  if (task.assignee) html += `<div class="task-info-item"><label>${t('assignee')}</label><span class="value"><a href="/user/${task.assignee.id}" onclick="navigateTo('/user/${task.assignee.id}');return false;" class="u-chip">${userAvatar(task.assignee, 'chat-av-xs')}${esc(displayName(task.assignee))}</a></span></div>`;
   if (task.deadline) {
     const dl = new Date(task.deadline);
     const diff = dl - new Date();
@@ -3295,7 +3342,7 @@ function renderComments(comments, taskId) {
     children: c => c.replies || [],
     find: id => findCommentById(comments, id),
     authorId: c => c.author ? c.author.id : 0,
-    authorName: c => c.author ? c.author.username : '?',
+    authorName: c => c.author ? c.author.username : '?', // login; the thread shows the public name
     text: c => c.text,
     createdAt: c => c.created_at,
     updatedAt: c => c.updated_at,
@@ -3333,7 +3380,7 @@ function cmtThread(topComments, ctxId, depth) {
     const dbl = !isReadonly() ? `ondblclick="event.stopPropagation();cmtReply('${ctxId}',${c.id})"` : '';
     const reacts = ctx.reactionsHtml ? ctx.reactionsHtml(c) : '';
     html += `<div class="comment" id="${ctxId}-comment-${c.id}" ${dbl}>
-      <div class="comment-author"><a href="/user/${aid}" onclick="navigateTo('/user/${aid}');return false;">@${esc(aname)}</a></div>
+      <div class="comment-author"><a href="/user/${aid}" onclick="navigateTo('/user/${aid}');return false;" class="u-chip">${userAvatar(aid, 'chat-av-xs', aname)}${esc(displayName(aid, aname))}</a></div>
       <div class="comment-text" id="${ctxId}-ctext-${c.id}"><div class="md-content">${renderMd(ctx.text(c))}</div></div>
       <div class="comment-time">
         <span>${fmtDate(created)}${editedHtml}</span>
@@ -3776,7 +3823,7 @@ async function renderUserPage(userId) {
 
   let html = `<div class="user-page">
     <div class="user-page-header">
-      <h2>&#128100; ${esc(user.username)}</h2>
+      <h2 class="u-chip" style="gap:14px">${userAvatar(user, 'chat-av-lg')}<span>${esc(displayName(user))}${user.display_name ? ` <span style="font-size:.9rem;color:var(--fg3);font-weight:400">@${esc(user.username)}</span>` : ''}</span></h2>
       <div style="font-size:.82rem;color:var(--fg3);margin-top:4px">${t('role')}: ${t(user.role)} &middot; ${t('created')}: ${user.created_at}</div>
     </div>`;
 
@@ -4047,7 +4094,7 @@ function showTaskModal(task, defaultColId, defaultEpicId) {
       <div class="field-row">
         <div class="field"><label>${t('assignee')}</label><select id="task-assignee">
           <option value="">${t('none')}</option>
-          ${state.users.map(u => `<option value="${u.id}" ${(isEdit&&task.assignee_id===u.id)?'selected':''}>${esc(u.username)}</option>`).join('')}
+          ${state.users.map(u => `<option value="${u.id}" ${(isEdit&&task.assignee_id===u.id)?'selected':''}>${esc(userLabel(u))}</option>`).join('')}
         </select></div>
         <div class="field"><label>${t('deadline')}</label><input type="datetime-local" id="task-deadline" lang="${langLocale()}" value="${isEdit && task.deadline ? escAttr(deadlineToLocal(task.deadline)) : ''}" style="color-scheme:dark"></div>
       </div>
@@ -4679,6 +4726,18 @@ async function changeUserRole(id, currentRole) {
   const nextIdx = (roles.indexOf(currentRole) + 1) % roles.length;
   const newRole = roles[nextIdx];
   try { await api('/api/users/' + id, 'PUT', { role: newRole }); await loadBoard(); } catch(e) { alert(t('error')); }
+}
+async function renameUser(id) {
+  const u = userRef(id) || {};
+  const name = await uiPrompt(t('profRename') + ' (' + (u.username || '') + ')', u.display_name || '');
+  if (name === null) return;
+  try { await api('/api/users/' + id, 'PUT', { display_name: name.trim() }); } catch(e) { toast(e.message, 'error'); return; }
+  await loadUsersDir(); await loadBoard(); updateUserUI();
+}
+async function clearUserAvatar(id) {
+  if (!await uiConfirm(t('profRemoveAvatar') + '?')) return;
+  try { await api('/api/users/' + id, 'PUT', { clear_avatar: true }); } catch(e) { toast(e.message, 'error'); return; }
+  await loadUsersDir(); await loadBoard();
 }
 async function resetUserPassword(id) {
   const pw = await uiPrompt(t('newPassword'));

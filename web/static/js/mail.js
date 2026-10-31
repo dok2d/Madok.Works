@@ -204,7 +204,7 @@ function mailRenderList() {
   el.innerHTML = `<div class="mail-list">${msgs.map(m => `
     <div class="mail-row ${m.seen ? '' : 'unread'} ${m.box_id === mailState.openBoxId ? 'sel' : ''}" onclick="mailOpen(${m.box_id})">
       <span class="mail-row-flag ${m.flagged ? 'on' : ''}" onclick="event.stopPropagation();mailToggleFlag(${m.box_id}, ${!m.flagged})" title="${t('mailFlag')}">${m.flagged ? '★' : '☆'}</span>
-      <span class="mail-row-from">${esc(showFrom ? (m.from_name || '?') : (m.to_addrs || ''))}</span>
+      <span class="mail-row-from">${esc(showFrom ? mailFromName(m) : (m.to_addrs || ''))}</span>
       <span class="mail-row-main"><b class="mail-row-subj">${esc(m.subject || t('mailNoSubject'))}</b> <span class="mail-row-snip">${esc(m.snippet || '')}</span></span>
       <span class="mail-row-date">${esc(fmtDate(m.created_at))}</span>
     </div>`).join('')}</div>`;
@@ -316,7 +316,7 @@ function mailRenderOne(m) {
   const atts = (m.attachments || []).map(a => `<a class="mail-att" href="${escAttr(a.url)}" target="_blank" rel="noopener">📎 ${esc(a.filename)}</a>`).join('');
   return `<div class="mail-one">
     <div class="mail-one-head">
-      <span class="mail-one-from"><b>${esc(m.from_name || '?')}</b> <span class="mail-one-to">${t('mailTo')}: ${esc(m.to_addrs || '')}</span></span>
+      <span class="mail-one-from"><b>${esc(mailFromName(m))}</b> <span class="mail-one-to">${t('mailTo')}: ${esc(m.to_addrs || '')}</span></span>
       <span class="mail-one-date">${esc(fmtDate(m.created_at))}</span>
     </div>
     <div class="mail-one-body md-content">${body}</div>
@@ -418,7 +418,7 @@ function mailReply() {
   const msgs = mailState.thread;
   const last = msgs[msgs.length - 1];
   if (!last) return;
-  const quote = '\n\n— ' + (last.from_name || '') + ':\n' + (last.body_text || '').split('\n').map(l => '> ' + l).join('\n');
+  const quote = '\n\n— ' + mailFromName(last) + ':\n' + (last.body_text || '').split('\n').map(l => '> ' + l).join('\n');
   mailComposeDialog({
     to: last.from_name || '',
     subject: (last.subject || '').replace(/^Re:\s*/i, 'Re: ') || 'Re: ',
@@ -552,4 +552,10 @@ function mailRuleLabel(kind, v) {
   const ru = { from: 'От', to: 'Кому', subject: 'Тема', body: 'Текст', contains: 'содержит', equals: 'равно', starts_with: 'начинается с', regex: 'регэксп', move_to_folder: 'в папку', flag: 'пометить', mark_read: 'прочитано', delete: 'удалить' };
   const m = (currentLang === 'ru') ? ru : en;
   return m[v] || v;
+}
+
+// mailFromName shows an internal sender by their public name; external mail
+// keeps the stored From name. Replies still address the login (from_name).
+function mailFromName(m) {
+  return m.from_user_id ? displayName(m.from_user_id, m.from_name) : (m.from_name || '?');
 }

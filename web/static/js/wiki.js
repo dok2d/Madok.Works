@@ -270,7 +270,7 @@ function wikiRenderPageView(el) {
         </div>
       </div>
     </div>
-    <div class="wiki-meta"><a href="/wiki/page/${p.id}/history" onclick="navigateTo('/wiki/page/${p.id}/history');return false;">v${p.rev_no}</a> &middot; ${t('wikiEditedBy')} ${p.updated_by ? `<a href="/user/${p.updated_by}" onclick="navigateTo('/user/${p.updated_by}');return false;">${esc(p.updated_by_name || '?')}</a>` : esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
+    <div class="wiki-meta"><a href="/wiki/page/${p.id}/history" onclick="navigateTo('/wiki/page/${p.id}/history');return false;">v${p.rev_no}</a> &middot; ${t('wikiEditedBy')} ${p.updated_by ? `<a href="/user/${p.updated_by}" onclick="navigateTo('/user/${p.updated_by}');return false;">${esc(displayName(p.updated_by, p.updated_by_name))}</a>` : esc(p.updated_by_name || '?')} &middot; ${fmtDate(p.updated_at)}</div>
     <div id="wiki-summary-panel"></div>
     <div class="wiki-content md-content">${p.content || `<p style="color:var(--fg3)">${t('wikiEmptyPage')}</p>`}</div>
     ${(p.backlinks && p.backlinks.length) ? `<div class="wiki-backlinks">
@@ -1335,7 +1335,7 @@ async function wikiRenderHistory(el) {
             <input type="checkbox" class="wiki-rev-cb" title="${t('wikiCompare')}" onclick="event.stopPropagation()" onchange="wikiToggleDiffSelect(${r.id}, this)">
             <b>v${r.rev_no}</b> ${r.rev_no === p.rev_no ? `<span class="wiki-rev-current">${t('wikiCurrent')}</span>` : ''}
           </div>
-          <div class="wiki-rev-meta">${esc(r.author_name || '?')} &middot; ${fmtDate(r.created_at)}</div>
+          <div class="wiki-rev-meta">${esc(displayName(r.author_id, r.author_name))} &middot; ${fmtDate(r.created_at)}</div>
           ${r.comment ? `<div class="wiki-rev-comment">${esc(r.comment)}</div>` : ''}
         </div>`).join('')}
       </div>
@@ -1418,7 +1418,7 @@ async function wikiViewRevision(revId) {
     const isCurrent = rev.rev_no === wikiState.page.rev_no;
     document.getElementById('wiki-rev-view').innerHTML = `
       <div class="wiki-rev-view-head">
-        <b>v${rev.rev_no}</b> &middot; ${esc(rev.author_name || '?')} &middot; ${fmtDate(rev.created_at)}
+        <b>v${rev.rev_no}</b> &middot; ${esc(displayName(rev.author_id, rev.author_name))} &middot; ${fmtDate(rev.created_at)}
         ${!isCurrent && wikiCanEdit() ? `<button class="btn btn-primary btn-sm" onclick="wikiRestoreRevision(${rev.id})">${t('wikiRestore')}</button>` : ''}
       </div>
       <div class="wiki-content md-content">${rev.content}</div>`;
@@ -1523,11 +1523,11 @@ async function wikiRenderMembers() {
 
   let listHtml = '';
   if (owner) listHtml += `<div class="entity-item">
-      <span>${esc(owner.username)}</span>
+      <span class="u-chip">${userAvatar(owner, 'chat-av-xs')}${esc(displayName(owner))}</span>
       <span class="wiki-owner-badge">${t('wikiRole_admin')} · ${t('wikiOwner')}</span>
     </div>`;
   listHtml += rows.map(m => `<div class="entity-item">
-      <span>${esc(m.username)}</span>
+      <span class="u-chip">${userAvatar(m.user_id, 'chat-av-xs', m.username)}${esc(displayName(m.user_id, m.username))}</span>
       <select onchange="wikiSetMember(${m.user_id}, this.value)">
         ${['viewer', 'editor', 'admin'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${t('wikiRole_' + r)}</option>`).join('')}
       </select>
@@ -1537,7 +1537,7 @@ async function wikiRenderMembers() {
 
   const hint = sp.visibility === 'open' ? `<div class="wiki-members-hint">${t('wikiOpenHint')}</div>` : '';
   const addHtml = allUsers.length ? `<div class="entity-add" style="margin-top:8px">
-      <select id="wiki-new-member">${allUsers.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
+      <select id="wiki-new-member">${allUsers.map(u => `<option value="${u.id}">${esc(userLabel(u))}</option>`).join('')}</select>
       <select id="wiki-new-member-role">
         <option value="viewer">${t('wikiRole_viewer')}</option>
         <option value="editor" selected>${t('wikiRole_editor')}</option>

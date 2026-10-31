@@ -84,7 +84,7 @@ async function callStart(channelId, members, withVideo) {
   callState.callId = callNewId();
   callState.channelId = channelId || 0;
   callState.video = !!withVideo;
-  callState.participants[currentUser.id] = currentUser.username;
+  callState.participants[currentUser.id] = displayName(currentUser);
   callRenderUI();
   callSetStatus(ct('callCalling'));
   for (const pid of peers) {
@@ -137,8 +137,8 @@ async function callAccept() {
   callState.callId = r.callId;
   callState.channelId = r.channelId || 0;
   callState.video = r.video;
-  callState.participants[currentUser.id] = currentUser.username;
-  callState.participants[r.from.id] = r.from.name;
+  callState.participants[currentUser.id] = displayName(currentUser);
+  callState.participants[r.from.id] = displayName(r.from.id, r.from.name);
   callRenderUI();
   callSetStatus(ct('callConnecting'));
   // Announce join to the caller; the lower-id side will create the offer.
@@ -156,7 +156,7 @@ function callDecline() {
 
 function callOnAccept(ev, from) {
   if (!callState.active || ev.call_id !== callState.callId) return;
-  callState.participants[from.id] = from.name;
+  callState.participants[from.id] = displayName(from.id, from.name);
   callMaybeOffer(from.id, from.name);
   callRenderUI();
 }
@@ -198,7 +198,7 @@ async function callNewPeer(peerId, peerName) {
 
 async function callOnOffer(ev, from) {
   if (!callState.active || ev.call_id !== callState.callId) return;
-  callState.participants[from.id] = from.name;
+  callState.participants[from.id] = displayName(from.id, from.name);
   const pc = await callNewPeer(from.id, from.name);
   try {
     await pc.setRemoteDescription(new RTCSessionDescription(ev.payload));
@@ -287,7 +287,7 @@ function callAddPeople() {
   ov.innerHTML = `<div class="modal"><div class="modal-header"><h2>${ct('callAddPeople')}</h2>
       <button class="btn-icon" onclick="this.closest('.modal-overlay').remove()">&#10005;</button></div>
     <div class="modal-body"><div class="chat-member-pick">${users.map(u =>
-      `<label class="chat-pick-row"><input type="checkbox" value="${u.id}"> ${esc(u.username)}</label>`).join('')}</div></div>
+      `<label class="chat-pick-row"><input type="checkbox" value="${u.id}"> ${esc(userLabel(u))}</label>`).join('')}</div></div>
     <div class="modal-footer"><button class="btn btn-primary" onclick="callDoAddPeople(this)">${ct('callAddPeople')}</button></div></div>`;
   document.body.appendChild(ov);
 }
@@ -327,7 +327,7 @@ function callRenderUI() {
   const grid = ui.querySelector('#call-grid');
   // Build/refresh tiles: local + each peer.
   const tiles = [];
-  tiles.push(callTileHtml('local', currentUser.username + ' (' + ct('callYou') + ')'));
+  tiles.push(callTileHtml('local', displayName(currentUser) + ' (' + ct('callYou') + ')'));
   for (const pid of Object.keys(callState.peers)) tiles.push(callTileHtml('peer-' + pid, callState.peers[pid].name || '?'));
   grid.innerHTML = tiles.join('');
   // Attach streams to video elements.

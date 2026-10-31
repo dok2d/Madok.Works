@@ -29,6 +29,20 @@ const TOKEN_I18N = {
   ar: { tokTitle: "رموز API", tokHint: "رموز شخصية للبرامج النصية والتكاملات: أرسل \"Authorization: Bearer <الرمز>\" إلى /api/*. يعمل الرمز باسمك، لكنه مقيد بدوره (لا يتجاوز دورك أبدًا) وبخدمات محددة إن شئت. كلمة المرور والمصادقة الثنائية وTelegram والرموز نفسها تُدار من المتصفح فقط.", tokName: "الاسم", tokRole: "الدور", tokServices: "الخدمات", tokAllServices: "كل الخدمات", tokSvcHint: "عدم التحديد = كل الخدمات.", tokExpires: "تنتهي", tokNever: "أبدًا", tokDays: "يوم", tokCreate: "إنشاء رمز", tokPrefix: "الرمز", tokLastUsed: "آخر استخدام", tokCreated: "تاريخ الإنشاء", tokRevoke: "إلغاء", tokRevokeConfirm: "إلغاء هذا الرمز؟ سيتوقف كل ما يستخدمه عن العمل فورًا.", tokNew: "انسخ الرمز الآن — لن يُعرض مرة أخرى:", tokCopy: "نسخ", tokCopied: "تم نسخ الرمز", tokNone: "لا توجد رموز بعد", tokNameRequired: "أدخل اسمًا للرمز", tokAllTitle: "رموز جميع المستخدمين", tokOwner: "المستخدم", tokExpired: "منتهي" },
 };
 for (const l in TOKEN_I18N) ADMIN_I18N[l] = Object.assign(ADMIN_I18N[l] || {}, TOKEN_I18N[l]);
+// Profile (public name + avatar) strings, merged into ADMIN_I18N below.
+const PROFILE_I18N = {
+  en: { profTitle: "Profile", profName: "Public name", profNameHint: "Shown to other people instead of your login. The login is still used to sign in and for @mentions.", profUpload: "Upload photo", profRemove: "Remove photo", profSaved: "Profile saved", profBadImage: "Could not read this image", profRename: "Public name", profRemoveAvatar: "Remove avatar" },
+  ru: { profTitle: "Профиль", profName: "Публичное имя", profNameHint: "Его видят другие вместо вашего логина. Логин по-прежнему используется для входа и @упоминаний.", profUpload: "Загрузить фото", profRemove: "Убрать фото", profSaved: "Профиль сохранён", profBadImage: "Не удалось прочитать изображение", profRename: "Публичное имя", profRemoveAvatar: "Убрать аватар" },
+  zh: { profTitle: "个人资料", profName: "公开名称", profNameHint: "其他人看到的是此名称而不是您的登录名。登录名仍用于登录和 @提及。", profUpload: "上传照片", profRemove: "移除照片", profSaved: "个人资料已保存", profBadImage: "无法读取此图片", profRename: "公开名称", profRemoveAvatar: "移除头像" },
+  es: { profTitle: "Perfil", profName: "Nombre público", profNameHint: "Lo verán los demás en lugar de tu usuario. El usuario se sigue usando para iniciar sesión y en las @menciones.", profUpload: "Subir foto", profRemove: "Quitar foto", profSaved: "Perfil guardado", profBadImage: "No se pudo leer la imagen", profRename: "Nombre público", profRemoveAvatar: "Quitar avatar" },
+  fr: { profTitle: "Profil", profName: "Nom public", profNameHint: "Affiché aux autres à la place de votre identifiant. L'identifiant reste utilisé pour la connexion et les @mentions.", profUpload: "Téléverser une photo", profRemove: "Retirer la photo", profSaved: "Profil enregistré", profBadImage: "Impossible de lire cette image", profRename: "Nom public", profRemoveAvatar: "Retirer l'avatar" },
+  de: { profTitle: "Profil", profName: "Öffentlicher Name", profNameHint: "Wird anderen statt Ihres Logins angezeigt. Der Login dient weiterhin zur Anmeldung und für @Erwähnungen.", profUpload: "Foto hochladen", profRemove: "Foto entfernen", profSaved: "Profil gespeichert", profBadImage: "Bild konnte nicht gelesen werden", profRename: "Öffentlicher Name", profRemoveAvatar: "Avatar entfernen" },
+  pt: { profTitle: "Perfil", profName: "Nome público", profNameHint: "Mostrado aos outros no lugar do seu login. O login continua sendo usado para entrar e nas @menções.", profUpload: "Enviar foto", profRemove: "Remover foto", profSaved: "Perfil salvo", profBadImage: "Não foi possível ler a imagem", profRename: "Nome público", profRemoveAvatar: "Remover avatar" },
+  ja: { profTitle: "プロフィール", profName: "公開名", profNameHint: "ログイン名の代わりに他のユーザーに表示されます。ログイン名は引き続きサインインと @メンションに使われます。", profUpload: "写真をアップロード", profRemove: "写真を削除", profSaved: "プロフィールを保存しました", profBadImage: "画像を読み込めませんでした", profRename: "公開名", profRemoveAvatar: "アバターを削除" },
+  ko: { profTitle: "프로필", profName: "공개 이름", profNameHint: "다른 사람에게 로그인 이름 대신 표시됩니다. 로그인 이름은 계속 로그인과 @멘션에 사용됩니다.", profUpload: "사진 업로드", profRemove: "사진 제거", profSaved: "프로필이 저장되었습니다", profBadImage: "이미지를 읽을 수 없습니다", profRename: "공개 이름", profRemoveAvatar: "아바타 제거" },
+  ar: { profTitle: "الملف الشخصي", profName: "الاسم العام", profNameHint: "يظهر للآخرين بدلًا من اسم الدخول. يبقى اسم الدخول مستخدمًا لتسجيل الدخول وفي الإشارات @.", profUpload: "رفع صورة", profRemove: "إزالة الصورة", profSaved: "تم حفظ الملف الشخصي", profBadImage: "تعذّرت قراءة الصورة", profRename: "الاسم العام", profRemoveAvatar: "إزالة الصورة الرمزية" },
+};
+for (const l in PROFILE_I18N) ADMIN_I18N[l] = Object.assign(ADMIN_I18N[l] || {}, PROFILE_I18N[l]);
 let adminI18nMerged = false;
 function ensureAdminI18n() {
   if (adminI18nMerged || typeof LANGS === 'undefined') return;
@@ -101,7 +115,16 @@ function renderAdminAccount(panel) {
   if (!foot) { foot = document.createElement('div'); foot.id = 'acc-foot'; panel.appendChild(foot); }
   host.innerHTML = `<h2 class="admin-h">${t('adminTabAccount')}</h2>
     <div class="admin-form">
-      <div class="admin-note">${esc(currentUser.username)} &middot; ${esc(t(currentUser.role) || currentUser.role)}</div>
+      <div class="u-chip" style="gap:14px">${userAvatar(currentUser, 'chat-av-lg')}
+        <div><div style="font-weight:600;font-size:1.05rem">${esc(displayName(currentUser))}</div>
+          <div class="admin-note" style="padding:2px 0 0">@${esc(currentUser.username)} &middot; ${esc(t(currentUser.role) || currentUser.role)}</div></div></div>
+      <div class="admin-row" style="flex-wrap:wrap">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">${t('profUpload')}<input type="file" accept="image/*" hidden onchange="profUploadAvatar(this)"></label>
+        ${currentUser.avatar_id ? `<button class="btn btn-ghost btn-sm" onclick="profRemoveAvatar()">${t('profRemove')}</button>` : ''}
+      </div>
+      <label class="admin-fld">${t('profName')}<input id="prof-name" maxlength="64" value="${escAttr(currentUser.display_name || '')}" placeholder="${escAttr(currentUser.username)}"></label>
+      <div class="admin-note" style="padding:0">${t('profNameHint')}</div>
+      <div class="admin-row"><button class="btn btn-primary btn-sm" onclick="profSaveName()">${t('adminSave')}</button></div>
       <div class="admin-row">
         <button class="btn btn-ghost btn-sm" onclick="navigateTo('/user/' + currentUser.id)">${t('accProfile')}</button>
         <button class="btn btn-ghost btn-sm" onclick="changeOwnPassword()">${t('changePassword')}</button>
@@ -121,6 +144,52 @@ function renderAdminAccount(panel) {
     </div>`;
   renderAdmin2FA(host.querySelector('#acc-2fa'));
   renderAccountTokens(host.querySelector('#acc-tokens'));
+}
+
+// === Own profile: public name + avatar ===
+const AVATAR_PX = 256;
+
+// profRefresh reloads the user directory and redraws what shows the user.
+async function profRefresh() {
+  await loadUsersDir();
+  updateUserUI();
+  if (typeof renderSidebar === 'function') renderSidebar(); // admin users list
+  renderAdminAccount(document.getElementById('admin-panel-account'));
+  if (typeof renderCurrentView === 'function' && !location.pathname.startsWith('/admin')) renderCurrentView();
+}
+
+async function profSaveName() {
+  const name = document.getElementById('prof-name').value.trim();
+  try { await api('/api/user/profile', 'PUT', { display_name: name }); } catch (e) { toast(e.message, 'error'); return; }
+  toast(t('profSaved'), 'success');
+  profRefresh();
+}
+
+// profUploadAvatar center-crops the picked image to a square and scales it to
+// AVATAR_PX before upload, so the server only stores small JPEGs.
+async function profUploadAvatar(input) {
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  let img;
+  try { img = await createImageBitmap(f); } catch (e) { toast(t('profBadImage'), 'error'); return; }
+  const side = Math.min(img.width, img.height);
+  const c = document.createElement('canvas');
+  c.width = c.height = AVATAR_PX;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; // JPEG has no alpha: flatten transparent images onto white
+  ctx.fillRect(0, 0, AVATAR_PX, AVATAR_PX);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, AVATAR_PX, AVATAR_PX);
+  const data = c.toDataURL('image/jpeg', 0.88).split(',')[1];
+  try { await api('/api/user/avatar', 'POST', { data }); } catch (e) { toast(e.message, 'error'); return; }
+  toast(t('profSaved'), 'success');
+  profRefresh();
+}
+
+async function profRemoveAvatar() {
+  try { await api('/api/user/avatar', 'DELETE'); } catch (e) { toast(e.message, 'error'); return; }
+  profRefresh();
 }
 
 // accToggleSound flips the global new-message sound preference (per-user,
@@ -223,7 +292,7 @@ function tokTable(rows, withOwner, admin) {
       ${withOwner ? `<th>${t('tokOwner')}</th>` : ''}<th>${t('tokName')}</th><th>${t('tokPrefix')}</th><th>${t('tokRole')}</th>
       <th>${t('tokServices')}</th><th>${t('tokExpires')}</th><th>${t('tokLastUsed')}</th>${withOwner ? '' : `<th>${t('tokCreated')}</th>`}<th></th>
     </tr></thead><tbody>${rows.map(r => `<tr>
-      ${withOwner ? `<td>${esc(r.username)}</td>` : ''}
+      ${withOwner ? `<td>${esc(displayName(r.user_id, r.username))}</td>` : ''}
       <td>${esc(r.name)}</td><td><code>${esc(r.prefix)}…</code></td><td>${esc(t(r.role) || r.role)}</td>
       <td>${r.services.length ? r.services.map(s => esc(t('svc_' + s))).join(', ') : esc(t('tokAllServices'))}</td>
       <td>${!r.expires_at ? esc(t('tokNever')) : r.expires_at <= now ? `<span style="color:var(--red)">${esc(t('tokExpired'))}</span>` : esc(when(r.expires_at))}</td>
@@ -308,7 +377,7 @@ async function adminLoadAudit() {
       <th>${t('auditTime')}</th><th>${t('auditUser')}</th><th>${t('auditAction')}</th><th>${t('auditProject')}</th><th>${t('auditDetails')}</th>
     </tr></thead><tbody>${rows.map(r => `<tr>
       <td>${esc(fmtDate(r.created_at))}</td>
-      <td>${esc(r.username || '#' + r.user_id)}</td>
+      <td>${esc(r.user_id ? displayName(r.user_id, r.username) : (r.username || '?'))}</td>
       <td><code>${esc(r.action)}</code></td>
       <td>${esc(r.project_name || (r.project_id ? '#' + r.project_id : ''))}</td>
       <td>${esc((r.details || '').slice(0, 200))}</td>
@@ -374,7 +443,7 @@ async function renderAdminMailboxes(panel) {
   panel.innerHTML = `
     <h2 class="admin-h">${t('adminTabMailboxes')}</h2>
     <div class="admin-mb-add">
-      <select id="mb-user">${users.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
+      <select id="mb-user">${users.map(u => `<option value="${u.id}">${esc(userLabel(u))}</option>`).join('')}</select>
       <input id="mb-local" placeholder="${t('adminAlias')}">
       <label class="admin-inline"><input type="checkbox" id="mb-primary"> ${t('adminPrimary')}</label>
       <button class="btn btn-primary btn-sm" onclick="adminAddAlias()">${t('adminAdd')}</button>
