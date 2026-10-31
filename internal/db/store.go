@@ -104,7 +104,53 @@ func New(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// legacyLayouts maps a table to a column its current layout must have. Very
+// early builds shipped chat, calendar and mail with unrelated layouts (a global
+// chat with no channels, per-user events with no calendars, user-to-user mail).
+// CREATE TABLE IF NOT EXISTS keeps such a table, and every write to it fails.
+var legacyLayouts = []struct{ table, column string }{
+	{"chat_messages", "channel_id"},
+	{"calendar_events", "calendar_id"},
+	{"mail_messages", "from_user_id"},
+}
+
+// replaceEmptyLegacyTables drops an empty table that still has a legacy layout
+// so the create pass rebuilds it with the current one. A non-empty one is left
+// alone (with a warning): its rows don't map onto the new model automatically.
+// SQLite only: those layouts predate the Postgres backend.
+func (s *Store) replaceEmptyLegacyTables() error {
+	if s.db.d == dialectPostgres {
+		return nil
+	}
+	for _, l := range legacyLayouts {
+		var hasTable, hasCol, rows int
+		s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, l.table).Scan(&hasTable)
+		if hasTable == 0 {
+			continue
+		}
+		s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, l.table, l.column).Scan(&hasCol)
+		if hasCol > 0 {
+			continue
+		}
+		if err := s.db.QueryRow("SELECT COUNT(*) FROM " + l.table).Scan(&rows); err != nil {
+			return fmt.Errorf("count legacy %s: %w", l.table, err)
+		}
+		if rows > 0 {
+			log.Printf("migrate: %s has a legacy layout (no %s) with %d row(s); left as is, so this service can't store data until it is migrated by hand", l.table, l.column, rows)
+			continue
+		}
+		if _, err := s.db.Exec("DROP TABLE " + l.table); err != nil {
+			return fmt.Errorf("drop legacy %s: %w", l.table, err)
+		}
+		log.Printf("migrate: rebuilt empty legacy %s with the current layout", l.table)
+	}
+	return nil
+}
+
 func (s *Store) migrate() error {
+	if err := s.replaceEmptyLegacyTables(); err != nil {
+		return err
+	}
 	stmts := []string{
 		// users is created first: projects/project_members (and later kanban
 		// tables) reference it, and Postgres requires the FK target to pre-exist.
@@ -698,6 +744,10 @@ func (s *Store) migrate() error {
 		"ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local'",
 		"ALTER TABLE users ADD COLUMN external_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE calendar_events ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0",
+		// chat_channels/chat_members from early chat builds.
+		"ALTER TABLE chat_channels ADD COLUMN topic TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE chat_channels ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE chat_members ADD COLUMN can_write INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE mail_messages ADD COLUMN spam_score INTEGER NOT NULL DEFAULT 0",
 		// Columns added to mail_messages after early builds (idempotent upgrade of
 		// databases created before SMTP/threading fields existed).

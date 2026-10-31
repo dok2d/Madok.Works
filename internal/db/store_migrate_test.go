@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+
+	"kanban/internal/model"
 )
 
 // Simulates a DB created by an early build whose mail_messages lacked thread_id
@@ -147,5 +149,114 @@ func TestMigratePreProjectsKanban(t *testing.T) {
 	s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_tasks_project'`).Scan(&idx)
 	if idx != 1 {
 		t.Errorf("idx_tasks_project not created after upgrade")
+	}
+}
+
+// Reproduces a DB from the earliest ecosystem builds (as found on a real
+// instance): chat_messages, calendar_events and mail_messages with unrelated
+// legacy layouts (empty), and chat_channels/chat_members missing later columns
+// but holding a DM. Startup must rebuild the empty tables, keep the DM, and
+// leave chat, calendar and mail able to store data.
+func TestMigrateEarlyEcosystemLayouts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "early.db")
+	raw, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')))`,
+		`INSERT INTO users(id, username, password_hash) VALUES(1,'alice','x'),(3,'bob','x')`,
+		`CREATE TABLE chat_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT 'group', created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')))`,
+		`INSERT INTO chat_channels(id, name, type, created_by) VALUES(1,'','dm',1)`,
+		`CREATE TABLE chat_members (channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, last_read_id INTEGER NOT NULL DEFAULT 0,
+			joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (channel_id, user_id))`,
+		`INSERT INTO chat_members(channel_id, user_id) VALUES(1,1),(1,3)`,
+		`CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+			text TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT (datetime('now')), reply_to INTEGER,
+			pinned INTEGER NOT NULL DEFAULT 0, pinned_at DATETIME, pinned_by INTEGER, kind TEXT)`,
+		`CREATE TABLE calendar_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+			title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', start_date TEXT NOT NULL, end_date TEXT,
+			start_time TEXT, end_time TEXT, color TEXT, created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			is_shared INTEGER NOT NULL DEFAULT 0, recurrence TEXT, reminder_min INTEGER, reminded INTEGER)`,
+		`CREATE TABLE mail_messages (id INTEGER PRIMARY KEY AUTOINCREMENT,
+			from_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			to_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, subject TEXT NOT NULL DEFAULT '',
+			body TEXT NOT NULL DEFAULT '', is_read INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')))`,
+	} {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatalf("seed %q: %v", q[:40], err)
+		}
+	}
+	raw.Close()
+
+	s, err := New(path)
+	if err != nil {
+		t.Fatalf("New() on early ecosystem db: %v", err)
+	}
+	defer s.Close()
+
+	// No index was left behind for a missing column.
+	for _, idx := range []string{"idx_chat_messages_channel_id", "idx_calendar_events_calendar_id"} {
+		var n int
+		s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?`, idx).Scan(&n)
+		if n != 1 {
+			t.Errorf("index %s missing after migrate", idx)
+		}
+	}
+
+	// The existing DM survives and takes messages.
+	if dm, err := s.GetOrCreateDM(1, 3); err != nil || dm != 1 {
+		t.Fatalf("GetOrCreateDM = %d, %v; want the existing DM 1", dm, err)
+	}
+	if _, err := s.CreateChatMessage(1, 1, "hello", nil, 0); err != nil {
+		t.Fatalf("CreateChatMessage: %v", err)
+	}
+	if _, err := s.CreateChatChannel("general", "topic", "channel", 1, nil); err != nil {
+		t.Fatalf("CreateChatChannel: %v", err)
+	}
+
+	cal, err := s.CreateCalendar("Work", "#36c", 1, "private", nil)
+	if err != nil {
+		t.Fatalf("CreateCalendar: %v", err)
+	}
+	if _, err := s.CreateCalendarEvent(&model.CalendarEvent{CalendarID: cal, Title: "standup",
+		Start: "2026-11-02T09:00:00Z", End: "2026-11-02T09:15:00Z"}, 1); err != nil {
+		t.Fatalf("CreateCalendarEvent: %v", err)
+	}
+
+	if _, err := s.SendInternalMail(1, "alice", []int64{3}, "bob", "", "hi", "body", "", "", 0, nil); err != nil {
+		t.Fatalf("SendInternalMail: %v", err)
+	}
+}
+
+// A legacy-layout table that still holds rows is left untouched, not dropped.
+func TestMigrateKeepsNonEmptyLegacyTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy_rows.db")
+	raw, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, text TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO chat_messages(user_id, text) VALUES(1, 'old')`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	s, err := New(path)
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+	defer s.Close()
+	var text string
+	if err := s.db.QueryRow(`SELECT text FROM chat_messages WHERE user_id = 1`).Scan(&text); err != nil || text != "old" {
+		t.Fatalf("legacy row lost: %q, %v", text, err)
 	}
 }
