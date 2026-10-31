@@ -38,7 +38,7 @@ Most list endpoints are project-scoped: pass `?project=<id>` to select the activ
 
 ## API tokens
 
-Personal tokens for scripts and integrations, created in **Settings → API tokens** or via the endpoints below. Send one as `Authorization: Bearer mw_…` on any `/api/*` request instead of the session cookie:
+Personal tokens for scripts and integrations, created in **Settings → Account → API tokens** or via the endpoints below. Send one as `Authorization: Bearer mw_…` on any `/api/*` request instead of the session cookie:
 
 ```sh
 curl -H "Authorization: Bearer mw_…" "https://mw.example.com/api/board?project=1"

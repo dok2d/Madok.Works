@@ -47,7 +47,6 @@ const ADMIN_TABS = [
   // User-facing first. Account also hosts the personal display settings (theme/
   // language/font/timezone), relocated into its panel.
   { key: 'account', i: 'adminTabAccount', render: renderAdminAccount, sections: ['theme-section', 'lang-section', 'fontsize-section', 'timezone-section'] },
-  { key: 'tokens', i: 'tokTitle', render: renderAdminTokens },
   { key: 'mail', i: 'adminTabMail', render: renderAdminMail, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && currentUser && currentUser.role !== 'readonly' },
   { key: 'mailserver', i: 'adminTabMailServer', render: renderAdminMailServer, admin: true, show: () => typeof isServiceEnabled === 'function' && isServiceEnabled('mail') && isAdmin() },
   // Admin-only service config (bot token, SSO, LLM, DB). Personal Telegram
@@ -56,7 +55,7 @@ const ADMIN_TABS = [
   // Admin configuration
   { key: 'board', i: 'adminTabBoard', sections: ['columns-section', 'epics-section', 'sprints-section', 'tags-section'], admin: true },
   { key: 'projects', i: 'adminTabProjects', render: renderAdminProjects, admin: true },
-  { key: 'users', i: 'adminTabUsers', sections: ['users-section'], admin: true },
+  { key: 'users', i: 'adminTabUsers', render: renderAdminUsersTokens, sections: ['users-section'], admin: true },
   { key: 'services', i: 'adminTabServices', sections: ['services-section'], admin: true },
   { key: 'site', i: 'adminTabSite', render: renderAdminSite, admin: true },
   { key: 'auditlog', i: 'adminTabAudit', render: renderAdminAuditLog, admin: true },
@@ -68,7 +67,6 @@ const ADMIN_TABS = [
 // ADMIN_TABS entries. Order here defines the top-level tab order.
 const ADMIN_LAYOUT = [
   { leaf: 'account' },
-  { leaf: 'tokens' },
   { group: 'mailgrp', i: 'adminTabMail', children: ['mail', 'mailserver'] },
   { group: 'boardgrp', i: 'adminTabBoard', children: ['board', 'projects'] },
   { leaf: 'users' },
@@ -116,11 +114,13 @@ function renderAdminAccount(panel) {
         <input type="checkbox" id="acc-sound" ${(typeof localStorage !== 'undefined' && localStorage.getItem('chat-sound') === 'off') ? '' : 'checked'} onchange="accToggleSound(this.checked)" style="width:auto;margin:0"> ${t('accSound')}</label>
       <div class="admin-note">${t('accSoundHint')}</div>
     </div>
-    <div id="acc-2fa" style="margin-top:20px"></div>`;
+    <div id="acc-2fa" style="margin-top:20px"></div>
+    <div id="acc-tokens" style="margin:20px 0"></div>`;
   foot.innerHTML = `<div class="admin-form" style="margin-top:20px">
       <div class="admin-row"><button class="btn btn-ghost btn-sm admin-danger" onclick="logout()">${t('logout')}</button></div>
     </div>`;
   renderAdmin2FA(host.querySelector('#acc-2fa'));
+  renderAccountTokens(host.querySelector('#acc-tokens'));
 }
 
 // accToggleSound flips the global new-message sound preference (per-user,
@@ -178,14 +178,15 @@ async function twofaDisable() {
   renderAdmin2FA(document.getElementById('acc-2fa'));
 }
 
-// renderAdminTokens: personal API tokens (create/list/revoke) for everyone,
-// plus every user's tokens for admins. The secret is shown once, on creation.
-async function renderAdminTokens(panel) {
+// renderAccountTokens: the user's own API tokens (create/list/revoke) in the
+// Account tab, next to 2FA. The secret is shown once, on creation.
+function renderAccountTokens(panel) {
+  if (!panel) return;
   const rank = { readonly: 1, regular: 2, admin: 3 };
   const mine = isAdmin() ? 3 : (rank[currentUser.role] || 2);
   const roles = ['readonly', 'regular', 'admin'].filter(r => rank[r] <= mine);
   const svcs = (typeof services !== 'undefined' ? services : []).filter(s => s.enabled).map(s => s.name);
-  panel.innerHTML = `<h2 class="admin-h">${t('tokTitle')}</h2>
+  panel.innerHTML = `<h3 style="margin:0 0 8px">${t('tokTitle')}</h3>
     <div class="admin-note">${esc(t('tokHint'))}</div>
     <div class="admin-form">
       <label class="admin-fld">${t('tokName')}<input id="tok-name" maxlength="100"></label>
@@ -200,8 +201,17 @@ async function renderAdminTokens(panel) {
       <div class="admin-row"><button class="btn btn-primary btn-sm" onclick="tokCreate()">${t('tokCreate')}</button></div>
       <div id="tok-new"></div>
     </div>
-    <div id="tok-mine" class="audit-table" style="margin-top:16px"></div>
-    ${isAdmin() ? `<h3 style="margin:24px 0 8px">${t('tokAllTitle')}</h3><div id="tok-all" class="audit-table"></div>` : ''}`;
+    <div id="tok-mine" class="audit-table" style="margin-top:16px"></div>`;
+  tokLoad();
+}
+
+// renderAdminUsersTokens adds every user's API tokens (with revoke) below the
+// relocated users section, without wiping it.
+function renderAdminUsersTokens(panel) {
+  if (!panel) return;
+  let host = panel.querySelector('#users-tokens');
+  if (!host) { host = document.createElement('div'); host.id = 'users-tokens'; host.style.marginTop = '24px'; panel.appendChild(host); }
+  host.innerHTML = `<h3 style="margin:0 0 8px">${t('tokAllTitle')}</h3><div id="tok-all" class="audit-table"></div>`;
   tokLoad();
 }
 
@@ -211,13 +221,13 @@ function tokTable(rows, withOwner, admin) {
   const when = sec => sec ? fmtDate(new Date(sec * 1000).toISOString()) : '';
   return `<table class="audit-tbl"><thead><tr>
       ${withOwner ? `<th>${t('tokOwner')}</th>` : ''}<th>${t('tokName')}</th><th>${t('tokPrefix')}</th><th>${t('tokRole')}</th>
-      <th>${t('tokServices')}</th><th>${t('tokExpires')}</th><th>${t('tokLastUsed')}</th><th>${t('tokCreated')}</th><th></th>
+      <th>${t('tokServices')}</th><th>${t('tokExpires')}</th><th>${t('tokLastUsed')}</th>${withOwner ? '' : `<th>${t('tokCreated')}</th>`}<th></th>
     </tr></thead><tbody>${rows.map(r => `<tr>
       ${withOwner ? `<td>${esc(r.username)}</td>` : ''}
       <td>${esc(r.name)}</td><td><code>${esc(r.prefix)}…</code></td><td>${esc(t(r.role) || r.role)}</td>
       <td>${r.services.length ? r.services.map(s => esc(t('svc_' + s))).join(', ') : esc(t('tokAllServices'))}</td>
       <td>${!r.expires_at ? esc(t('tokNever')) : r.expires_at <= now ? `<span style="color:var(--red)">${esc(t('tokExpired'))}</span>` : esc(when(r.expires_at))}</td>
-      <td>${esc(when(r.last_used_at))}</td><td>${esc(fmtDate(r.created_at))}</td>
+      <td>${esc(when(r.last_used_at))}</td>${withOwner ? '' : `<td>${esc(fmtDate(r.created_at))}</td>`}
       <td><button class="btn btn-ghost btn-sm admin-danger" onclick="tokRevoke(${r.id}, ${admin})">${t('tokRevoke')}</button></td>
     </tr>`).join('')}</tbody></table>`;
 }

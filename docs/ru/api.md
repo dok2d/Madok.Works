@@ -38,7 +38,7 @@
 
 ## API-токены
 
-Личные токены для скриптов и интеграций. Создаются в **Настройки → API-токены** или через эндпоинты ниже. Передавайте токен как `Authorization: Bearer mw_…` в любом запросе к `/api/*` вместо session cookie:
+Личные токены для скриптов и интеграций. Создаются в **Настройки → Аккаунт → API-токены** или через эндпоинты ниже. Передавайте токен как `Authorization: Bearer mw_…` в любом запросе к `/api/*` вместо session cookie:
 
 ```sh
 curl -H "Authorization: Bearer mw_…" "https://mw.example.com/api/board?project=1"
