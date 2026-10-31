@@ -162,3 +162,18 @@ func TestAPITokenListHidesSecret(t *testing.T) {
 		t.Fatalf("unexpected list: %s", w.Body.String())
 	}
 }
+
+func TestAPITokenScopedAttachments(t *testing.T) {
+	e := newStorageEnv(t)
+	item, err := e.store.GetStorageItem(e.upload(t, "doc.pdf", []byte("%PDF-fake"), 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := fmt.Sprintf("/api/files/%d", item.FileID)
+	files, _ := e.mintToken(t, e.admin, map[string]any{"name": "f", "role": "readonly", "services": []string{"files"}})
+	wiki, _ := e.mintToken(t, e.admin, map[string]any{"name": "w", "role": "readonly", "services": []string{"wiki"}})
+	all, _ := e.mintToken(t, e.admin, map[string]any{"name": "a", "role": "readonly"})
+	expectCode(t, e.doBearer(t, "GET", blob, files, nil), http.StatusOK, "files token reads a Files blob")
+	expectCode(t, e.doBearer(t, "GET", blob, all, nil), http.StatusOK, "unscoped token reads any blob")
+	expectCode(t, e.doBearer(t, "GET", blob, wiki, nil), http.StatusNotFound, "wiki token reads a Files blob")
+}

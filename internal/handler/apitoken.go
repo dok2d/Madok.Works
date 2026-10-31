@@ -69,7 +69,8 @@ func apiTokenSessionOnly(path string) bool {
 
 // apiTokenScopeAllows reports whether a service-scoped token may call path.
 // Besides the services' own endpoints, a scoped token gets the shared plumbing
-// those services need (identity, projects, attachments) and the kanban
+// those services need (identity, projects, attachment upload; reading an
+// attachment is further limited to blobs its services use) and the kanban
 // endpoints serviceForPath doesn't list; everything else (settings, users,
 // backups, …) needs an unscoped token.
 func apiTokenScopeAllows(path string, services []string) bool {
@@ -98,6 +99,16 @@ func apiTokenScopeAllows(path string, services []string) bool {
 	return false
 }
 
+// apiBlobPath parses /api/files/{id} and /api/images/{id} (id 0 = not a blob read).
+func apiBlobPath(path string) (string, int64) {
+	for _, kind := range []string{"files", "images"} {
+		if prefix := "/api/" + kind + "/"; strings.HasPrefix(path, prefix) {
+			return kind, extractID(path, prefix)
+		}
+	}
+	return "", 0
+}
+
 // bearerToken extracts the token from an "Authorization: Bearer …" header.
 func bearerToken(r *http.Request) (string, bool) {
 	h := r.Header.Get("Authorization")
@@ -120,6 +131,10 @@ func (h *Handler) authenticateAPIToken(token, path string) (*model.User, *model.
 	}
 	if !apiTokenScopeAllows(path, t.Services) {
 		return nil, nil, http.StatusForbidden, "API token is not scoped for this service"
+	}
+	if kind, id := apiBlobPath(path); id != 0 && len(t.Services) > 0 && !h.store.BlobUsedByServices(kind, id, t.Services) {
+		// 404, not 403: don't confirm that another service's attachment exists.
+		return nil, nil, http.StatusNotFound, "not found"
 	}
 	return clampToTokenRole(owner, t.Role), t, 0, ""
 }

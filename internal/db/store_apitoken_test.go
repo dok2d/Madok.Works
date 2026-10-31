@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -67,5 +68,45 @@ func TestAPITokenLifecycle(t *testing.T) {
 	}
 	if list, _ := s.ListAPITokens(bob); len(list) != 0 {
 		t.Fatalf("bob's tokens survived his deletion: %+v", list)
+	}
+}
+
+func TestBlobUsedByServices(t *testing.T) {
+	s := newTestStore(t)
+	uid := mustUser(t, s, "alice")
+	img, _ := s.SaveImage([]byte("png"), "image/png")
+	file, _ := s.SaveFile("a.pdf", []byte("pdf"), "application/pdf")
+	other, _ := s.SaveFile("b.pdf", []byte("pdf"), "application/pdf")
+
+	space, err := s.CreateWikiSpace("DOC", "Docs", "", "public", nil, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateWikiPage(space, nil, "p", fmt.Sprintf(`<img src="/api/images/%d">`, img), "", uid); err != nil {
+		t.Fatal(err)
+	}
+	var col int64
+	s.db.QueryRow("SELECT id FROM columns ORDER BY id LIMIT 1").Scan(&col)
+	// Also links a longer id sharing other's prefix, which must not count for other.
+	desc := fmt.Sprintf("see /api/files/%d and /api/files/%d999", file, other)
+	if _, err := s.CreateTask(1, "t", desc, "", "", col, nil, nil, nil, 0, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		kind     string
+		id       int64
+		services []string
+		want     bool
+	}{
+		{"images", img, []string{"wiki"}, true},
+		{"images", img, []string{"kanban", "chat"}, false},
+		{"files", file, []string{"kanban"}, true},
+		{"files", file, []string{"wiki", "files"}, false},
+		{"files", other, []string{"kanban"}, false},
+	} {
+		if got := s.BlobUsedByServices(c.kind, c.id, c.services); got != c.want {
+			t.Errorf("BlobUsedByServices(%s %d, %v) = %v, want %v", c.kind, c.id, c.services, got, c.want)
+		}
 	}
 }

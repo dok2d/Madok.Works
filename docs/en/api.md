@@ -45,7 +45,7 @@ curl -H "Authorization: Bearer mw_…" "https://mw.example.com/api/board?project
 ```
 
 - A token acts as its owner, narrowed to the token's role (`admin` / `regular` / `readonly`). It can never exceed the owner's **current** role: demoting the owner demotes their tokens immediately.
-- Optional `services` (`kanban`, `wiki`, `chat`, `calendar`, `mail`, `files`) restrict it to those services plus shared plumbing (`/api/auth/me`, `/api/projects`, attachments). A scoped token cannot reach settings, users or backups; leave `services` empty for full access.
+- Optional `services` (`kanban`, `wiki`, `chat`, `calendar`, `mail`, `files`) restrict it to those services plus shared plumbing (`/api/auth/me`, `/api/projects`, attachment upload); such a token reads an attachment only when one of its services uses it. A scoped token cannot reach settings, users or backups; leave `services` empty for full access.
 - Session-only, never with a token: password change, 2FA, Telegram linking, and token management itself.
 - The secret is returned once, at creation; only its SHA-256 is stored. Tokens are not part of backups.
 

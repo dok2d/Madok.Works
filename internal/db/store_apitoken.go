@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -149,4 +150,61 @@ func (s *Store) ValidateAPIToken(token string) (*model.User, *model.APIToken, er
 		t.LastUsedAt = now
 	}
 	return &u, &t, nil
+}
+
+// blobTextRefs lists, per service, the text columns that embed /api/images/N
+// or /api/files/N links (the same sources CleanupOrphanFiles scans).
+var blobTextRefs = map[string][]string{
+	"kanban": {"SELECT text FROM comments WHERE text LIKE ?", "SELECT description FROM tasks WHERE description LIKE ?"},
+	"wiki":   {"SELECT content FROM wiki_pages WHERE content LIKE ?", "SELECT content FROM wiki_revisions WHERE content LIKE ?"},
+	"chat":   {"SELECT text FROM chat_messages WHERE deleted = 0 AND text LIKE ?"},
+	"mail":   {"SELECT body_html FROM mail_messages WHERE body_html LIKE ?", "SELECT body_text FROM mail_messages WHERE body_text LIKE ?"},
+}
+
+// blobDirectRefs lists, per service, the tables that point at files(id) directly.
+var blobDirectRefs = map[string]string{
+	"chat":  "SELECT 1 FROM chat_attachments WHERE file_id = ?",
+	"mail":  "SELECT 1 FROM mail_attachments WHERE file_id = ?",
+	"files": "SELECT 1 FROM storage_items WHERE file_id = ?",
+}
+
+// BlobUsedByServices reports whether an uploaded blob (kind "images" or
+// "files") is used by any of the given services, so a service-scoped API token
+// can't read another service's attachments by guessing ids.
+func (s *Store) BlobUsedByServices(kind string, id int64, services []string) bool {
+	link := "/api/" + kind + "/" + strconv.FormatInt(id, 10)
+	for _, svc := range services {
+		if q, ok := blobDirectRefs[svc]; ok && kind == "files" {
+			var one int
+			if s.db.QueryRow(q+" LIMIT 1", id).Scan(&one) == nil {
+				return true
+			}
+		}
+		for _, q := range blobTextRefs[svc] {
+			// LIKE narrows the rows; the regexp rejects longer ids sharing the
+			// prefix (/api/files/12 inside /api/files/123).
+			rows, err := s.db.Query(q+" LIMIT 50", "%"+link+"%")
+			if err != nil {
+				continue
+			}
+			found := false
+			for rows.Next() && !found {
+				var text string
+				if rows.Scan(&text) != nil {
+					continue
+				}
+				for _, m := range fileRefRe.FindAllStringSubmatch(text, -1) {
+					if m[1] == kind && m[2] == strconv.FormatInt(id, 10) {
+						found = true
+						break
+					}
+				}
+			}
+			rows.Close()
+			if found {
+				return true
+			}
+		}
+	}
+	return false
 }
