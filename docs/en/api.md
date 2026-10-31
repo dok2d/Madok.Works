@@ -1,6 +1,6 @@
 # REST API
 
-All endpoints return JSON. Authentication (session cookie) is required, except for `/api/auth/setup` on first launch and the login page.
+All endpoints return JSON. Authentication (session cookie) is required, except for `/api/auth/setup` on first launch and the login page. Scripts and integrations can instead send a personal API token: `Authorization: Bearer mw_…` (see [API tokens](#api-tokens)).
 
 Most list endpoints are project-scoped: pass `?project=<id>` to select the active project. Tasks carry a per-project `number` and are shown as `KEY-<number>`.
 
@@ -35,6 +35,27 @@ Most list endpoints are project-scoped: pass `?project=<id>` to select the activ
 | POST   | `/api/2fa/setup`   | Begin enrollment → `{secret, uri}` (provisioning URI)    |
 | POST   | `/api/2fa/enable`  | Confirm code `{code}` → `{recovery_codes}`               |
 | POST   | `/api/2fa/disable` | Disable 2FA `{code}`                                     |
+
+## API tokens
+
+Personal tokens for scripts and integrations, created in **Settings → API tokens** or via the endpoints below. Send one as `Authorization: Bearer mw_…` on any `/api/*` request instead of the session cookie:
+
+```sh
+curl -H "Authorization: Bearer mw_…" "https://mw.example.com/api/board?project=1"
+```
+
+- A token acts as its owner, narrowed to the token's role (`admin` / `regular` / `readonly`). It can never exceed the owner's **current** role: demoting the owner demotes their tokens immediately.
+- Optional `services` (`kanban`, `wiki`, `chat`, `calendar`, `mail`, `files`) restrict it to those services plus shared plumbing (`/api/auth/me`, `/api/projects`, attachments). A scoped token cannot reach settings, users or backups; leave `services` empty for full access.
+- Session-only, never with a token: password change, 2FA, Telegram linking, and token management itself.
+- The secret is returned once, at creation; only its SHA-256 is stored. Tokens are not part of backups.
+
+| Method | Path                     | Description                                                                 |
+|--------|--------------------------|-----------------------------------------------------------------------------|
+| GET    | `/api/user/tokens`       | Your tokens (metadata only)                                                 |
+| POST   | `/api/user/tokens`       | Create `{name, role, services?, expires_days?}` (0 = never) → `{token, api_token}` |
+| DELETE | `/api/user/tokens/{id}`  | Revoke one of your tokens                                                   |
+| GET    | `/api/admin/tokens`      | Every user's tokens (admin)                                                 |
+| DELETE | `/api/admin/tokens/{id}` | Revoke any token (admin)                                                    |
 
 ## Projects
 

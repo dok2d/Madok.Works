@@ -55,6 +55,10 @@ When 2FA is enabled, login becomes a two-step flow:
 2. The login response returns `{ "totp_required": true }` instead of completing the session
 3. The client resends the request with the code: `{ "code": "123456" }` (a valid TOTP code or a recovery code)
 
+## API tokens
+
+For scripts and integrations each user can create personal API tokens in **Settings → API tokens** and send them as `Authorization: Bearer mw_…`. A token is narrowed to its own role (never above the owner's current role) and, optionally, to selected services; password, 2FA, Telegram linking and token management stay session-only. Admins see and can revoke every user's tokens. Details and endpoints: [REST API → API tokens](api.md#api-tokens).
+
 ## CLI password recovery (closed networks)
 
 On an air-gapped/closed network the Telegram password reset is unreachable. This

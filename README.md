@@ -23,7 +23,7 @@ Beyond the Kanban board, optional services share the same auth, roles, notificat
 
 - **Minimal dependencies** — Go + SQLite at the core (single `mattn/go-sqlite3`); the mail stack adds a small, self-contained SMTP/MIME library set. No Redis, no message queue. PostgreSQL is supported but optional.
 - **One command to run** — `./kanban.sh up --build`, open browser
-- **Batteries included** — projects, sprints, epics, per-project tags, file attachments, Markdown, comments with @mentions, multi-term search (text + regex), drag-and-drop, Telegram notifications, **2FA (TOTP)**, audit log
+- **Batteries included** — projects, sprints, epics, per-project tags, file attachments, Markdown, comments with @mentions, multi-term search (text + regex), drag-and-drop, Telegram notifications, **2FA (TOTP)**, personal API tokens, audit log
 - **Integrations** — Git (GitHub/GitLab/Gitea) webhooks link commits/branches/MRs to tasks by KEY-123/#123 and can auto-move tasks on merge; project-aware Telegram bot
 - **Hardened by default** — rootless Podman, read-only FS, all capabilities dropped; bind to localhost with `--app-bind 127.0.0.1`
 - **Works offline** — all static assets bundled, no external CDN calls
@@ -79,7 +79,7 @@ The generated nginx config forwards Host (for the same-origin check), allows lar
 | Files | Attachments, image paste (Ctrl+V), Markdown with syntax highlighting |
 | Notifications | In-app + project-aware Telegram bot (assignments, mentions, updates) |
 | Integrations | Git (GitHub/GitLab/Gitea) webhooks linking commits/branches/MRs to tasks, auto-move on merge |
-| Security | 2FA (TOTP, opt-in), audit log, three roles: Admin, User, Read-only; per-space wiki roles |
+| Security | 2FA (TOTP, opt-in), role-scoped API tokens, audit log, three roles: Admin, User, Read-only; per-space wiki roles |
 | Ecosystem | Wiki, Chat, Calls (WebRTC), Calendar, Mail — toggleable and reorderable services in one UI |
 | Settings | Single settings page with role-based tabs, opened from the service rail |
 | Data | JSON export/import (incl. ecosystem services), scheduled backups via `./kanban.sh backup` |
