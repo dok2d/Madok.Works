@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
-	"image/jpeg"
 	_ "image/gif"
+	"image/jpeg"
 	_ "image/png"
 	"io"
 	"log"
@@ -142,6 +142,16 @@ func (h *Handler) stopTelegramBot() {
 	}
 }
 
+// tgRedact renders err with the bot token masked. Telegram puts the token in
+// the request path, and net/http's *url.Error quotes the full URL, so a plain
+// %v would leak it into the logs on every timeout.
+func tgRedact(err error, token string) string {
+	if token == "" {
+		return err.Error()
+	}
+	return strings.ReplaceAll(err.Error(), token, "<token>")
+}
+
 func (h *Handler) runTelegramBot(token string) {
 	offset := 0
 	client := &http.Client{Timeout: tgPollClientTimeout}
@@ -156,7 +166,7 @@ func (h *Handler) runTelegramBot(token string) {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=%d&allowed_updates=%s", token, offset, int(tgPollTimeout.Seconds()), `["message","callback_query"]`)
 		resp, err := client.Get(url)
 		if err != nil {
-			log.Printf("[telegram] poll error: %v", err)
+			log.Printf("[telegram] poll error: %s", tgRedact(err, token))
 			time.Sleep(tgPollRetrySleep)
 			continue
 		}
@@ -165,15 +175,17 @@ func (h *Handler) runTelegramBot(token string) {
 		resp.Body.Close()
 
 		var result struct {
-			OK     bool `json:"ok"`
-			Result []struct {
-				UpdateID      int `json:"update_id"`
-				Message       *struct {
+			OK          bool   `json:"ok"`
+			ErrorCode   int    `json:"error_code"`
+			Description string `json:"description"`
+			Result      []struct {
+				UpdateID int `json:"update_id"`
+				Message  *struct {
 					Chat struct {
 						ID int64 `json:"id"`
 					} `json:"chat"`
-					Text     string `json:"text"`
-					Photo    []struct {
+					Text  string `json:"text"`
+					Photo []struct {
 						FileID   string `json:"file_id"`
 						FileSize int    `json:"file_size"`
 					} `json:"photo"`
@@ -208,7 +220,7 @@ func (h *Handler) runTelegramBot(token string) {
 		}
 
 		if !result.OK {
-			log.Printf("[telegram] API returned not OK")
+			log.Printf("[telegram] API returned not OK: %d %s", result.ErrorCode, result.Description)
 			time.Sleep(tgAPIRetrySleep)
 			continue
 		}
@@ -924,8 +936,8 @@ func (h *Handler) handleTelegramFileComment(token string, chatID int64, taskID i
 	Chat struct {
 		ID int64 `json:"id"`
 	} `json:"chat"`
-	Text     string `json:"text"`
-	Photo    []struct {
+	Text  string `json:"text"`
+	Photo []struct {
 		FileID   string `json:"file_id"`
 		FileSize int    `json:"file_size"`
 	} `json:"photo"`
@@ -1048,7 +1060,7 @@ func (h *Handler) downloadTelegramFile(token string, fileID string) ([]byte, err
 	client := &http.Client{Timeout: tgFileTimeout}
 	resp, err := client.Get(apiURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s", tgRedact(err, token))
 	}
 	defer resp.Body.Close()
 
@@ -1070,7 +1082,7 @@ func (h *Handler) downloadTelegramFile(token string, fileID string) ([]byte, err
 	downloadURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", token, result.Result.FilePath)
 	resp2, err := client.Get(downloadURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s", tgRedact(err, token))
 	}
 	defer resp2.Body.Close()
 
@@ -1102,7 +1114,7 @@ func (h *Handler) sendTelegramMessageWithKeyboard(token string, chatID int64, te
 	client := &http.Client{Timeout: tgHTTPTimeout}
 	resp, err := client.Post(apiURL, "application/json", bytes.NewReader(data))
 	if err != nil {
-		log.Printf("[telegram] send error: %v", err)
+		log.Printf("[telegram] send error: %s", tgRedact(err, token))
 		return
 	}
 	resp.Body.Close()
@@ -1116,7 +1128,7 @@ func (h *Handler) answerCallbackQuery(token string, callbackQueryID string) {
 	client := &http.Client{Timeout: tgHTTPTimeout}
 	resp, err := client.Post(apiURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("[telegram] answerCallback error: %v", err)
+		log.Printf("[telegram] answerCallback error: %s", tgRedact(err, token))
 		return
 	}
 	resp.Body.Close()
@@ -1158,7 +1170,7 @@ func (h *Handler) sendTelegramDocument(token string, chatID int64, filename stri
 	client := &http.Client{Timeout: tgFileTimeout}
 	resp, err := client.Post(apiURL, "multipart/form-data; boundary="+boundary, &buf)
 	if err != nil {
-		log.Printf("[telegram] sendDocument error: %v", err)
+		log.Printf("[telegram] sendDocument error: %s", tgRedact(err, token))
 		return
 	}
 	resp.Body.Close()
