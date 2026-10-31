@@ -22,10 +22,20 @@ Most list endpoints are project-scoped: pass `?project=<id>` to select the activ
 
 | Method | Path             | Description                 |
 |--------|------------------|-----------------------------|
-| GET    | `/api/users`     | List users                  |
+| GET    | `/api/users`     | List users (any signed-in user: the people directory with `display_name`, `avatar_id`) |
 | POST   | `/api/users`     | Create user                 |
-| PUT    | `/api/users/:id` | Update role/password        |
+| PUT    | `/api/users/:id` | Update role/password; `display_name`, `clear_avatar: true` |
 | DELETE | `/api/users/:id` | Delete user                 |
+
+## Profile (public name + avatar)
+
+Every user has a login (sign-in, @mentions, mail address) and an optional public `display_name` shown everywhere else; `avatar_id` points at `/api/images/{id}` (0 = none, the UI draws initials). Avatars are readable by every signed-in user and by any API token.
+
+| Method | Path                | Description                                                        |
+|--------|---------------------|--------------------------------------------------------------------|
+| PUT    | `/api/user/profile` | Set your public name `{display_name}` (≤ 64 chars; `""` = show the login) |
+| POST   | `/api/user/avatar`  | Set your avatar `{data}`: base64 PNG/JPEG, ≤ 512 KB, ≤ 1024×1024 (the web UI crops and scales to 256×256) |
+| DELETE | `/api/user/avatar`  | Remove your avatar                                                 |
 
 ## Two-Factor Authentication (TOTP)
 

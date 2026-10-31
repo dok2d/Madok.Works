@@ -108,6 +108,10 @@ Available for users with a linked Telegram account:
 3. The bot will send an 8-digit confirmation code
 4. Enter the code and set a new password
 
+## Public name and avatar
+
+The login identifies a user (sign-in, @mentions, mail); what other people see is the public name, if set, and the avatar. Both are edited in **Settings → Account**; admins can rename users and remove avatars in **Settings → Users**. On SSO sign-in an empty public name is filled from LDAP `displayName` (or `cn`) or the OIDC `name` claim; a name the user chose is never overwritten.
+
 ## LDAP / Active Directory
 
 The application supports LDAP/AD authentication for enterprise environments.
