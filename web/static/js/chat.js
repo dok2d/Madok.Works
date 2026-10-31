@@ -982,6 +982,7 @@ function chatTimeFmt(s, opts) {
   if (!s) return '';
   const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
   const d = new Date(iso);
+  if (isNaN(d)) return '';
   const loc = (typeof langLocale === 'function') ? langLocale() : undefined;
   try { return new Intl.DateTimeFormat(loc, Object.assign({ timeZone: getTimezone() }, opts)).format(d); }
   catch (e) { return new Intl.DateTimeFormat(loc, opts).format(d); }

@@ -112,6 +112,7 @@ func (s *Store) ListChatChannels(userID int64) ([]model.ChatChannel, error) {
 			rows.Close()
 			return nil, err
 		}
+		c.LastMsgAt = chatTS(c.LastMsgAt)
 		c.Pinned = pinned == 1
 		c.IsMember = lastRead >= 0
 		c.ReadOnly = readOnly == 1
@@ -325,6 +326,20 @@ func (s *Store) MarkChatRead(channelID, userID, lastID int64) error {
 	return err
 }
 
+// chatTS normalizes a CAST(... AS TEXT) timestamp to RFC3339 UTC for the
+// client. Postgres renders timestamptz as "2026-06-17 09:42:50.659588+00",
+// which the browser's Date can't parse (the chat list then fails to render).
+func chatTS(s string) string {
+	if s == "" {
+		return ""
+	}
+	t := parseTime(s)
+	if t.IsZero() {
+		return s
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
 // === Messages ===
 
 // ListChatMessages returns up to limit messages. With beforeID > 0 it pages
@@ -343,6 +358,8 @@ func scanChatMsg(sc interface{ Scan(...any) error }) (model.ChatMessage, error) 
 		&m.EditedAt, &deleted, &replyTo, &pinned, &m.PinnedAt, &m.Kind); err != nil {
 		return m, err
 	}
+	m.EditedAt = chatTS(m.EditedAt)
+	m.PinnedAt = chatTS(m.PinnedAt)
 	m.Deleted = deleted == 1
 	m.Pinned = pinned == 1
 	if replyTo > 0 {

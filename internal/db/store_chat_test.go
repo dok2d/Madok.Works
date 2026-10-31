@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"kanban/internal/model"
 )
@@ -531,4 +532,47 @@ func reactionFor(rs []model.ChatReaction, emoji string) *model.ChatReaction {
 		}
 	}
 	return nil
+}
+
+// TestChatTimestampsRFC3339 guards the client contract: chat timestamps must be
+// parseable by the browser's Date. Postgres' text form of timestamptz
+// ("… 09:42:50.659588+00") is not, and broke the whole chat list.
+func TestChatTimestampsRFC3339(t *testing.T) {
+	s := newTestStore(t)
+	alice := mustUser(t, s, "alice")
+	ch, err := s.CreateChatChannel("c", "", "channel", alice, nil)
+	if err != nil {
+		t.Fatalf("CreateChatChannel: %v", err)
+	}
+	m, err := s.CreateChatMessage(ch, alice, "hi", nil, 0)
+	if err != nil {
+		t.Fatalf("CreateChatMessage: %v", err)
+	}
+	if _, err := s.UpdateChatMessage(m.ID, "hi!"); err != nil {
+		t.Fatalf("UpdateChatMessage: %v", err)
+	}
+	if err := s.SetChatPinned(m.ID, alice, true); err != nil {
+		t.Fatalf("SetChatPinned: %v", err)
+	}
+
+	check := func(name, v string) {
+		t.Helper()
+		if _, err := time.Parse(time.RFC3339Nano, v); err != nil {
+			t.Errorf("%s = %q, want RFC3339: %v", name, v, err)
+		}
+	}
+	chans, err := s.ListChatChannels(alice)
+	if err != nil {
+		t.Fatalf("ListChatChannels: %v", err)
+	}
+	if len(chans) != 1 {
+		t.Fatalf("expected 1 channel, got %d", len(chans))
+	}
+	check("last_msg_at", chans[0].LastMsgAt)
+	msgs, err := s.ListChatMessages(ch, 0, 0, 0, alice)
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("ListChatMessages: %v (%d msgs)", err, len(msgs))
+	}
+	check("edited_at", msgs[0].EditedAt)
+	check("pinned_at", msgs[0].PinnedAt)
 }
