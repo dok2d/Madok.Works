@@ -645,13 +645,14 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_wiki_spaces_project ON wiki_spaces(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id)`,
 	}
+	var deferredIdx []string
 	for _, q := range stmts {
 		if _, err := s.db.Exec(translateDDL(s.db.d, q)); err != nil {
 			// A legacy DB may have a table from an older schema that lacks a column
-			// a new index references. Skip such an index rather than aborting startup;
-			// the column itself is added via the alters pass below where applicable.
+			// a new index references. Defer such an index rather than aborting
+			// startup; it is retried once the alters pass below adds the column.
 			if strings.HasPrefix(q, "CREATE INDEX") {
-				log.Printf("migrate: skipping index (legacy schema?): %v", err)
+				deferredIdx = append(deferredIdx, q)
 				continue
 			}
 			label := q
@@ -708,6 +709,33 @@ func (s *Store) migrate() error {
 	}
 	for _, q := range alters {
 		s.db.Exec(translateDDL(s.db.d, q)) // ignore "duplicate column" errors
+	}
+
+	// Upgrade a pre-projects database in place: its kanban tables lack project_id
+	// and tasks.number. Legacy rows go to the default project and tasks are
+	// numbered per project by id — the same transform backupconv applies to old
+	// backups. Plain ADD COLUMN without REFERENCES: SQLite refuses to add a
+	// REFERENCES column with a non-NULL default while foreign keys are on.
+	for _, tbl := range []string{"columns", "epics", "sprints", "tags", "tasks"} {
+		s.db.Exec(translateDDL(s.db.d, "ALTER TABLE "+tbl+" ADD COLUMN project_id INTEGER NOT NULL DEFAULT 1"))
+	}
+	for _, tbl := range []string{"calendars", "wiki_spaces"} {
+		if _, err := s.db.Exec(translateDDL(s.db.d, "ALTER TABLE "+tbl+" ADD COLUMN project_id INTEGER")); err == nil {
+			s.db.Exec("UPDATE " + tbl + " SET project_id=1")
+		}
+	}
+	if _, err := s.db.Exec(translateDDL(s.db.d, "ALTER TABLE tasks ADD COLUMN number INTEGER NOT NULL DEFAULT 0")); err == nil {
+		if _, err := s.db.Exec(`UPDATE tasks SET number = r.n FROM
+			(SELECT id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY id) AS n FROM tasks) r
+			WHERE tasks.id = r.id`); err != nil {
+			return fmt.Errorf("number legacy tasks: %w", err)
+		}
+	}
+
+	for _, q := range deferredIdx {
+		if _, err := s.db.Exec(translateDDL(s.db.d, q)); err != nil {
+			log.Printf("migrate: skipping index (legacy schema?): %v", err)
+		}
 	}
 
 	// create indexes that depend on ALTER TABLE columns
