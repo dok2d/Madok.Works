@@ -270,7 +270,7 @@ func (s *Store) RemoveWikiSpaceMember(spaceID, userID int64) error {
 // ListWikiPageTree returns all pages of a space (without content) ordered for
 // tree building: by parent, then position, then title.
 func (s *Store) ListWikiPageTree(spaceID int64) ([]model.WikiPage, error) {
-	rows, err := s.db.Query(`SELECT id, space_id, parent_id, title, position, rev_no, updated_at
+	rows, err := s.db.Query(`SELECT id, space_id, parent_id, title, position, rev_no, updated_at, kind
 		FROM wiki_pages WHERE space_id = ?
 		ORDER BY COALESCE(parent_id, 0), position, title COLLATE NOCASE`, spaceID)
 	if err != nil {
@@ -280,7 +280,7 @@ func (s *Store) ListWikiPageTree(spaceID int64) ([]model.WikiPage, error) {
 	var out []model.WikiPage
 	for rows.Next() {
 		var p model.WikiPage
-		if err := rows.Scan(&p.ID, &p.SpaceID, &p.ParentID, &p.Title, &p.Position, &p.RevNo, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.SpaceID, &p.ParentID, &p.Title, &p.Position, &p.RevNo, &p.UpdatedAt, &p.Kind); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -294,7 +294,7 @@ func (s *Store) ListWikiPageTree(spaceID int64) ([]model.WikiPage, error) {
 // ExportWikiSpacePages returns every page of a space with its markdown source,
 // for a bulk export (zip of .md files).
 func (s *Store) ExportWikiSpacePages(spaceID int64) ([]model.WikiPage, error) {
-	rows, err := s.db.Query(`SELECT id, title, content_md FROM wiki_pages WHERE space_id = ? ORDER BY title COLLATE NOCASE`, spaceID)
+	rows, err := s.db.Query(`SELECT id, title, content_md, kind, data FROM wiki_pages WHERE space_id = ? ORDER BY title COLLATE NOCASE`, spaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (s *Store) ExportWikiSpacePages(spaceID int64) ([]model.WikiPage, error) {
 	var out []model.WikiPage
 	for rows.Next() {
 		var p model.WikiPage
-		if err := rows.Scan(&p.ID, &p.Title, &p.ContentMd); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.ContentMd, &p.Kind, &p.Data); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -315,13 +315,13 @@ func (s *Store) GetWikiPage(id int64) (*model.WikiPage, error) {
 	var createdName, updatedName sql.NullString
 	var isTmpl int
 	err := s.db.QueryRow(`SELECT p.id, p.space_id, p.parent_id, p.title, p.content, p.content_md, p.position, p.rev_no,
-		p.created_by, p.created_at, p.updated_by, p.updated_at, p.is_template, cu.username, uu.username
+		p.created_by, p.created_at, p.updated_by, p.updated_at, p.is_template, cu.username, uu.username, p.kind, p.data
 		FROM wiki_pages p
 		LEFT JOIN users cu ON cu.id = p.created_by
 		LEFT JOIN users uu ON uu.id = p.updated_by
 		WHERE p.id = ?`, id).
 		Scan(&p.ID, &p.SpaceID, &p.ParentID, &p.Title, &p.Content, &p.ContentMd, &p.Position, &p.RevNo,
-			&p.CreatedBy, &p.CreatedAt, &p.UpdatedBy, &p.UpdatedAt, &isTmpl, &createdName, &updatedName)
+			&p.CreatedBy, &p.CreatedAt, &p.UpdatedBy, &p.UpdatedAt, &isTmpl, &createdName, &updatedName, &p.Kind, &p.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +391,7 @@ func (s *Store) SetWikiPageTemplate(id int64, isTemplate bool) error {
 
 // ListWikiTemplates returns the template pages of a space (id, title, content_md).
 func (s *Store) ListWikiTemplates(spaceID int64) ([]model.WikiPage, error) {
-	rows, err := s.db.Query(`SELECT id, title, content_md FROM wiki_pages WHERE space_id=? AND is_template=1 ORDER BY title COLLATE NOCASE`, spaceID)
+	rows, err := s.db.Query(`SELECT id, title, content_md, kind, data FROM wiki_pages WHERE space_id=? AND is_template=1 ORDER BY title COLLATE NOCASE`, spaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +399,7 @@ func (s *Store) ListWikiTemplates(spaceID int64) ([]model.WikiPage, error) {
 	out := []model.WikiPage{}
 	for rows.Next() {
 		var p model.WikiPage
-		if err := rows.Scan(&p.ID, &p.Title, &p.ContentMd); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.ContentMd, &p.Kind, &p.Data); err != nil {
 			return nil, err
 		}
 		p.IsTemplate = true
@@ -441,47 +441,17 @@ func (s *Store) ResolveWikiTaskLinks(md string) map[string]int64 {
 	return out
 }
 
+// CreateWikiPage creates a markdown article (kind "page"). Mind maps go through
+// CreateWikiPageFull.
 func (s *Store) CreateWikiPage(spaceID int64, parentID *int64, title, content, contentMd string, author int64) (int64, error) {
-	var pos int
-	s.db.QueryRow(`SELECT COALESCE(MAX(position),-1)+1 FROM wiki_pages WHERE space_id=? AND COALESCE(parent_id,0)=COALESCE(?,0)`,
-		spaceID, parentID).Scan(&pos)
-	pageID, err := s.db.ExecInsert(`INSERT INTO wiki_pages(space_id, parent_id, title, content, content_md, position, created_by, updated_by)
-		VALUES(?,?,?,?,?,?,?,?)`, spaceID, parentID, title, content, contentMd, pos, author, author)
-	if err != nil {
-		return 0, err
-	}
-	// first revision
-	_, err = s.db.Exec(`INSERT INTO wiki_revisions(page_id, rev_no, title, content, content_md, author_id, comment)
-		VALUES(?,?,?,?,?,?,?)`, pageID, 1, title, content, contentMd, author, "")
-	return pageID, err
+	return s.CreateWikiPageFull(spaceID, parentID, title, content, contentMd, model.WikiKindPage, "", author)
 }
 
-// UpdateWikiPage saves a new revision. baseRev guards against concurrent
-// edits: if it does not match the stored rev_no the update is rejected.
+// UpdateWikiPage saves a new revision of a markdown article. baseRev guards
+// against concurrent edits: if it does not match the stored rev_no the update
+// is rejected. Mind maps use UpdateWikiPageFull.
 func (s *Store) UpdateWikiPage(id int64, title, content, contentMd, comment string, author int64, baseRev int) (int, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
-	var cur int
-	if err := tx.QueryRow(`SELECT rev_no FROM wiki_pages WHERE id=?`, id).Scan(&cur); err != nil {
-		return 0, err
-	}
-	if baseRev != 0 && baseRev != cur {
-		return cur, fmt.Errorf("conflict: page was modified (rev %d, your base %d)", cur, baseRev)
-	}
-	next := cur + 1
-	if _, err := tx.Exec(`UPDATE wiki_pages SET title=?, content=?, content_md=?, rev_no=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		title, content, contentMd, next, author, id); err != nil {
-		return 0, err
-	}
-	if _, err := tx.Exec(`INSERT INTO wiki_revisions(page_id, rev_no, title, content, content_md, author_id, comment)
-		VALUES(?,?,?,?,?,?,?)`, id, next, title, content, contentMd, author, comment); err != nil {
-		return 0, err
-	}
-	return next, tx.Commit()
+	return s.UpdateWikiPageFull(id, title, content, contentMd, "", comment, author, baseRev, false)
 }
 
 // DeleteWikiPage removes a page; its children are re-parented to the deleted
@@ -584,9 +554,9 @@ func (s *Store) ListWikiRevisions(pageID int64) ([]model.WikiRevision, error) {
 
 func (s *Store) GetWikiRevision(id int64) (*model.WikiRevision, error) {
 	var r model.WikiRevision
-	err := s.db.QueryRow(`SELECT r.id, r.page_id, r.rev_no, r.title, r.content, r.content_md, r.author_id, COALESCE(u.username,''), r.comment, r.created_at
+	err := s.db.QueryRow(`SELECT r.id, r.page_id, r.rev_no, r.title, r.content, r.content_md, r.author_id, COALESCE(u.username,''), r.comment, r.created_at, r.kind, r.data
 		FROM wiki_revisions r LEFT JOIN users u ON u.id = r.author_id WHERE r.id = ?`, id).
-		Scan(&r.ID, &r.PageID, &r.RevNo, &r.Title, &r.Content, &r.ContentMd, &r.AuthorID, &r.AuthorName, &r.Comment, &r.CreatedAt)
+		Scan(&r.ID, &r.PageID, &r.RevNo, &r.Title, &r.Content, &r.ContentMd, &r.AuthorID, &r.AuthorName, &r.Comment, &r.CreatedAt, &r.Kind, &r.Data)
 	if err != nil {
 		return nil, err
 	}

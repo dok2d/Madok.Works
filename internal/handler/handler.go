@@ -510,6 +510,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("/api/wiki/diagrams/", h.handleWikiDiagramRoute)
 	h.mux.HandleFunc("/api/wiki/drawio-config", h.handleDrawioConfig)
 	h.mux.HandleFunc("/api/wiki/search", h.handleWikiSearch)
+	h.mux.HandleFunc("/api/wiki/mindmaps/import", h.handleWikiMindmapImport)
+	h.mux.HandleFunc("/api/wiki/events", h.handleWikiEvents)
 
 	// Chat
 	h.mux.HandleFunc("/api/chat/channels", h.handleChatChannels)

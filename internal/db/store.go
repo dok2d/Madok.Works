@@ -766,6 +766,13 @@ func (s *Store) migrate() error {
 		"ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE users ADD COLUMN avatar_id INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE wiki_revisions ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
+		// Page kind ('page' | 'mindmap') and the kind-specific source document
+		// (mind-map JSON); content/content_md hold the derived outline for search,
+		// diffs and export. Revisions carry both so restore round-trips.
+		"ALTER TABLE wiki_pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'",
+		"ALTER TABLE wiki_pages ADD COLUMN data TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE wiki_revisions ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'",
+		"ALTER TABLE wiki_revisions ADD COLUMN data TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER REFERENCES chat_messages(id)",
 		"ALTER TABLE chat_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE chat_messages ADD COLUMN pinned_at DATETIME",

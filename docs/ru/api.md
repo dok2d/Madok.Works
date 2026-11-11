@@ -237,6 +237,42 @@ curl -H "Authorization: Bearer mw_…" "https://mw.example.com/api/board?project
 | POST   | `/api/wiki/pages/:id/restore`     | Откат к ревизии                           |
 | GET    | `/api/wiki/revisions/:id`         | Содержимое конкретной ревизии             |
 | GET    | `/api/wiki/search?q=...`          | Поиск по страницам                        |
+| GET    | `/api/wiki/events`                | SSE-поток: `{"type":"wiki_page","page_id","rev_no","user_id","kind"}` при каждом сохранении |
+
+У страницы есть `kind`: `page` (Markdown-статья, по умолчанию) или `mindmap`. `POST /api/wiki/pages` принимает `kind` и, для карты, необязательный начальный документ `mindmap`; `GET /api/wiki/pages/:id` возвращает `kind` и (для карт) документ `mindmap` рядом с производной структурой `content` / `content_md`. `PUT /api/wiki/pages/:id` для карты принимает `title`, `mindmap`, `base_rev`, `comment` и `autosave`. Дерево страниц (`/api/wiki/spaces/:id/tree`) и шаблоны тоже сообщают `kind`; ревизии карты несут `mindmap` и восстанавливают его.
+
+### Интеллект-карты (mind maps)
+
+Все маршруты требуют роли в пространстве страницы: viewer — чтение, editor — запись. Каждая запись создаёт ревизию; `base_rev` (загруженный вами `rev_no`) заставляет запись завершиться `409 {"error","current_rev"}`, если кто-то сохранил страницу раньше (без него — перезапись). `autosave: true` схлопывает подряд идущие сохранения одного автора без комментария в течение 10 минут в одну ревизию.
+
+| Метод  | Путь | Описание |
+|--------|------|----------|
+| GET    | `/api/wiki/pages/:id/mindmap` | Документ: `page_id`, `title`, `rev_no`, `node_count`, `layout`, `line`, `palette`, `root`, `links` |
+| PUT    | `/api/wiki/pages/:id/mindmap` | Заменить документ (`root`, `links`, `layout`, `line`, `palette`, необязательно `title`, `base_rev`, `comment`, `autosave`) |
+| POST   | `/api/wiki/pages/:id/mindmap/ops` | Пакет операций одной ревизией: `{ops:[…], base_rev, comment}` → `{rev_no, results, mindmap}` |
+| GET    | `/api/wiki/pages/:id/mindmap/nodes` | Плоский список узлов (`parent_id`, `depth`, `index`, `child_count`, без children) |
+| POST   | `/api/wiki/pages/:id/mindmap/nodes` | Добавить узел: `{parent_id, index?, text, …поля узла}` → `{id, rev_no, node}` |
+| GET    | `/api/wiki/pages/:id/mindmap/nodes/:nid` | Один узел с поддеревом |
+| PUT    | `/api/wiki/pages/:id/mindmap/nodes/:nid` | Частичное обновление полей (`null` очищает поле) |
+| DELETE | `/api/wiki/pages/:id/mindmap/nodes/:nid` | Удалить поддерево (корень удалить нельзя) |
+| POST   | `/api/wiki/pages/:id/mindmap/nodes/:nid/move` | `{parent_id, index?, side?}` — перенос / перестановка (циклы отклоняются) |
+| GET    | `/api/wiki/pages/:id/mindmap/export?format=` | Скачать как `json`, `md` (Markdown-структура), `txt`, `opml`, `mm` (FreeMind/Freeplane), `xmind`, `mermaid`; `&inline=1` без заголовка attachment |
+| POST   | `/api/wiki/pages/:id/mindmap/import` | `{format?, filename?, data \| data_base64, mode: replace\|append, base_rev?}` — формат определяется по имени файла/содержимому, если не указан |
+| POST   | `/api/wiki/mindmaps/import` | Создать страницу из файла: `{space_id, parent_id?, title?, format?, filename?, data \| data_base64}` → `{id, nodes, format}` |
+
+Поля узла: `id`, `text`, `note` (Markdown), `url`, `icon` (эмодзи), `color` (`#rrggbb`, наследуется поддеревом), `shape` (`""`, `rect`, `pill`, `underline`), `image`, `tags[]`, `priority` (0–6), `progress` (0–100 или null), `done` (null — не задача, true/false — чекбокс), `collapsed`, `boundary`, `side` (`left`/`right`, дети корня в раскладке balanced), `page_id` (ссылка на страницу вики), `task_ref` (`KEY-123`), `children[]`. Поля документа: `layout` (`balanced`, `right`, `left`, `down`, `up`, `tree`), `line` (`curve`, `elbow`, `straight`), `palette` (`rainbow`, `mono`, `warm`, `cool`, `pastel`), `links[]` связей `{id, from, to, label}`. Ограничения: 5000 узлов, глубина 64, 2 МБ.
+
+Операции для `/ops`: `add` (`parent_id`, `index?`, `node`), `update` (`id`, объект `set`), `delete` (`id`), `move` (`id`, `parent_id`, `index?`, `side?`), `link_add` (`link: {from, to, label}`), `link_update` (`id`, `link: {label}`), `link_delete` (`id`), `settings` (`layout`/`line`/`palette`). Ошибка в любой операции отклоняет весь пакет.
+
+```bash
+# добавить дочерний узел к q1 и отметить q1 выполненным — одной ревизией
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST http://localhost:8080/api/wiki/pages/12/mindmap/ops \
+  -d '{"ops":[{"op":"add","parent_id":"q1","node":{"text":"Релиз v2","priority":1}},
+             {"op":"update","id":"q1","set":{"done":true}}],"comment":"планирование"}'
+```
+
+Текст узлов участвует в глобальном поиске, ссылки `[[Страница]]` из узлов попадают в обратные ссылки, а zip-экспорт пространства содержит и Markdown-структуру, и `.mindmap.json` для каждой карты. Обычная страница встраивает карту токеном `[[mindmap:ID]]`.
 
 ## Чат
 

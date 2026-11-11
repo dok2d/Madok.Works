@@ -47,6 +47,7 @@ function wikiToggleNode(id) {
 // === Entry point (called by the SPA router) ===
 async function renderWikiView() {
   ensureWikiI18n();
+  if (typeof ensureMindmapI18n === 'function') ensureMindmapI18n();
   const m = currentServicePath.match(/^\/page\/(\d+)(\/edit|\/history)?$/);
   const sm = currentServicePath.match(/^\/space\/(\d+)$/);
   try {
@@ -173,7 +174,7 @@ function wikiRenderTree() {
       return `<div class="wiki-node" style="--depth:${depth}">
         <div class="wiki-node-row ${n.id === activeId ? 'active' : ''}">
           ${kids.length ? `<span class="wiki-expander" onclick="wikiToggleNode(${n.id})">${isCollapsed ? '&#9656;' : '&#9662;'}</span>` : '<span class="wiki-expander-spacer"></span>'}
-          <a class="wiki-node-title" href="/wiki/page/${n.id}" onclick="navigateTo('/wiki/page/${n.id}');return false;">${esc(n.title)}</a>
+          <a class="wiki-node-title" href="/wiki/page/${n.id}" onclick="navigateTo('/wiki/page/${n.id}');return false;">${n.kind === 'mindmap' ? `<span class="wiki-node-kind" title="${escAttr(t('mmTreeIcon'))}">🧠</span>` : ''}${esc(n.title)}</a>
           ${wikiCanEdit() ? `<button class="wiki-node-add" onclick="wikiNewPage(${n.id})" title="${t('wikiAddChild')}">+</button>` : ''}
         </div>
         ${kids.length && !isCollapsed ? renderNodes(n.id, depth + 1) : ''}
@@ -196,6 +197,8 @@ async function wikiLoadPinned() {
 function wikiRenderMain() {
   const el = document.getElementById('wiki-main');
   if (!el) return;
+  // Leaving a mind map: flush its autosave and drop the live connection.
+  if (typeof mmPage !== 'undefined' && mmPage && !(wikiState.page && wikiState.page.kind === 'mindmap' && wikiState.page.id === mmPage.page.id && wikiState.mode !== 'history')) { mmPage.destroy(); mmPage = null; }
   if (!wikiState.spaceId) {
     el.innerHTML = `<div class="wiki-empty wiki-empty-lg">
       <div style="font-size:2rem;margin-bottom:10px">&#128214;</div>
@@ -215,8 +218,10 @@ function wikiRenderMain() {
     </div>`;
     return;
   }
-  if (wikiState.mode === 'edit') { wikiRenderEditor(el); return; }
   if (wikiState.mode === 'history') { wikiRenderHistory(el); return; }
+  // Mind maps are edited in place (autosave), so view and edit are the same.
+  if (wikiState.page.kind === 'mindmap' && typeof wikiRenderMindmapPage === 'function') { wikiRenderMindmapPage(el); return; }
+  if (wikiState.mode === 'edit') { wikiRenderEditor(el); return; }
   wikiRenderPageView(el);
 }
 
@@ -424,6 +429,16 @@ function wikiFillWikiLinks(container, links, taskLinks) {
       if (low === 'subpages' || low === 'subpages:tree' || low === 'toc') continue;
       if (!frag) frag = document.createDocumentFragment();
       if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const mm = /^mindmap:(\d+)$/.exec(tok);
+      if (mm && typeof mmRenderEmbed === 'function') {
+        // [[mindmap:N]] -> interactive read-only map, with a link to the page.
+        const div = document.createElement('div');
+        div.className = 'mm-embed';
+        frag.appendChild(div);
+        setTimeout(() => mmRenderEmbed(div, Number(mm[1])), 0);
+        last = re.lastIndex;
+        continue;
+      }
       const dm = /^diagram:(\d+)$/.exec(tok);
       if (dm) {
         // [[diagram:N]] -> rendered PNG preview, click to open the editor.
@@ -1196,20 +1211,27 @@ async function wikiCancelEdit() {
 
 // === Page operations ===
 async function wikiNewPage(parentId) {
-  const title = await uiPrompt(t('wikiNewPageTitle'));
+  // Page kind first: article, mind map, or a mind map imported from a file.
+  const kind = typeof mmNewPageKind === 'function' ? await mmNewPageKind() : 'page';
+  if (!kind) return;
+  if (kind === 'import') {
+    mmImportDialog({ spaceId: wikiState.spaceId, parentId, onDone: r => navigateTo('/wiki/page/' + r.id) });
+    return;
+  }
+  const title = await uiPrompt(kind === 'mindmap' ? t('mmNewMindmap') : t('wikiNewPageTitle'));
   if (!title || !title.trim()) return;
-  // Offer space templates (if any) to seed the new page's content.
+  // Offer space templates of the same kind (if any) to seed the new page.
   let templates = [];
-  try { templates = await api('/api/wiki/spaces/' + wikiState.spaceId + '/templates'); } catch (e) { templates = []; }
-  const createWith = async (contentMd) => {
+  try { templates = (await api('/api/wiki/spaces/' + wikiState.spaceId + '/templates')).filter(tp => (tp.kind || 'page') === kind); } catch (e) { templates = []; }
+  const createWith = async (contentMd, mindmap) => {
     try {
-      const res = await api('/api/wiki/pages', 'POST', {
-        space_id: wikiState.spaceId, parent_id: parentId, title: title.trim(), content: '', content_md: contentMd || '',
-      });
-      navigateTo('/wiki/page/' + res.id + '/edit');
+      const body = { space_id: wikiState.spaceId, parent_id: parentId, title: title.trim(), content: '', content_md: contentMd || '', kind };
+      if (kind === 'mindmap' && mindmap) { body.mindmap = JSON.parse(JSON.stringify(mindmap)); body.mindmap.root.text = title.trim(); }
+      const res = await api('/api/wiki/pages', 'POST', body);
+      navigateTo('/wiki/page/' + res.id + (kind === 'mindmap' ? '' : '/edit'));
     } catch (e) { alert(e.message); }
   };
-  if (!templates.length) { createWith(''); return; }
+  if (!templates.length) { createWith('', null); return; }
   // Picker: blank or one of the templates.
   const ov = document.createElement('div');
   ov.className = 'modal-overlay';
@@ -1222,9 +1244,9 @@ async function wikiNewPage(parentId) {
     if (e.target === ov) { ov.remove(); return; }
     const btn = e.target.closest('button');
     if (!btn) return;
-    const md = btn.dataset.i !== undefined ? (templates[Number(btn.dataset.i)].content_md || '') : '';
+    const tpl = btn.dataset.i !== undefined ? templates[Number(btn.dataset.i)] : null;
     ov.remove();
-    createWith(md);
+    createWith(tpl ? tpl.content_md || '' : '', tpl ? tpl.mindmap : null);
   });
   document.body.appendChild(ov);
 }
@@ -1421,8 +1443,14 @@ async function wikiViewRevision(revId) {
         <b>v${rev.rev_no}</b> &middot; ${esc(displayName(rev.author_id, rev.author_name))} &middot; ${fmtDate(rev.created_at)}
         ${!isCurrent && wikiCanEdit() ? `<button class="btn btn-primary btn-sm" onclick="wikiRestoreRevision(${rev.id})">${t('wikiRestore')}</button>` : ''}
       </div>
+      ${rev.kind === 'mindmap' && rev.mindmap ? '<div class="mm-embed mm-embed-rev"></div>' : ''}
       <div class="wiki-content md-content">${rev.content}</div>`;
     const pg = wikiState.page;
+    if (rev.kind === 'mindmap' && rev.mindmap && typeof mmRenderEmbed === 'function') {
+      const box = document.querySelector('#wiki-rev-view .mm-embed');
+      box.dataset.title = rev.title;
+      mmRenderEmbed(box, 0, rev.mindmap);
+    }
     wikiEnhanceContent(document.querySelector('#wiki-rev-view .wiki-content'), pg && pg.links, pg && pg.task_links, pg && pg.id);
     highlightCode();
   } catch (e) { alert(e.message); }

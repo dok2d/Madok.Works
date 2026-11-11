@@ -252,6 +252,56 @@ Pages also support **comments**, **reactions**, reusable **templates** and
 embedded **diagrams**. Wiki search goes through the shared
 [global search](#global-search).
 
+### Mind Maps
+
+A wiki page can be a **mind map** instead of an article. When you create a page
+you choose *Page*, *Mind map* or *Import mind map file*; mind maps show a 🧠
+icon in the page tree and live side by side with articles: same space roles,
+revision history (with a visual preview of every revision and restore),
+comments, reactions, pins, templates, backlinks and global search.
+
+The map is edited **in place** and **autosaves** about a second after each
+change; the status bar shows *Saved / Unsaved / Saving…*. *Save version…*
+stores a named revision with a comment (autosaves between named versions are
+squashed into one entry). If someone else saves the same map, you get a banner
+to reload their version or keep yours; an unsaved draft is kept in the browser
+and offered back if the tab is closed early.
+
+Editing follows the conventions of XMind / MindNode / MindMeister:
+
+- **Tab** adds a child, **Enter** a sibling (Shift+Enter above), **Ctrl+Enter**
+  inserts a parent, **F2** / Space / double-click edits the text — or just start
+  typing on a selected node. **Delete** removes the subtree, **arrows** move
+  between nodes, **/** folds and unfolds, **Alt+↑/↓** reorders siblings.
+- **Ctrl+Z / Ctrl+Y** undo and redo; **Ctrl+C / X / V** copy, cut and paste
+  subtrees — pasting an indented text outline creates nodes; **Ctrl+D**
+  duplicates; Shift+click or Shift+drag selects several nodes.
+- **Drag a node** onto another to re-parent it, or between siblings to
+  reorder; drop a top-level branch on the other side of the root to flip it.
+- Mouse wheel pans, **Ctrl+wheel** or pinch zooms, Space+drag pans; the HUD
+  has zoom / fit / center buttons and a minimap appears on large maps.
+- Press **?** for the full shortcut list.
+
+Each node can carry a **note** (Markdown), a **hyperlink**, a link to a **wiki
+page** (search by title) or a **task** (`KEY-123`), an **emoji icon**, a
+**branch color**, a **shape**, a **priority** (1–6), a **progress** marker, a
+**checkbox**, **tags**, an **image** and a **boundary** around its subtree
+(right-click → Properties, or Ctrl+I). **Relationships** are dashed arrows
+between any two nodes (right-click → Add relationship, then click the target;
+double-click the arrow to label it).
+
+The toolbar switches the **layout** (two-sided mind map, logic chart left or
+right, org chart up or down, tree outline), the **branch style** (curved, elbow,
+straight) and the **color palette**, searches the map (Ctrl+F highlights and
+cycles matches) and opens the **Outline** panel: the same map as a nested list,
+which you can also *edit as text* — a Markdown outline where `- [x]`, `(P1)`,
+`(50%)`, `#tag` and `[text](url)` are understood.
+
+**Export**: SVG and PNG images, Markdown outline, OPML, FreeMind / Freeplane
+(`.mm`), XMind, Mermaid, JSON and print. **Import** the same formats (plus plain
+text) into a new page or into an existing map (replace or append as a branch).
+Embed a read-only map in an article with the `[[mindmap:ID]]` token.
+
 ### Anchor Links
 
 Every heading on a page gets a stable **anchor link**. Hover over a heading and

@@ -237,6 +237,42 @@ Other resources are scoped to the active project via `?project=<id>`.
 | POST   | `/api/wiki/pages/:id/restore`     | Restore a revision                       |
 | GET    | `/api/wiki/revisions/:id`         | Content of a specific revision           |
 | GET    | `/api/wiki/search?q=...`          | Search pages                             |
+| GET    | `/api/wiki/events`                | SSE stream: `{"type":"wiki_page","page_id","rev_no","user_id","kind"}` on every save |
+
+Pages have a `kind`: `page` (Markdown article, default) or `mindmap`. `POST /api/wiki/pages` accepts `kind` and, for a mind map, an optional initial `mindmap` document; `GET /api/wiki/pages/:id` returns `kind` and (for mind maps) the `mindmap` document next to the derived `content` / `content_md` outline. `PUT /api/wiki/pages/:id` on a mind map takes `title`, `mindmap`, `base_rev`, `comment` and `autosave`. The page tree (`/api/wiki/spaces/:id/tree`) and templates report `kind` too; revisions of a mind map carry `mindmap` and restore it.
+
+### Wiki mind maps
+
+All routes require the page's space role: viewer to read, editor to write. Every write creates a revision; `base_rev` (the `rev_no` you loaded) makes a write fail with `409 {"error","current_rev"}` when someone saved in between (omit it to overwrite). `autosave: true` squashes consecutive uncommented saves by the same author within 10 minutes into one revision.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/api/wiki/pages/:id/mindmap` | Document: `page_id`, `title`, `rev_no`, `node_count`, `layout`, `line`, `palette`, `root`, `links` |
+| PUT    | `/api/wiki/pages/:id/mindmap` | Replace the document (`root`, `links`, `layout`, `line`, `palette`, optional `title`, `base_rev`, `comment`, `autosave`) |
+| POST   | `/api/wiki/pages/:id/mindmap/ops` | Batch of operations in one revision: `{ops:[…], base_rev, comment}` → `{rev_no, results, mindmap}` |
+| GET    | `/api/wiki/pages/:id/mindmap/nodes` | Flat node list (`parent_id`, `depth`, `index`, `child_count`, no children) |
+| POST   | `/api/wiki/pages/:id/mindmap/nodes` | Add a node: `{parent_id, index?, text, …node fields}` → `{id, rev_no, node}` |
+| GET    | `/api/wiki/pages/:id/mindmap/nodes/:nid` | One node with its subtree |
+| PUT    | `/api/wiki/pages/:id/mindmap/nodes/:nid` | Partial update of node fields (`null` clears a field) |
+| DELETE | `/api/wiki/pages/:id/mindmap/nodes/:nid` | Delete the subtree (root cannot be deleted) |
+| POST   | `/api/wiki/pages/:id/mindmap/nodes/:nid/move` | `{parent_id, index?, side?}` — re-parent / reorder (cycles are rejected) |
+| GET    | `/api/wiki/pages/:id/mindmap/export?format=` | Download as `json`, `md` (Markdown outline), `txt`, `opml`, `mm` (FreeMind/Freeplane), `xmind`, `mermaid`; `&inline=1` skips the attachment header |
+| POST   | `/api/wiki/pages/:id/mindmap/import` | `{format?, filename?, data \| data_base64, mode: replace\|append, base_rev?}` — format is detected from the filename/content when omitted |
+| POST   | `/api/wiki/mindmaps/import` | Create a page from a file: `{space_id, parent_id?, title?, format?, filename?, data \| data_base64}` → `{id, nodes, format}` |
+
+Node fields: `id`, `text`, `note` (Markdown), `url`, `icon` (emoji), `color` (`#rrggbb`, inherited by the subtree), `shape` (`""`, `rect`, `pill`, `underline`), `image`, `tags[]`, `priority` (0–6), `progress` (0–100 or null), `done` (null = not a task, true/false = checkbox), `collapsed`, `boundary`, `side` (`left`/`right`, root children in the balanced layout), `page_id` (wiki page link), `task_ref` (`KEY-123`), `children[]`. Document fields: `layout` (`balanced`, `right`, `left`, `down`, `up`, `tree`), `line` (`curve`, `elbow`, `straight`), `palette` (`rainbow`, `mono`, `warm`, `cool`, `pastel`), `links[]` of `{id, from, to, label}` relationships. Limits: 5000 nodes, depth 64, 2 MB.
+
+Operations for `/ops`: `add` (`parent_id`, `index?`, `node`), `update` (`id`, `set` object), `delete` (`id`), `move` (`id`, `parent_id`, `index?`, `side?`), `link_add` (`link: {from, to, label}`), `link_update` (`id`, `link: {label}`), `link_delete` (`id`), `settings` (`layout`/`line`/`palette`). A failing operation rejects the whole batch.
+
+```bash
+# add a child under node q1, then mark it done, in one revision
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST http://localhost:8080/api/wiki/pages/12/mindmap/ops \
+  -d '{"ops":[{"op":"add","parent_id":"q1","node":{"text":"Ship v2","priority":1}},
+             {"op":"update","id":"q1","set":{"done":true}}],"comment":"planning"}'
+```
+
+Node text is searchable (global search), `[[Page]]`-style links from nodes feed backlinks, and the space export zip contains both the Markdown outline and a `.mindmap.json` per map. A regular page embeds a map with the `[[mindmap:ID]]` token.
 
 ## Chat
 

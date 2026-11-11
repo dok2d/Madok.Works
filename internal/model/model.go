@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Column struct {
 	ID        int64  `json:"id"`
@@ -179,6 +182,12 @@ type ProjectMember struct {
 	Username  string `json:"username"`
 }
 
+// Wiki page kinds.
+const (
+	WikiKindPage    = "page"
+	WikiKindMindmap = "mindmap"
+)
+
 // WikiSpace is a documentation space — a tree of pages with its own access list.
 type WikiSpace struct {
 	ID          int64  `json:"id"`
@@ -245,6 +254,12 @@ type WikiPage struct {
 	IsTemplate   bool           `json:"is_template"`
 	PinnedByMe   bool           `json:"pinned_by_me"`
 	PinnedShared bool           `json:"pinned_shared"`
+	// Kind is "page" (markdown article) or "mindmap". For a mind map, Data holds
+	// the canonical JSON document (exposed to the API as Mindmap) and Content /
+	// ContentMd are the derived outline used by search, diffs and export.
+	Kind    string          `json:"kind"`
+	Data    string          `json:"-"`
+	Mindmap json.RawMessage `json:"mindmap,omitempty"`
 	Links      map[string]int64 `json:"links,omitempty"`
 	TaskLinks  map[string]int64 `json:"task_links,omitempty"` // [[task:N]]/[[KEY-N]] token -> task id
 	Backlinks  []WikiPageRef    `json:"backlinks,omitempty"`
@@ -295,6 +310,9 @@ type WikiRevision struct {
 	AuthorName string `json:"author_name,omitempty"`
 	Comment    string `json:"comment"`
 	CreatedAt  string `json:"created_at"`
+	Kind       string          `json:"kind,omitempty"`
+	Data       string          `json:"-"`
+	Mindmap    json.RawMessage `json:"mindmap,omitempty"`
 }
 
 // WikiSearchHit is one result of a wiki full-text search.

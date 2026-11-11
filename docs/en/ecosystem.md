@@ -46,6 +46,15 @@ A Confluence-style documentation service.
   the sanitized HTML are stored.
 - **Auto-anchor heading links:** every heading gets a stable anchor; hovering a
   heading shows a **#** you can click to copy a direct link to that section.
+- **Mind-map pages** (`kind: mindmap`): an in-place editor with autosave and
+  optimistic locking, the standard shortcut set (Tab/Enter/F2/arrows/undo…),
+  drag-and-drop, six layouts, branch styles and palettes, notes, links to wiki
+  pages and tasks, icons, priorities, progress, checkboxes, tags, images,
+  boundaries and relationships, an outline panel with text editing, search,
+  minimap, SVG/PNG/Markdown/OPML/FreeMind/XMind/Mermaid/JSON export and import,
+  live refresh over SSE, and a full node-level REST API (see the API docs).
+  The stored document is JSON; a derived Markdown/HTML outline feeds search,
+  revision diffs, summaries and backlinks.
 - There is no separate wiki search — the shared **global search** is used.
 
 ## Chat

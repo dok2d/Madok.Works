@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"kanban/internal/mindmap"
 	"kanban/internal/model"
 )
 
@@ -191,6 +192,9 @@ func (h *Handler) handleWikiSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		for i := range tpls {
+			attachMindmap(&tpls[i])
 		}
 		jsonResp(w, tpls)
 	case "pinned":
@@ -389,6 +393,17 @@ func (h *Handler) exportWikiSpace(w http.ResponseWriter, sp *model.WikiSpace) {
 		if err != nil {
 			return
 		}
+		if p.Kind == model.WikiKindMindmap {
+			// The outline already starts with the title as H1; the JSON document
+			// goes alongside so the map can be re-imported losslessly.
+			fw.Write([]byte(p.ContentMd))
+			if strings.TrimSpace(p.Data) != "" {
+				if jw, err := zw.Create(strings.TrimSuffix(name, ".md") + ".mindmap.json"); err == nil {
+					jw.Write([]byte(p.Data))
+				}
+			}
+			continue
+		}
 		fw.Write([]byte("# " + p.Title + "\n\n" + p.ContentMd))
 	}
 }
@@ -496,14 +511,23 @@ func (h *Handler) handleWikiPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		SpaceID   int64  `json:"space_id"`
-		ParentID  *int64 `json:"parent_id"`
-		Title     string `json:"title"`
-		Content   string `json:"content"`
-		ContentMd string `json:"content_md"`
+		SpaceID   int64           `json:"space_id"`
+		ParentID  *int64          `json:"parent_id"`
+		Title     string          `json:"title"`
+		Content   string          `json:"content"`
+		ContentMd string          `json:"content_md"`
+		Kind      string          `json:"kind"`    // "page" (default) | "mindmap"
+		Mindmap   json.RawMessage `json:"mindmap"` // initial document for a mind map (optional)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if req.Kind == "" {
+		req.Kind = model.WikiKindPage
+	}
+	if req.Kind != model.WikiKindPage && req.Kind != model.WikiKindMindmap {
+		http.Error(w, "kind must be page or mindmap", http.StatusBadRequest)
 		return
 	}
 	role, _, err := h.wikiRole(user, req.SpaceID)
@@ -535,15 +559,26 @@ func (h *Handler) handleWikiPages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	content := sanitizeHTML(req.Content)
-	id, err := h.store.CreateWikiPage(req.SpaceID, req.ParentID, req.Title, content, req.ContentMd, user.ID)
+	content, contentMd, data := sanitizeHTML(req.Content), req.ContentMd, ""
+	if req.Kind == model.WikiKindMindmap {
+		doc := mindmap.New(req.Title)
+		if len(req.Mindmap) > 0 && string(req.Mindmap) != "null" {
+			var err error
+			if doc, err = mindmap.Parse(req.Mindmap); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		content, contentMd, data = h.mindmapDerive(doc)
+	}
+	id, err := h.store.CreateWikiPageFull(req.SpaceID, req.ParentID, req.Title, content, contentMd, req.Kind, data, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	h.store.LogActivity(user.ID, "wiki_create_page", nil, req.Title)
-	h.processWikiPageLinks(req.SpaceID, id, req.ContentMd, req.Title, user)
-	jsonResp(w, map[string]int64{"id": id})
+	h.processWikiPageLinks(req.SpaceID, id, contentMd, req.Title, user)
+	jsonResp(w, map[string]any{"id": id, "kind": req.Kind})
 }
 
 // processWikiPageLinks rebuilds a page's [[wiki link]] graph and notifies any
@@ -613,6 +648,10 @@ func (h *Handler) handleWikiPageRoute(w http.ResponseWriter, r *http.Request) {
 	sub := ""
 	if len(parts) == 2 {
 		sub = parts[1]
+	}
+	if sub == "mindmap" || strings.HasPrefix(sub, "mindmap/") {
+		h.handleWikiMindmap(w, r, user, page, role, strings.TrimPrefix(strings.TrimPrefix(sub, "mindmap"), "/"))
+		return
 	}
 	switch sub {
 	case "":
@@ -873,6 +912,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 		}
 		page.Reactions, _ = h.store.WikiReactions("page", page.ID, user.ID)
 		page.PinnedByMe, page.PinnedShared = h.store.WikiPagePinState(page.ID, user.ID)
+		attachMindmap(page)
 		jsonResp(w, page)
 	case http.MethodPut:
 		if !wikiRoleAtLeast(role, "editor") {
@@ -880,11 +920,13 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 			return
 		}
 		var req struct {
-			Title     string `json:"title"`
-			Content   string `json:"content"`
-			ContentMd string `json:"content_md"`
-			Comment   string `json:"comment"`
-			BaseRev   int    `json:"base_rev"`
+			Title     string          `json:"title"`
+			Content   string          `json:"content"`
+			ContentMd string          `json:"content_md"`
+			Comment   string          `json:"comment"`
+			BaseRev   int             `json:"base_rev"`
+			Mindmap   json.RawMessage `json:"mindmap"`
+			Autosave  bool            `json:"autosave"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -893,6 +935,25 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 		req.Title = strings.TrimSpace(req.Title)
 		if req.Title == "" || len(req.Title) > wikiMaxTitleLen {
 			http.Error(w, "title required", http.StatusBadRequest)
+			return
+		}
+		if page.Kind == model.WikiKindMindmap {
+			// A mind map's content is its document; the outline is derived. Without
+			// a document in the request only the title changes.
+			doc, err := mindmapOf(page)
+			if err != nil {
+				http.Error(w, "stored mind map is corrupt", http.StatusInternalServerError)
+				return
+			}
+			if len(req.Mindmap) > 0 && string(req.Mindmap) != "null" {
+				if doc, err = mindmap.Parse(req.Mindmap); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if rev, ok := h.saveMindmap(w, page, doc, req.Title, req.Comment, user, req.BaseRev, req.Autosave); ok {
+				jsonResp(w, map[string]any{"status": "ok", "rev_no": rev})
+			}
 			return
 		}
 		if len(req.Content) > wikiMaxContentLen {
@@ -913,6 +974,7 @@ func (h *Handler) handleWikiPage(w http.ResponseWriter, r *http.Request, user *m
 		}
 		h.store.LogActivity(user.ID, "wiki_edit_page", nil, page.Title)
 		h.processWikiPageLinks(page.SpaceID, page.ID, req.ContentMd, req.Title, user)
+		h.notifyWikiPage(page, rev, user.ID)
 		jsonResp(w, map[string]any{"status": "ok", "rev_no": rev})
 	case http.MethodDelete:
 		// editors may delete pages; space admins always can
@@ -984,12 +1046,13 @@ func (h *Handler) handleWikiPageRestore(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	comment := "restored from v" + strconv.Itoa(rev.RevNo)
-	newRev, err := h.store.UpdateWikiPage(page.ID, rev.Title, rev.Content, rev.ContentMd, comment, user.ID, 0)
+	newRev, err := h.store.UpdateWikiPageFull(page.ID, rev.Title, rev.Content, rev.ContentMd, rev.Data, comment, user.ID, 0, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	h.store.LogActivity(user.ID, "wiki_restore_page", nil, page.Title+" ← v"+strconv.Itoa(rev.RevNo))
+	h.notifyWikiPage(page, newRev, user.ID)
 	jsonResp(w, map[string]any{"status": "ok", "rev_no": newRev})
 }
 
@@ -1023,6 +1086,11 @@ func (h *Handler) handleWikiRevision(w http.ResponseWriter, r *http.Request) {
 	if err != nil || role == "" {
 		http.Error(w, "no access to this space", http.StatusForbidden)
 		return
+	}
+	if rev.Kind == model.WikiKindMindmap && strings.TrimSpace(rev.Data) != "" {
+		if doc, err := mindmap.Parse([]byte(rev.Data)); err == nil {
+			rev.Mindmap = doc.Marshal()
+		}
 	}
 	jsonResp(w, rev)
 }
